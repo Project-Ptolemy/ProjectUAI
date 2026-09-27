@@ -1,7 +1,7 @@
 -- Generated from docs/UI_LIBRARY.md by tools/build_ui_lib.js; edit the Markdown.
 return function(env)
 	return {
-		version = "1.1.0",
+		version = "1.2.0",
 		url = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua",
 		repository = "https://github.com/Project-Ptolemy/ProjectUAI",
 		sections = {
@@ -9,8 +9,9 @@ return function(env)
 ## Quickstart
 
 Load the library once in each standalone script. The returned API is independent
-of the Project UAI client. The library makes no further HTTP requests and does not
-download fonts, icons, or third-party scripts.
+of the Project UAI client. The library does not download fonts, icons, or third-party scripts. Roblox
+services resolve the local headshot and experience name asynchronously; a readable
+initial and "Current experience" remain until those lookups finish.
 
 ```lua
 local UI = loadstring(game:HttpGet(
@@ -22,7 +23,7 @@ local window = UI:CreateWindow({
 	Title = "Session tools",
 	Subtitle = "Everything you need for this session",
 })
-local main = window:Tab({ Title = "Main", Icon = "sliders" })
+local main = window:Tab({ Title = "Main" })
 local actions = main:Section({ Title = "Actions" })
 local amount = actions:Slider({
 	Id = "amount", Text = "Amount", Min = 1, Max = 20, Step = 1, Default = 5,
@@ -84,7 +85,7 @@ programmatically. `Get/Set/Reset/OnChanged` are useful on value controls; use
 | --- | --- |
 | `Button` | `ActionText = "Run"`, `Style = "Primary" / "Danger"` (otherwise secondary), `LoadingText`. `Callback()` runs in an owned task; repeated presses are ignored while it runs. `Press()` returns whether it started; `SetLoading(bool)` controls a loading indicator. |
 | `Toggle` | Boolean `Default`; `Callback(enabled)`. Full-size touch target around a compact switch. |
-| `Checkbox` | Same boolean API, with a check mark. |
+| `Checkbox` | Same boolean API, with explicit On/Off text. |
 | `Slider` | `Min = 0`, `Max = 100`, `Step = 1`, `Default`, `Suffix`. `Callback(number)` on changes, `OnCommit(number)` once at gesture end. Values are clamped and rounded relative to Min; Max is reachable even when the step does not divide the range. Arrow/D-pad left/right changes one step; Home/End reaches the endpoints. |
 | `Input` | String `Default`, `Placeholder`, `MaxLength = 4096` UTF-8 bytes, `MultiLine`, `Lines = 3`, `Live = false`. Commits on focus loss; Live publishes valid edits while preserving the draft/caret until focus loss. `Numeric = true` uses finite numbers and optional `Min/Max`. Invalid drafts show an error while preserving the last valid value. `OnCommit(value)` and `Focus()` are available. |
 | `Dropdown` | `Options`, `Default`, `Multi = false`, `Searchable = true`, `Placeholder`. Option records accept `Image`, shown as a round profile image at the start of the row and in the closed field for the current selection. `SetOptions(array, silent?)` replaces choices and retains still-valid selections. `Open()` opens the picker. Empty options show an empty state. |
@@ -121,7 +122,8 @@ press. A keybind's `Set` updates the binding, not its active state.
 `UI:CreateWindow(options)` accepts `Id`, `Title`, `Subtitle`, optional
 `Width = 780` / `Height = 580`, `Search = true`, `Theme = "Dark" / "Light"`,
 `Accent = Color3`, `TextScale = 1` (0.85–1.5), `ToggleKey = Enum.KeyCode.RightShift`
-(false disables it), `DisplayOrder = 80`, `Parent`, and `OnDestroy`.
+(false disables it), `DisplayOrder = 80`, `Parent`, `OnDestroy`, optional
+`GameName`, and optional `ReducedMotion`.
 Supply a PlayerGui/CoreGui-compatible parent only when embedding.
 The default parent is gethui, CoreGui, then PlayerGui, with capability detection.
 When Height is omitted, narrow touch windows use the available screen height;
@@ -135,9 +137,8 @@ the interface with UIScale. Navigation becomes a horizontal scrolling tab strip.
 On desktop, controls use a 40-pixel target, increasing with text scale.
 Rows stack their value below the label when space is tight.
 
-`window:Tab({ Id?, Title, Icon? })` creates a tab. Icons are native vector marks:
-`grid`, `sliders`, `code`, `check`, `arrow`, `chevron`, `close`, `minus`.
-No uploaded image assets are required. `tab:Select()`, `tab:SetVisible(bool)`,
+`window:Tab({ Id?, Title })` creates a text-only tab. Legacy `Icon` options
+are ignored, and consumer scripts must not supply new icons. `tab:Select()`, `tab:SetVisible(bool)`,
 and `tab:Destroy()` manage it.
 
 `tab:Section({ Title, Description?, Collapsible?, Collapsed? })` creates a
@@ -147,14 +148,25 @@ reveals matching collapsed sections, and displays a clear empty state.
 
 Window methods: `Show()`, `Hide()`, `Minimize()`, `Toggle()`, `Destroy()`,
 `SelectTab(idOrTab)`, `SetTitle(title, subtitle?)`,
-`SetTheme("Dark"|"Light", accent?)`, `SetTextScale(number)`, `Get(controlId)`.
+`SetTheme("Dark"|"Light", accent?)`, `SetTextScale(number)`,
+`SetReducedMotion(boolean)`, `Get(controlId)`.
 Minimize keeps a branded restore pill on screen: it shows the title, subtitle and
 attribution, can be dragged anywhere in the safe viewport, and restores on a click
 that was not a drag. Hide removes that pill too, and a notification that arrives
-while minimized nudges it. The top-right close button destroys the window, and the
-minimize and close controls have no resting fill: their glyph brightens on hover
-and gamepad selection. Each window has independent theme and state. The footer
-remains pinned outside scrolling content.
+while minimized updates its status. The top-right close button destroys the window, and the
+Minimize and Close controls are text buttons with no resting fill;
+hover brightens their labels and gamepad selection adds a focus outline. Each window has independent theme and state. The footer
+remains pinned outside scrolling content. The sidebar profile stays below the
+scrolling tabs; compact and short layouts use the horizontal tabs and omit the
+profile to preserve room for controls. `GameName` overrides the automatic game
+lookup when the script already knows its display name.
+
+Transitions cover window/tab entrances, controls, pickers, and notifications.
+They reverse from the current value, release their resources on completion, and
+settle exactly on hide, focus loss, replacement, or destruction. With no explicit
+`ReducedMotion` option the library follows Roblox's reduced-motion preference
+when available. `SetReducedMotion(true)` immediately finishes active transitions.
+Dragging only moves the window; it does not remeasure the control list.
 ]=],
 			["lifecycle"] = [=[
 ## Lifecycle
@@ -310,6 +322,10 @@ node tools/build_site.js
 # Manually inspect the generated bundles, manifests, guide, and catalog here.
 node tools/test_native.js
 ```
+
+`--skip-images` omits the dedicated image-input suite when image verification is
+out of scope; the verification report lists that omission. The bridge scenario
+runner accepts the same flag and suppresses screenshots and image-specific suites.
 
 The UI build emits `dist/uai-ui.lua`, a SHA-256 manifest, and
 `src/runtime/ui_library_docs.lua` generated from this guide. The generated guide

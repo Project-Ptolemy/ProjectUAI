@@ -106,6 +106,7 @@ return function(env)
 					entry.content = tostring(message.content or "")
 				end
 			end
+			if message.role == "user" then entry.content = env.require("runtime/images").openai(entry.content, message.images) end
 			out[#out + 1] = entry
 		end
 		return out
@@ -921,7 +922,8 @@ return function(env)
 			if registry.compatibilityKey(record) ~= requestScope then return nil, "aborted" end
 			-- A socket is only used when the record names one and the host has
 			-- WebSocket support; otherwise the SSE body arrives whole over HTTP.
-			local web = config.get("bridge.enabled", false) and config.get("bridge.runtime", "game") == "web"
+			local imageRequest = env.require("runtime/images").hasReferences(request.messages)
+			local web = imageRequest or (config.get("bridge.enabled", false) and config.get("bridge.runtime", "game") == "web")
 			if not web and payload.stream and util.trim(record.wsUrl) ~= "" and caps.ws then
 				local ws = env.require("net/ws")
 				local socketHeaders = http.headersFor({ url = url, headers = headers, body = payload,

@@ -18,7 +18,8 @@ const DELIVERABLE_MAX = 8 * 1024 * 1024;
 // during a server lifetime, even after response bodies expire.
 function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
   deliverableMax = DELIVERABLE_MAX, retentionMs = 300000, maxJobs = 10000,
-  maxActive = 16, maxTotalBytes = 64 * 1024 * 1024, legacy = false } = {}) {
+  maxActive = 16, maxTotalBytes = 64 * 1024 * 1024, legacy = false,
+  prepareBody = body => body, maxRequestBytes = 32 * 1024 * 1024, maxActiveRequestBytes = 64 * 1024 * 1024 } = {}) {
   const jobs = new Map();
   // A previously seen ID must never become resubmittable, even after its job is
   // evicted for capacity. The horizon remembers evicted IDs so a late resubmit
@@ -27,6 +28,12 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
   const instance = crypto.randomUUID();
   const effectiveMax = Math.min(deliverableMax, maxBytes);
   let retainedBytes = 0;
+  let activeRequestBytes = 0;
+
+  function releaseRequest(job) {
+    activeRequestBytes -= job.requestBytes || 0;
+    job.requestBytes = 0;
+  }
 
   function rememberEvicted(id) {
     horizon.add(id);
@@ -38,6 +45,7 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
     job.error = error;
     job.finishedAt = Date.now();
     clearTimeout(job.timer);
+    releaseRequest(job);
     if (state !== 'completed') {
       retainedBytes -= job.bodyBytes || 0;
       job.body = ''; job.bodyBytes = 0;
@@ -159,12 +167,20 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
     if (horizon.has(input.id)) return { id: input.id, state: 'expired', error: 'Request expired and was evicted; do not resubmit' };
     if (horizon.size >= 50000) { const e = new Error('Bridge request history is full; restart the bridge while idle'); e.status = 503; throw e; }
     if (jobs.size >= maxJobs || [...jobs.values()].filter(j => j.state === 'running').length >= maxActive) { const e = new Error('Inference capacity reached'); e.status = 503; throw e; }
+    // Check idempotency before reading image bytes: retries still return the
+    // original job after its attachments expire, without another provider call.
+    const providerBody = prepareBody(input.body, input.sessionId);
+    const requestBytes = Buffer.byteLength(providerBody);
+    if (requestBytes > maxRequestBytes || activeRequestBytes + requestBytes > maxActiveRequestBytes) {
+      const e = new Error('Image request memory limit reached; wait for other requests or send fewer images'); e.status = 413; throw e;
+    }
+    headers['content-length'] = requestBytes;
     const timeout = Math.min(86400, Math.max(10, Number(input.timeout) || 180));
     let model;
     try { const b = JSON.parse(input.body); if (b && typeof b.model === 'string') model = b.model; } catch { /* body need not be JSON */ }
     const job = { id: input.id, fingerprint, sessionId: input.sessionId, state: 'running', body: '', bytes: 0, bodyBytes: 0, wireBytes: 0,
       startedAt: Date.now(), seq: 0, frameCount: 0, ring: [], ringBytes: 0, ringDropped: false,
-      firstFrameAt: null, sawText: false, model };
+      firstFrameAt: null, sawText: false, model, requestBytes };
     jobs.set(job.id, job);
     const decoder = new StringDecoder('utf8');
     let buffer = '', eventName = '', dataLines = [];
@@ -247,11 +263,13 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
       response.on('error', () => finish(job, 'failed', 'Provider response connection closed'));
     });
     job.request = request;
+    activeRequestBytes += requestBytes;
+    request.on('finish', () => releaseRequest(job));
     request.on('error', () => finish(job, 'failed', 'Could not complete provider connection'));
     job.timer = setTimeout(() => { finish(job, 'failed', `Provider request exceeded ${timeout}s`); request.destroy(); }, timeout * 1000);
     job.timer.unref();
     if (job.sessionId) publish({ kind: 'inference:start', id: job.id, sessionId: job.sessionId, model: job.model, startedAt: job.startedAt });
-    request.end(input.body);
+    request.end(providerBody);
     return view(job);
   }
   function cancel(id) {

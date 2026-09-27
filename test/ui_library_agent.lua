@@ -12,6 +12,9 @@ for _, definition in ipairs(client.env.require("tools/gui")) do
 end
 check("UI library reference is a read-only tool without executor requirements", tool and tool.risk == "read" and tool.needs == nil)
 local docs = client.env.require("runtime/ui_library_docs")
+check("the embedded guide identifies the current library release", docs.version == "1.2.0")
+check("layout reference documents text navigation, sidebar profile and motion", docs.sections.layout:find("text-only tab", 1, true)
+	and docs.sections.layout:find("GameName", 1, true) and docs.sections.layout:find("SetReducedMotion", 1, true))
 check("reference identifies the canonical standalone loader", tool.run({}):find(docs.url, 1, true) ~= nil)
 local before = #h.http.log
 local rootsBefore = #h.coreGui:GetChildren()
@@ -30,7 +33,7 @@ check("reference reads make no HTTP requests", #h.http.log == before)
 check("unknown section returns a tool failure", tool.run({ section = "missing" }).ok == false)
 local prompt = client.env.require("agent/prompt")
 local main, child = prompt.build(), prompt.subagent("Create a script UI")
-for _, phrase in ipairs({ "Project UAI UI LIB", "ui_library_docs", "window:Give", "Project UAI | UI LIB.", docs.url }) do
+for _, phrase in ipairs({ "Project UAI UI LIB", "ui_library_docs", "window:Give", "Project UAI | UI LIB.", "text-only", "ReducedMotion", docs.url }) do
 	check("both agents receive " .. phrase, main:find(phrase, 1, true) and child:find(phrase, 1, true))
 end
 check("reading UI docs does not mount a script window", #h.coreGui:GetChildren() == rootsBefore)

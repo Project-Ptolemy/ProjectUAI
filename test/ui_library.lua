@@ -30,9 +30,17 @@ local function input(kind, x, y, key)
 end
 local function key(name) return input(E.UserInputType.Keyboard, 0, 0, E.KeyCode[name]) end
 check("fixed attribution is part of the window and launcher", node("Attribution", window.Frame).Text == "Project UAI | UI LIB." and node("Attribution", node("Restore")).Text == "Project UAI | UI LIB.")
-check("public metadata points to this repository", UI.Version == "1.1.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
-check("window chrome draws the mark and leaves the window controls unfilled",
-	node("Brand", window._header) ~= nil and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)
+check("public metadata points to this repository", UI.Version == "1.2.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
+check("window chrome uses text and leaves the window controls unfilled",
+	h.byName("Brand", window._header) == nil and h.textOf(window._minimize) == "Minimize" and h.textOf(window._close) == "Close"
+		and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)
+local profile = node("Profile")
+check("the desktop sidebar shows the local player and a game fallback",
+	profile.Visible and node("DisplayName", profile).Text == h.localPlayer.DisplayName
+		and node("Username", profile).Text == "@" .. h.localPlayer.Name and node("GameName", profile).Text == "Current experience")
+check("the profile has a readable fallback while the headshot loads", node("Initial", profile).Visible and node("Headshot", profile).Image:find("rbxthumb", 1, true))
+h.settle(0.3)
+check("the profile resolves the game asynchronously", node("GameName", profile).Text ~= "Current experience")
 local changes, commits = 0, 0
 local toggle = section:Toggle({ Id = "enabled", Text = "Enable", Default = true, Callback = function() changes = changes + 1 end })
 local checkbox = section:Checkbox({ Id = "check", Text = "Remember", Default = false })
@@ -203,8 +211,8 @@ check("hold key releases even when the release is processed", #activation == 2 a
 uis.InputBegan:Fire(key("K"), false); window:Minimize()
 check("minimizing releases held logic and retains branded launcher", activation[#activation] == false and not window.Visible and node("Restore").Visible)
 local launcher = node("Restore")
-check("the minimized pill carries the mark, title, status and attribution",
-	node("Brand", launcher) ~= nil and node("RestoreTitle", launcher).Text == "Library contract"
+check("the minimized pill carries a text action, title, status and attribution",
+	h.byName("Brand", launcher) == nil and h.textOf(launcher):find("Open", 1, true) and node("RestoreTitle", launcher).Text == "Library contract"
 		and node("RestoreDetail", launcher).Text ~= "" and node("Attribution", launcher).Text == "Project UAI | UI LIB.")
 local pillStart = launcher.AbsolutePosition
 launcher.InputBegan:Fire(input(E.UserInputType.MouseButton1, pillStart.X + 10, pillStart.Y + 10))
@@ -217,11 +225,10 @@ launcher.InputBegan:Fire(input(E.UserInputType.Touch, launcher.AbsolutePosition.
 launcher.Activated:Fire()
 check("a click restores the minimized window", window.Visible and not launcher.Visible)
 window:Minimize()
-local launcherScale = node("LauncherScale", launcher)
 window:Notify({ Title = "While minimized", Duration = 0 })
-check("a notification while minimized nudges the pill", launcherScale.Scale > 1)
+check("a notification while minimized updates the pill status", node("RestoreDetail", launcher).Text == "New notification")
 h.settle(0.3)
-check("the nudged pill settles back", launcherScale.Scale == 1)
+check("the notification transition settles without leaving a pulse", window._launcherStroke.Color == window.Theme.Border and node("EntranceScale", launcher).Scale == 1)
 while #window._toasts > 0 do window._toasts[1]:Close() end
 window:Show()
 node("Keybind", binding.Frame).Activated:Fire(); uis.InputBegan:Fire(key("L"), false)
@@ -294,11 +301,13 @@ for _, viewport in ipairs({ { 1280, 720, false }, { 390, 844, true }, { 844, 390
 	local size, position = window.Frame.AbsoluteSize, window.Frame.AbsolutePosition
 	check("window stays in " .. viewport[1] .. "x" .. viewport[2], position.X >= 0 and position.Y >= 0 and position.X + size.X <= viewport[1] and position.Y + size.Y <= viewport[2])
 	check("controls retain readable width at " .. viewport[1], slider._slot.AbsoluteSize.X > 150 and toggle._label.AbsoluteSize.X > 100)
-	check("the header mark stays visible at " .. viewport[1], window._brand.Visible)
+	check("text window actions fit at " .. viewport[1], window._title.AbsoluteSize.X > 0 and window._close.AbsolutePosition.X + window._close.AbsoluteSize.X <= position.X + size.X)
+	check("the sidebar profile follows compact layout at " .. viewport[1], profile.Visible == not window._compact)
 	if viewport[3] then check("touch targets remain at least 44px", window.Target >= 44) end
 end
 window:SetTextScale(1.5)
 check("large text expands controls without shrinking the UI", window.Target >= 54 and slider.Frame.AbsoluteSize.Y > 90)
+check("large text preserves the text chrome on a small phone", window._title.AbsoluteSize.X > 0 and window._close.AbsolutePosition.X + window._close.AbsoluteSize.X <= window.Frame.AbsolutePosition.X + window.Frame.AbsoluteSize.X)
 check("large-text status rows preserve label width on a small phone", badge._label.AbsoluteSize.X > 200 and badge._slot.AbsolutePosition.Y > badge._label.AbsolutePosition.Y)
 uis.OnScreenKeyboardVisible = true; uis.OnScreenKeyboardSize = dt.Vector2.new(320, 260); uis.OnScreenKeyboardPosition = dt.Vector2.new(0, 308)
 window:_Layout()
@@ -308,6 +317,36 @@ window:SetTextScale(1); h.setViewport(1280, 720); uis.TouchEnabled = false; wind
 window:SetTheme("Light")
 check("theme updates existing surfaces", window.Frame.BackgroundColor3.R > 0.9)
 window:SetTheme("Dark")
+
+-- Observe cancellation and final values without relying on the mock to interpolate.
+local thumb = node("Thumb", toggle.Frame)
+toggle:Set(false, true); h.settle(0.3)
+toggle:Set(true, true)
+local forward = assert(window._motions[thumb])
+thumb.Position = dt.UDim2.new(0, 11, 0.5, 0)
+toggle:Set(false, true)
+check("reversing a toggle cancels the previous transition and releases its listener", forward.tween.PlaybackState == "Cancelled" and forward.tween.Completed:Count() == 0)
+h.settle(0.3)
+check("the reversed toggle settles at its exact final position", thumb.Position.X.Offset == 3 and window._motions[thumb] == nil)
+toggle:Set(true, true); window:SetReducedMotion(true)
+check("reduced motion finishes all active transitions immediately", count(window._motions) == 0 and thumb.Position.X.Offset == 19)
+toggle:Set(false, true)
+check("reduced-motion controls update without scheduling new transitions", count(window._motions) == 0 and thumb.Position.X.Offset == 3)
+window:SetReducedMotion(false)
+toggle:Set(true, true); uis.WindowFocusReleased:Fire()
+check("losing focus settles transitions and releases motion ownership", count(window._motions) == 0 and thumb.Position.X.Offset == 19)
+toggle:Set(false, true); window:Hide()
+check("hiding settles controls before the window is released", count(window._motions) == 0 and thumb.Position.X.Offset == 3)
+window:Show(); h.settle(0.3)
+local reflows = 0
+local observeReflow = function() reflows = reflows + 1 end
+window._reflow[observeReflow] = true
+local dragStart = window.Frame.AbsolutePosition
+window._header.InputBegan:Fire(input(E.UserInputType.MouseButton1, dragStart.X + 25, dragStart.Y + 25))
+uis.InputChanged:Fire(input(E.UserInputType.MouseMovement, dragStart.X + 65, dragStart.Y + 45))
+uis.InputEnded:Fire(input(E.UserInputType.MouseButton1, dragStart.X + 65, dragStart.Y + 45))
+window._reflow[observeReflow] = nil
+check("dragging moves the window without remeasuring its controls", reflows == 0 and window.Frame.AbsolutePosition.X > dragStart.X)
 
 local dialog = window:Dialog({ Title = "Review", Content = "Proceed?", Dismissible = false, Buttons = { { Text = "Done", Style = "Primary" } } })
 uis.InputBegan:Fire(key("Escape"), false)
@@ -355,7 +394,7 @@ local replacement = newUI:CreateWindow({ Id = "test" })
 check("rerun destroys only the matching owned window and cleans logic once", not window.Alive and cleaned == 1 and independent.Alive and unrelated.Parent == h.coreGui)
 window:Destroy()
 check("destruction is idempotent", cleaned == 1)
-check("destroyed handles no longer retain paint or global listeners", count(window._scope.items) == 0 and count(window._paint) == 0 and count(window._reflow) == 0)
+check("destroyed handles no longer retain paint, motions or global listeners", count(window._scope.items) == 0 and count(window._paint) == 0 and count(window._reflow) == 0 and count(window._motions) == 0 and count(window._presses) == 0)
 newUI:DestroyAll()
 check("DestroyAll preserves nonlibrary GUIs", not replacement.Alive and not independent.Alive and unrelated.Parent == h.coreGui)
 check("all scenarios avoid uncaught tasks and invalid property types", #h.errors() == 0 and #h.instanceState.typeErrors == 0)
@@ -368,6 +407,26 @@ check("JSON config works without executor filesystem functions", bareWindow:Impo
 check("missing filesystem is reported instead of crashing", bareWindow:SaveConfig("default") == false and bareWindow:LoadConfig("default") == false)
 bareWindow.ScreenGui:Destroy()
 check("external ScreenGui removal releases the library window", not bareWindow.Alive and bareUI:GetWindow("bare") == nil)
+
+local delayed, delayedUI = boot()
+local profileLookups = 0
+delayed.services.MarketplaceService.GetProductInfo = function()
+	profileLookups = profileLookups + 1
+	delayed.sandbox.task.wait(0.2)
+	return { Name = "Delayed experience" }
+end
+delayed.services.Players.GetUserThumbnailAsync = function()
+	delayed.sandbox.task.wait(0.2)
+	return "rbxthumb://delayed", true
+end
+local pendingProfile = delayedUI:CreateWindow({ Id = "pending-profile" })
+delayed.settle(0.05); pendingProfile:Destroy(); delayed.settle(0.3)
+check("late profile responses leave destroyed windows released", not pendingProfile.Alive and count(pendingProfile._scope.items) == 0 and #delayed.errors() == 0)
+local override = delayedUI:CreateWindow({ Id = "profile-override", GameName = "Known game", ReducedMotion = true })
+check("scripts can provide a game name and start without motion", delayed.byName("GameName", override.Frame).Text == "Known game" and count(override._motions) == 0 and profileLookups == 1)
+local legacyTab = override:Tab({ Title = "Legacy", Icon = "grid" })
+check("legacy icon options retain a text-only tab", delayed.textOf(legacyTab._button) == "Legacy" and delayed.byName("grid", legacyTab._button) == nil)
+override:Destroy()
 
 local function read(path) local file = assert(io.open(path, "rb")); local source = file:read("*a"); file:close(); return source end
 for _, name in ipairs({ "starter", "showcase" }) do

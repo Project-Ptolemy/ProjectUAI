@@ -353,6 +353,7 @@ function M.build(deps)
 		-- rawget, or reading __signals when it is still nil re-enters this very
 		-- metamethod and recurses until the stack gives out.
 		__index = function(self, key)
+			if key == "SelectedObject" then return nil end
 			local store = rawget(self, "__signals")
 			if not store then
 				store = {}

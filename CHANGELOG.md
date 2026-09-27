@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.5 — September 27, 2026
+
+Responsive long chats, real image input, and UI LIB v1.2.0.
+
+- Mount nearby messages and Markdown chunks while measured spacers preserve
+  scroll position. Minimize and navigation suspend rendering and release timers;
+  restoring reconciles retained updates without losing the draft or reading anchor.
+- Batch browser snapshot layout, preserve reading position, and defer
+  streaming preview paints while the browser document is hidden.
+- Send actual PNG/JPEG/WebP content through the bridge to Chat Completions and
+  Anthropic Messages image blocks. Keep compact, conversation-owned references
+  in Lua; preserve retry identity and report expired current attachments explicitly.
+  Reload the updated client and restart the updated bridge. A vision-capable model
+  is required; older clients cannot accept these image sends.
+- Add a pinned UI library sidebar profile with the local player's headshot,
+  display name, username, and game. Keep readable fallbacks during Roblox lookups.
+- Use text throughout library navigation and actions, including window controls,
+  dropdown selection states, and disclosure buttons. Legacy tab Icon fields are
+  ignored; the fixed `Project UAI | UI LIB.` attribution remains.
+- Add owned, reversible transitions and reduced-motion support for library
+  entrances, controls, pickers, and notifications. Settle interrupted animations,
+  retain visible focus, and stop remeasuring every control during window dragging.
+- Update the public guide, examples, in-game notes, and regression coverage for
+  viewport lifecycle, provider image payloads, profile layout, and motion cleanup.
+
 ## 2.0.0 — September 26, 2026
 
 Project UAI UI LIB and shared script interface guidance.

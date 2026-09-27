@@ -61,8 +61,11 @@ it; `ui/*` must not require `agent/*` except through `agent/session`.
 as `dist/uai-ui.lua`. It shares the application's visual language without changing
 the existing `src/ui` application. Script authors declare tabs/sections/controls and
 logic; the library owns layout, input, state, lifetime, and the fixed bottom
-`Project UAI | UI LIB.` attribution. The window mark and every tab icon are drawn
-from frames, so the library requires no uploaded image asset.
+`Project UAI | UI LIB.` attribution. Navigation and actions are text-only; legacy
+Icon options are ignored. The
+sidebar profile uses Roblox headshots with a readable initial, display name,
+username and game. No uploaded assets are required. Motion is owned, reversible,
+and reduced-motion aware; cleanup settles active transitions exactly.
 See `docs/UI_LIBRARY.md` for the public API.
 
 `node tools/build_ui_lib.js` deterministically generates the library, SHA-256
@@ -241,6 +244,13 @@ before `send`, with conversation ownership, byte offsets and idempotent retries.
 Only a verified final write produces a usable reference. Failed saves, missing
 files or unavailable file tools leave the draft intact and never send the long
 source inline. These are executor workspace files, not provider-specific uploads.
+Browser images use a separate compact, session-scoped reference in model context.
+The bridge resolves that reference to actual Chat Completions or Messages image
+blocks only at provider dispatch; image-bearing requests use the relay regardless
+of the selected runtime. No image bytes enter Lua context or transcript events.
+Missing current images fail with a reattach instruction; expired images in older
+user turns become explicit unavailable-image text. Old clients without imageInput
+capability cannot accept image sends. Vision support depends on the model.
 Explicit `files/` and `pastes/` paths resolve before bare-name fallbacks; client
 configuration is never a fallback scope. Saved-paste slices return at most 6,000
 source bytes with UTF-8-safe continuation offsets, including batch reads.
@@ -524,7 +534,11 @@ The transcript subscribes before taking its replay snapshot and renders at most
 12 events or approximately 6 ms per scheduled slice. Durable events arriving during
 replay queue in order; current preview/progress is reconciled afterward. Generations
 cancel work on switch, clear and destruction. Completed replay buffers and expired
-GUI rows are released; retained nested agents survive removal of a dispatch row.
+GUI rows are released; dialogue uses measured spacers and mounts only nearby
+message/Markdown chunks in batches of up to four, yielding between batches.
+Hidden/minimized views release their renderers and replay retained events on
+restore with the previous reading anchor. Retained nested agents survive removal
+of a dispatch row.
 History notices disclose retention/recovery. Reading position and follow preference
 are session-local, with a measured message anchor when available. **Refresh
 conversation** redraws the view without changing the session or composer draft.
@@ -618,6 +632,9 @@ exactly 1 on `Completed`, because an interrupted tween otherwise leaves the surf
 laid out at 98% of its own metrics for as long as it is open.
 
 The transcript canvas uses `UIListLayout.AbsoluteContentSize` plus vertical padding.
+Lightweight spacers preserve the measured size of unmounted dialogue. Drawing
+work is bounded independently of the retained event count, and data retention
+does not depend on the visibility of the window.
 Transient zero measurements during hidden/resizing states do not erase a populated
 canvas. Geometry changes preserve follow intent and restore a measured reading
 anchor instead of forcing the reader to the newest row. Markdown replacements are

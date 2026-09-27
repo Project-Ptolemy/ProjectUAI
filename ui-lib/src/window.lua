@@ -1,6 +1,7 @@
 return function(env)
 	local C = env.require("core")
 	local T = env.require("theme")
+	local motion = env.require("motion")
 	local Window = {}
 	Window.__index = Window
 	local function parentScreen(screen, requested)
@@ -38,16 +39,27 @@ return function(env)
 	function Window:_CloseOverlay()
 		if self._overlay then self._overlay:Close() end
 	end
-	function Window:_Refresh()
+	function Window:_Refresh(animated)
 		if not self.Alive then return end
+		if not animated then motion.stopAll(self, true) end
 		for binding in pairs(self._paint) do
 			if binding.node.Parent then
+				local goals = {}
 				for key, value in pairs(binding.properties) do
-					if type(value) == "function" then binding.node[key] = value(self.Theme)
-					else binding.node[key] = self.Theme[value] end
+					local resolved
+					if type(value) == "function" then resolved = value(self.Theme) else resolved = self.Theme[value] end
+					if animated and (key:find("Color", 1, true) or key:find("Transparency", 1, true)) then goals[key] = resolved
+					else binding.node[key] = resolved end
 				end
+				if next(goals) then motion.to(binding.owner, binding.node, goals) end
 			end
 		end
+	end
+	function Window:SetReducedMotion(value)
+		assert(type(value) == "boolean", "ReducedMotion must be a boolean")
+		self._motionOverride, self.ReducedMotion = value, value
+		motion.stopAll(self, true)
+		return self
 	end
 	function Window:SetTheme(name, accent)
 		self.Theme = T.resolve(name, accent)
@@ -82,10 +94,13 @@ return function(env)
 	end
 	function Window:Show()
 		if not self.Alive then return self end
+		local opening = not self.Visible
+		motion.stopAll(self, true)
 		self.Visible = true
 		self.Frame.Visible, self._launcher.Visible = true, false
-		if self._launcherScale then self._launcherScale.Scale = 1 end
+		self._launcherDetail.Text = self._subtitle.Text ~= "" and self._subtitle.Text or "Minimized"
 		self:_Layout()
+		if opening then motion.reveal(self, self.Frame) end
 		return self
 	end
 	function Window:Hide()
@@ -94,6 +109,8 @@ return function(env)
 		self:_CancelCapture()
 		self:_ReleaseKeys()
 		self._gesture = nil
+		for release in pairs(self._presses) do release() end
+		motion.stopAll(self, true)
 		self.Visible = false
 		self.Frame.Visible, self._launcher.Visible = false, false
 		pcall(function()
@@ -103,36 +120,16 @@ return function(env)
 		return self
 	end
 	function Window:_PopLauncher()
-		local scale = self._launcherScale
-		if not scale then return end
-		local tween = env.services.TweenService
-		if not tween then scale.Scale = 1; return end
-		scale.Scale = 0.92
-		local ok = pcall(function()
-			tween:Create(scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-		end)
-		if not ok then scale.Scale = 1 end
+		motion.reveal(self, self._launcher)
 	end
 	-- A notification that arrives while the window is minimized nudges the
 	-- launcher instead of being silent: the pill is visible, but nothing else
 	-- says new content is waiting there.
 	function Window:_PulseLauncher()
-		local scale = self._launcherScale
-		if not scale or not self._launcher.Visible then return end
-		local tween = env.services.TweenService
-		if not tween then return end
-		pcall(function()
-			tween:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.05 }):Play()
-		end)
-		self._scope:Delay(0.12, function()
-			if not scale.Parent then return end
-			local settle = env.services.TweenService
-			if settle then
-				pcall(function()
-					settle:Create(scale, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-				end)
-			end
-		end)
+		if not self._launcher.Visible then return end
+		self._launcherDetail.Text = "New notification"
+		self._launcherStroke.Color = self.Theme.Accent
+		motion.to(self, self._launcherStroke, { Color = self.Theme.Border }, T.Motion.Enter)
 	end
 	function Window:Minimize()
 		if not self.Alive or not self.Visible then return self end
@@ -152,6 +149,7 @@ return function(env)
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
+		motion.stopAll(self, true)
 		self.Alive, self.Visible = false, false
 		self._gesture, self._capture = nil, nil
 		if env.windows[self.Id] == self then env.windows[self.Id] = nil end
@@ -169,14 +167,16 @@ return function(env)
 		end
 		assert(tab and tab._window == self and tab.Alive, "Unknown tab")
 		if not tab.Visible then return self end
+		if self._activeTab == tab then return self end
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
 		self._gesture = nil
 		self._activeTab = tab
 		for _, candidate in ipairs(self.Tabs) do candidate.Frame.Visible = candidate == tab and candidate.Visible end
-		self:_Refresh()
+		self:_Refresh(true)
 		self:_Filter()
+		motion.reveal(tab, tab.Frame)
 		return self
 	end
 	function Window:_Filter()
@@ -260,32 +260,33 @@ return function(env)
 		self.Frame.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
 		self._header.Size = UDim2.new(1, 0, 0, header)
 		self._header.Visible = header > 0
-		-- The mark sits beside the title when there is room for both to read;
-		-- the title keeps its old inset when it is hidden, so only extremely
-		-- narrow layouts lose the logo before they lose their name.
-		local brand = math.min(22, math.max(14, math.floor(18 * self.TextScale)))
-		self._brand.Size = UDim2.fromOffset(brand, brand)
-		self._brand.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2))
-		self._brand.Visible = header > 0 and width >= 300
-		local titleInset = self._brand.Visible and (18 + brand + 10) or 20
+		local titleInset = 20
+		local actionWidth = math.max(self.Target, math.ceil(66 * self.TextScale))
 		self._title.Position = UDim2.fromOffset(titleInset, short and 12 or 14)
-		self._title.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, titleHeight)
+		self._title.Size = UDim2.new(1, -(titleInset + actionWidth * 2 + 28), 0, titleHeight)
 		self._subtitle.Visible = not short and self._subtitle.Text ~= ""
 		self._subtitle.Position = UDim2.fromOffset(titleInset, 17 + titleHeight)
-		self._subtitle.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, subtitleHeight)
-		self._headerActions.Position = UDim2.new(1, -self.Target * 2 - 20, 0, (header - self.Target) / 2)
-		self._headerActions.Size = UDim2.fromOffset(self.Target * 2 + 4, self.Target)
-		self._minimize.Size, self._close.Size = UDim2.fromOffset(self.Target, self.Target), UDim2.fromOffset(self.Target, self.Target)
+		self._subtitle.Size = UDim2.new(1, -(titleInset + actionWidth * 2 + 28), 0, subtitleHeight)
+		self._headerActions.Position = UDim2.new(1, -actionWidth * 2 - 16, 0, (header - self.Target) / 2)
+		self._headerActions.Size = UDim2.fromOffset(actionWidth * 2 + 4, self.Target)
+		self._minimize.Size, self._close.Size = UDim2.fromOffset(actionWidth, self.Target), UDim2.fromOffset(actionWidth, self.Target)
+		local profileHeight = 0
+		if self._profile then
+			profileHeight = self._profile.Layout(sidebar)
+			self._profile.Frame.Visible = not self._compact
+			self._profile.Frame.Position = UDim2.new(0, 0, 1, -footer - profileHeight)
+			if self._compact then profileHeight = 0 end
+		end
 		self._nav.Position = UDim2.fromOffset(0, header)
 		self._nav.Visible = not self._compact or nav > 0
-		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - footer)
+		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - footer - profileHeight)
 		self._navLayout.FillDirection = self._compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 		self._nav.ScrollingDirection = self._compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
 		self._nav.AutomaticCanvasSize = self._compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
 		self._nav.ScrollBarThickness = self._compact and 0 or T.Size.Scrollbar
 		self._navPad.PaddingTop = UDim.new(0, self._compact and 4 or 14)
 		for _, tab in ipairs(self.Tabs) do
-			local tabWidth = self._compact and math.max(96, math.min(220, #tab.Title * 8 * self.TextScale + 52)) or sidebar - 24
+			local tabWidth = self._compact and math.max(80, math.min(220, #tab.Title * 8 * self.TextScale + 28)) or sidebar - 24
 			tab._button.Size = UDim2.fromOffset(tabWidth, self.Target)
 		end
 		local top = header + nav
@@ -298,7 +299,7 @@ return function(env)
 			self._search.Size = UDim2.new(1, -sidebar - 40, 0, self.Target)
 		end
 		self._resize.Visible = not self.Touch
-		-- The restore pill: mark, title and a status line over the permanent
+		-- The restore pill: title and a status line over the permanent
 		-- attribution. Its height follows the text scale, it remembers where it
 		-- was dragged, and it is clamped back into view on every reflow.
 		local launcherTitle = math.ceil(15 * self.TextScale)
@@ -312,19 +313,22 @@ return function(env)
 		placeY = C.clamp(placeY, margin, math.max(margin, availableHeight - launcherHeight - margin))
 		self._launcher.Position = UDim2.fromOffset(math.floor(placeX), math.floor(placeY))
 		self._launcher.Size = UDim2.fromOffset(math.floor(launcherWidth), math.floor(launcherHeight))
-		local launcherMark = math.min(24, launcherBody - 8)
-		self._launcherBrand.Size = UDim2.fromOffset(launcherMark, launcherMark)
-		self._launcherBrand.Position = UDim2.fromOffset(14, math.floor((launcherBody - launcherMark) / 2))
-		local launcherText = 14 + launcherMark + 10
+		local launcherText = 14
 		local launcherTop = math.max(4, math.floor((launcherBody - launcherTitle - launcherDetail) / 2))
 		self._launcherTitle.Position = UDim2.fromOffset(launcherText, launcherTop)
-		self._launcherTitle.Size = UDim2.new(1, -(launcherText + 34), 0, launcherTitle)
+		self._launcherTitle.Size = UDim2.new(1, -(launcherText + 64), 0, launcherTitle)
 		self._launcherDetail.Position = UDim2.fromOffset(launcherText, launcherTop + launcherTitle + 2)
-		self._launcherDetail.Size = UDim2.new(1, -(launcherText + 34), 0, launcherDetail)
-		self._launcherHint.Position = UDim2.new(1, -24, 0, math.floor(launcherBody / 2))
+		self._launcherDetail.Size = UDim2.new(1, -(launcherText + 64), 0, launcherDetail)
+		self._launcherHint.Position = UDim2.new(1, -12, 0, math.floor(launcherBody / 2))
 		self._toastHost.Position = UDim2.new(1, -margin, 1, -margin - (size.Y - availableHeight))
 		self._toastHost.Size = UDim2.fromOffset(math.min(360, size.X - margin * 2), math.max(1, availableHeight - margin * 2))
 		for callback in pairs(self._reflow) do callback() end
+	end
+	function Window:_Move(frame, position)
+		local rect = self._rect
+		local width, height = frame.Size.X.Offset, frame.Size.Y.Offset
+		frame.Position = UDim2.fromOffset(math.floor(C.clamp(position.X, rect.x, math.max(rect.x, rect.x + rect.width - width))),
+			math.floor(C.clamp(position.Y, rect.y, math.max(rect.y, rect.y + rect.height - height))))
 	end
 	function Window.new(options)
 		options = options or {}
@@ -335,6 +339,8 @@ return function(env)
 		if options.ToggleKey ~= nil and options.ToggleKey ~= false then
 			assert(typeof(options.ToggleKey) == "EnumItem" and tostring(options.ToggleKey):find("Enum.KeyCode.", 1, true) == 1, "ToggleKey must be an Enum.KeyCode or false")
 		end
+		assert(options.ReducedMotion == nil or type(options.ReducedMotion) == "boolean", "ReducedMotion must be a boolean")
+		assert(options.GameName == nil or type(options.GameName) == "string", "GameName must be a string")
 		local toggleKey = options.ToggleKey
 		if toggleKey == nil then toggleKey = Enum.KeyCode.RightShift end
 		if env.windows[id] then env.windows[id]:Destroy() end
@@ -342,7 +348,8 @@ return function(env)
 			Id = id, Title = tostring(options.Title or "Project UAI"), Alive = true, Visible = true,
 			Theme = theme, TextScale = C.number(options.TextScale, 1, 0.85, 1.5),
 			_themeName = options.Theme or "Dark", _accent = options.Accent,
-			_scope = C.scope(), _paint = {}, _paintNodes = {}, _reflow = {}, _keys = {}, Controls = {}, Tabs = {}, _toasts = {},
+			_scope = C.scope(), _paint = {}, _paintNodes = {}, _reflow = {}, _keys = {}, _motions = {}, _presses = {}, Controls = {}, Tabs = {}, _toasts = {},
+			ReducedMotion = options.ReducedMotion == true, _motionOverride = options.ReducedMotion,
 			_requestedWidth = C.number(options.Width, T.Size.Width, 280, 1600),
 			_requestedHeight = C.number(options.Height, T.Size.Height, 240, 1200),
 			_autoHeight = options.Height == nil,
@@ -363,32 +370,29 @@ return function(env)
 		C.corner(self.Frame, T.Size.Radius)
 		C.stroke(self, self.Frame, "Border")
 		self._header = C.node(self, "Frame", self.Frame, { Name = "Header", BackgroundTransparency = 1, Active = true })
-		self._brand = C.mark(self, self._header, 18)
 		self._title = C.text(self, self._header, self.Title, "Title", "Text", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._subtitle = C.text(self, self._header, options.Subtitle or "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		C.node(self, "Frame", self._header, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		self._headerActions = C.node(self, "Frame", self._header, { BackgroundTransparency = 1 })
 		C.list(self._headerActions, true, 4)
 		-- Window controls sit directly on the header with no resting fill: the
-		-- glyph is the control. Hover and gamepad selection brighten that glyph
+		-- label is the control. Hover and gamepad selection brighten the text
 		-- instead of painting a tile behind it, and Close warms to the danger
 		-- tone rather than shouting in red until it is pointed at.
-		local function headerButton(name, icon, callback, tone)
+		local function headerButton(name, callback, tone)
 			local button = C.node(self, "TextButton", self._headerActions, { Name = name, BackgroundTransparency = 1 })
 			C.corner(button)
 			local hovered, selected = false, false
-			local function glyphColor(theme)
+			local function labelColor(theme)
 				if selected then return theme.Text end
 				if hovered then return (tone == "Danger") and theme.Danger or theme.Text end
 				return theme.Muted
 			end
-			local glyph = C.icon(self, button, icon, glyphColor)
-			glyph.AnchorPoint, glyph.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+			local label = C.text(self, button, name, "Caption", labelColor, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+			local focus = C.stroke(self, button, "Accent"); focus.Transparency = 1
 			local function repaint()
-				local color = glyphColor(self.Theme)
-				for _, line in ipairs(glyph:GetChildren()) do
-					if line:IsA("Frame") then line.BackgroundColor3 = color end
-				end
+				motion.to(self, label, { TextColor3 = labelColor(self.Theme) })
+				motion.to(self, focus, { Transparency = selected and 0 or 1 })
 			end
 			self._scope:Connect(button.MouseEnter, function() hovered = true; repaint() end)
 			self._scope:Connect(button.MouseLeave, function() hovered = false; repaint() end)
@@ -397,13 +401,14 @@ return function(env)
 			self._scope:Connect(button.Activated, callback)
 			return button
 		end
-		self._minimize = headerButton("Minimize", "minus", function() self:Minimize() end)
-		self._close = headerButton("Close", "close", function() self:Destroy() end, "Danger")
+		self._minimize = headerButton("Minimize", function() self:Minimize() end)
+		self._close = headerButton("Close", function() self:Destroy() end, "Danger")
 		self._nav = C.scroll(self, self.Frame, "Tabs")
 		C.bind(self, self._nav, { BackgroundColor3 = "Sidebar" })
 		self._nav.BackgroundTransparency = 0
 		self._navLayout = C.list(self._nav, false, 6)
 		self._navPad = C.pad(self._nav, 12, 14)
+		self._profile = env.require("profile").new(self, self.Frame, options.GameName)
 		self._content = C.node(self, "Frame", self.Frame, { Name = "Content", BackgroundTransparency = 1, ClipsDescendants = true })
 		self._empty = C.text(self, self._content, "No matching controls", "Body", "Muted", { Name = "EmptySearch", Visible = false, Position = UDim2.fromOffset(20, 28), Size = UDim2.new(1, -40, 0, 40) })
 		if options.Search ~= false then
@@ -420,12 +425,10 @@ return function(env)
 		C.footer(self, self.Frame)
 		self._resize = C.node(self, "TextButton", self.Frame, {
 			Name = "Resize", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
-			Size = UDim2.fromOffset(24, 24), Selectable = false,
+			Size = UDim2.fromOffset(64, T.Size.Footer), Selectable = false,
 		})
-		for index = 1, 3 do
-			C.node(self, "Frame", self._resize, { Position = UDim2.fromOffset(8 + index * 3, 20), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
-		end
-		-- The restore pill. It carries the mark, the window title and a status
+		C.text(self, self._resize, "Resize", "Small", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+		-- The restore pill. It carries the window title and a status
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
@@ -438,12 +441,10 @@ return function(env)
 		C.bind(self, self._launcherStroke, {
 			Color = function(theme) return launcherHover and theme.Accent or theme.Border end,
 		})
-		self._launcherScale = C.node(self, "UIScale", self._launcher, { Name = "LauncherScale", Scale = 1 })
-		self._launcherBrand = C.mark(self, self._launcher, 20)
 		self._launcherTitle = C.text(self, self._launcher, self.Title, "Heading", "Text", { Name = "RestoreTitle", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -84, 0, 20), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._launcherDetail = C.text(self, self._launcher, self._subtitle.Text ~= "" and self._subtitle.Text or "Minimized", "Caption", "Muted", { Name = "RestoreDetail", Position = UDim2.fromOffset(44, 26), Size = UDim2.new(1, -84, 0, 16), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		self._launcherHint = C.icon(self, self._launcher, "chevron", "Muted", 16)
-		self._launcherHint.AnchorPoint, self._launcherHint.Rotation = Vector2.new(0.5, 0.5), 180
+		self._launcherHint = C.text(self, self._launcher, "Open", "Caption", "Secondary", { Size = UDim2.fromOffset(44, 24), TextXAlignment = Enum.TextXAlignment.Right })
+		self._launcherHint.AnchorPoint = Vector2.new(1, 0.5)
 		C.footer(self, self._launcher)
 		self._scope:Connect(self._launcher.MouseEnter, function()
 			launcherHover = true
@@ -471,7 +472,7 @@ return function(env)
 			dragStart, frameStart = input.Position, self.Frame.Position
 		end, function(input)
 			self._position = Vector2.new(frameStart.X.Offset + input.Position.X - dragStart.X, frameStart.Y.Offset + input.Position.Y - dragStart.Y)
-			self:_Layout()
+			self:_Move(self.Frame, self._position)
 		end)
 		C.pointer(self, self._resize, function(input)
 			dragStart, sizeStart = input.Position, self.Frame.AbsoluteSize
@@ -492,7 +493,7 @@ return function(env)
 			if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then launcherDragged = true end
 			if not launcherDragged then return end
 			self._launcherPosition = Vector2.new(launcherStart.X.Offset + delta.X, launcherStart.Y.Offset + delta.Y)
-			self:_Layout()
+			self:_Move(self._launcher, self._launcherPosition)
 		end, function()
 			launcherOrigin, launcherStart = nil, nil
 		end)
@@ -506,6 +507,7 @@ return function(env)
 			end
 		end)
 		self._scope:Connect(uis.InputEnded, function(input)
+			for release in pairs(self._presses) do release() end
 			local gesture = self._gesture
 			if gesture then
 				local touch = gesture.input.UserInputType == Enum.UserInputType.Touch
@@ -527,7 +529,18 @@ return function(env)
 			if self._overlay then return end
 			for binding in pairs(self._keys) do if binding.began then binding.began(input) end end
 		end)
-		self._scope:Connect(uis.WindowFocusReleased, function() self._gesture = nil; self:_CancelCapture(); self:_ReleaseKeys() end)
+		self._scope:Connect(uis.WindowFocusReleased, function()
+			self._gesture = nil; self:_CancelCapture(); self:_ReleaseKeys()
+			for release in pairs(self._presses) do release() end
+			motion.stopAll(self, true)
+		end)
+		pcall(function()
+			local function preference()
+				if self._motionOverride == nil then self.ReducedMotion = env.services.GuiService.ReducedMotionEnabled == true; motion.stopAll(self, true) end
+			end
+			preference()
+			self._scope:Connect(env.services.GuiService:GetPropertyChangedSignal("ReducedMotionEnabled"), preference)
+		end)
 		self._scope:Connect(self._viewport:GetPropertyChangedSignal("AbsoluteSize"), function() self:_Layout() end)
 		local cameraRelease
 		local function cameraChanged()
@@ -551,6 +564,7 @@ return function(env)
 		self._scope:Connect(self.Frame.Destroying, function() self:Destroy() end)
 		env.windows[id] = self
 		if options.OnDestroy then self:OnDestroy(options.OnDestroy) end
+		motion.reveal(self, self.Frame)
 		return self
 	end
 	return Window

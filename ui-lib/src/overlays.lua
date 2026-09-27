@@ -1,5 +1,6 @@
 return function(env)
 	local C = env.require("core")
+	local motion = env.require("motion")
 	local M = {}
 	function M.panel(window, options)
 		assert(window.Alive, "Window is destroyed")
@@ -25,11 +26,11 @@ return function(env)
 			panel.Frame.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		end)
 		C.text(panel, panel.Frame, options.Title or "", "Heading", "Text", {
-			Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -84, 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
+			Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -40 - math.max(window.Target, 64 * window.TextScale), 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 		})
 		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
-		local glyph = C.icon(panel, close, "close")
-		glyph.AnchorPoint, glyph.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+		close.Size = UDim2.fromOffset(math.max(window.Target, 64 * window.TextScale), window.Target)
+		C.text(panel, close, "Close", "Caption", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		panel.Body = C.scroll(panel, panel.Frame, "Body")
 		C.pad(panel.Body, 20, 8); C.list(panel.Body, false, 12)
 		panel.Actions = C.node(panel, "Frame", panel.Frame, { Name = "Actions", BackgroundTransparency = 1 })
@@ -78,6 +79,7 @@ return function(env)
 			if panel.OnLayout then panel.OnLayout(width, height) end
 		end)
 		panel:Focus(close)
+		motion.reveal(panel, panel.Frame)
 		return panel
 	end
 	function M.dialog(window, options)
@@ -136,8 +138,7 @@ return function(env)
 		local title = C.text(toast, toast.Frame, C.truncate(tostring(options.Title or "Project UAI"), 240), "Heading", "Text", { Position = UDim2.fromOffset(16, 12), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		local body = C.text(toast, toast.Frame, C.truncate(tostring(options.Content or ""), 800), "Caption", "Secondary", { Name = "Message", Position = UDim2.fromOffset(16, 40), Size = UDim2.new(1, -32, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
 		local close = C.node(toast, "TextButton", toast.Frame, { Name = "Dismiss", BackgroundTransparency = 1, Position = UDim2.new(1, -window.Target, 0, 2), Size = UDim2.fromOffset(window.Target, window.Target) })
-		local icon = C.icon(toast, close, "close", "Muted", 16)
-		icon.Position, icon.AnchorPoint = UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)
+		C.text(toast, close, "Dismiss", "Small", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		function toast:Close()
 			if self.Closed then return end
 			self.Closed = true
@@ -167,11 +168,12 @@ return function(env)
 			local actionHeight = action and window.Target + 12 or 0
 			if headerHeight + actionHeight > available then actionHeight = 0 end
 			local bodyHeight = body.Text == "" and 0 or math.min(120, math.max(0, available - headerHeight - actionHeight), C.measure(body.Text, 12 * window.TextScale, width - 32))
-			title.Size = UDim2.new(1, -window.Target - 24, 0, titleHeight)
+			local dismissWidth = math.max(window.Target, 64 * window.TextScale)
+			title.Size = UDim2.new(1, -dismissWidth - 24, 0, titleHeight)
 			body.Position = UDim2.fromOffset(16, headerHeight - 14)
 			body.Size = UDim2.new(1, -32, 0, bodyHeight)
 			body.Visible = bodyHeight > 0
-			close.Position, close.Size = UDim2.new(1, -window.Target, 0, 2), UDim2.fromOffset(window.Target, window.Target)
+			close.Position, close.Size = UDim2.new(1, -dismissWidth, 0, 2), UDim2.fromOffset(dismissWidth, window.Target)
 			if action then
 				action.Visible = actionHeight > 0
 				action.Position, action.Size = UDim2.new(0, 16, 1, -window.Target - 12), UDim2.new(1, -32, 0, window.Target)
@@ -182,6 +184,7 @@ return function(env)
 		while #window._toasts > 3 do window._toasts[1]:Close() end
 		local duration = C.number(options.Duration, 5, 0, 60)
 		if duration > 0 then toast._scope:Delay(duration, function() toast:Close() end) end
+		motion.reveal(toast, toast.Frame)
 		return toast
 	end
 	return M

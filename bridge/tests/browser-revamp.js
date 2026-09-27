@@ -21,7 +21,7 @@ const { makePng } = require('./helpers/images');
   };
   const push = body => post('/api/agent/events', { batchId: 'revamp-' + (++sequence), ...body });
   const state = {
-    protocol: 2, runtime: 'web', sessionId: 's1', player: 'David', place: { name: 'Studio garden' },
+    protocol: 2, runtime: 'web', imageInput: true, sessionId: 's1', player: 'David', place: { name: 'Studio garden' },
     agent: { busy: false, status: 'Ready', model: 'local-coder', provider: 'Local provider' },
     threads: [{ id: 's1', title: 'A little room to create', active: true, place: 'Studio garden' }],
     providers: [{ id: 'local', label: 'Local provider', baseUrl: 'http://localhost:1234/v1', model: 'local-coder', models: ['local-coder'], enabled: true }],
@@ -100,12 +100,14 @@ const { makePng } = require('./helpers/images');
     await page.getByRole('button', { name: 'Remove one.png', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.picture-card[data-status="staged"]').length === 2);
     assert.ok(uploadRequests >= 2); await page.unroute('**/api/pictures');
-    await page.locator('#input').fill('Use these colors for a quiet garden. Pictures are previews; I have described what matters.');
+    await page.locator('#input').fill('Use the colors in these pictures for a quiet garden.');
     await screenshot('bridge-pictures-ready');
     await page.locator('#send').click();
     const inbox = await (await fetch(bridge.base + '/api/agent/inbox', { headers: auth })).json();
     const sent = inbox.commands.find(command => command.type === 'send'); assert.ok(sent);
-    assert.equal((sent.text.match(/\[PICTURE\]/g) || []).length, 2); assert.equal(sent.pictureIds, undefined);
+    assert.equal(sent.text, 'Use the colors in these pictures for a quiet garden.');
+    assert.equal(sent.images.length, 2); assert.equal(sent.pictureIds, undefined);
+    assert.ok(sent.images.every(image => image.url.startsWith('uai-image://')));
     const user = { kind: 'user', text: sent.text, transcriptId: 10, at: 12345, sessionId: 's1' };
     await push({ events: [user, { kind: 'turn:start', sessionId: 's1' }] });
     await page.locator('#input').fill('Keep this newer draft');
@@ -205,6 +207,7 @@ const { makePng } = require('./helpers/images');
     await post('/api/inference', { id: 'revamp-http-error', instance: hello.instance, url: `http://127.0.0.1:${upstream.address().port}/error`, sessionId: 's1', body: '{}' });
     await page.waitForFunction(() => document.querySelector('.stream-error')?.textContent.includes('HTTP 503'));
     assert.equal(await page.locator('.stream-error .retry').count(), 1);
+
 
     for (const width of [1440, 1024, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 960 });

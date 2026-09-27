@@ -46,7 +46,12 @@ return function(env)
 			generation = 0,
 		}
 		local destroyed, adjusting, layoutQueued = false, false, false
+		local visible = props.visible ~= false
 		local reading
+		local viewport = env.require("ui/chat/viewport").new(scroll, { defer = function() return view.replaying end })
+		props = util.copy(props); props.viewport = viewport
+		view.viewport = viewport
+		viewport.setVisible(visible)
 
 		local function track(handle, event)
 			if not handle or not handle.root or not event or not event.transcriptId then return handle end
@@ -152,7 +157,7 @@ return function(env)
 		-- calculation through deeply nested automatic-height activity cards.
 		scroll.instance.AutomaticCanvasSize = Enum.AutomaticSize.None
 		local function syncLayout()
-			if destroyed or not scroll.instance.Parent then return end
+			if destroyed or not visible or not scroll.instance.Parent then return end
 			local previous = adjusting
 			adjusting = true
 			local height = scroll.layout.AbsoluteContentSize.Y
@@ -175,10 +180,11 @@ return function(env)
 			end
 			latest.instance.Visible = not view.pinned and not view.welcomeCard
 			adjusting = previous
+			viewport.wake()
 		end
 
 		local function follow(force)
-			if destroyed then return end
+			if destroyed or not visible then return end
 			if force then view.pinned = true; reading = nil end
 			if layoutQueued then return end
 			layoutQueued = true
@@ -358,6 +364,7 @@ return function(env)
 		-- client with nothing configured yet -- the one thing to do about that. The card
 		-- itself lives in ui/panels/home, which reads agent/stats.
 		function view.greeting()
+			if destroyed or not visible then return end
 			local providers = env.require("provider/registry")
 			if view.welcomeCard then
 				pcall(function() view.welcomeCard:Destroy() end)
@@ -456,7 +463,7 @@ return function(env)
 		-- One event in, one row out. Anything not listed is deliberately ignored:
 		-- the log carries more than a transcript should show.
 		function view.render(event)
-			if destroyed then return end
+			if destroyed or not visible then return end
 			view.renderingEvent = event
 			if event.kind == "user" then
 				clearPreview()
@@ -691,6 +698,7 @@ return function(env)
 			if not session then view.greeting(); return end
 			reading = session.viewState and util.copy(session.viewState) or nil
 			view.pinned = not reading or reading.pinned ~= false
+			if not visible then return end
 			view.replaying = true
 			local mine = view.generation
 			local replay = { events = {}, cursor = 1, pending = {} }
@@ -718,7 +726,7 @@ return function(env)
 			replay.events = session.transcript and session.transcript.snapshot() or util.slice(session.log or {}, 1)
 			if #replay.events == 0 then view.greeting() end
 			local function batch()
-				if destroyed or view.generation ~= mine or view.session ~= session then return end
+				if destroyed or not visible or view.generation ~= mine or view.session ~= session then return end
 				local started, processed = clock.ms(), 0
 				while processed < 12 do
 					if replay.cursor > #replay.events then
@@ -742,6 +750,22 @@ return function(env)
 		end
 
 		function view.refresh() view.attach(view.session, true) end
+		function view.setVisible(value)
+			value = value == true
+			if destroyed or visible == value then return end
+			saveReading()
+			visible = value
+			viewport.setVisible(value)
+			-- The session keeps receiving events while minimized. Releasing the view
+			-- stops layout, replay, timers and preview work without losing its anchor.
+			local session = view.session
+			if not value then
+				local state = reading
+				if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
+				view.empty(); reading = state
+				view.pinned = not state or state.pinned ~= false
+			else view.attach(session, true) end
+		end
 		local function cleanup()
 			if destroyed then return end
 			saveReading(); destroyed = true
@@ -749,6 +773,7 @@ return function(env)
 			if view.replay then view.replay.events, view.replay.pending = {}, {} end
 			view.replaying, view.replay = false, nil
 			if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
+			viewport.destroy()
 			view.rows, view.runs, view.tools, view.agents = {}, {}, {}, {}
 			view.preview, view.working, view.agentHandle, view.run = nil, nil, nil, nil
 			pcall(function() latest.instance:Destroy() end)

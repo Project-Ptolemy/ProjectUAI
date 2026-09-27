@@ -866,8 +866,10 @@ return function(env)
 
 		if env.onMountPhase then env.onMountPhase("building the transcript") end
 		panel.view = env.require("ui/chat/view").new(middle, {
+			visible = M.window and M.window.visible and M.panel == "chat",
 			onInsert = function(text) if panel.composer then panel.composer.insert(text) end end,
 		})
+		function panel.setVisible(value) panel.view.setVisible(value and M.window and M.window.visible) end
 
 		if env.onMountPhase then env.onMountPhase("building the composer") end
 		panel.composer = env.require("ui/chat/composer").new(column, {

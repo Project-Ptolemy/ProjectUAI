@@ -152,9 +152,14 @@ return function(env)
 		--
 		-- Two conversations may run at once, though -- that is the point of threads --
 		-- so everything in here that reaches outside the session has to name it.
-		function session.send(text, onDone, files)
+		function session.send(text, onDone, files, images)
 			text = tostring(text or "")
+			local validated, imageError = env.require("runtime/images").validate(images, session.id)
+			if not validated then return false, imageError end
+			images = validated
+			if #images > 0 and not config.get("bridge.enabled", false) then return false, "Connect the web bridge to send these images" end
 			local clean = util.trim(text)
+			if clean == "" and #images > 0 then clean = "Please look at the attached " .. (#images == 1 and "image." or "images."); text = clean end
 			if clean == "" then return false, "nothing to send" end
 			if session.busy or session.preparing then return false, "already working" end
 			if session.removed then return false, "conversation no longer exists" end
@@ -206,7 +211,7 @@ return function(env)
 
 			task.spawn(function()
 				local ok, reply = pcall(function()
-					return env.require("agent/loop").run(session, clean)
+					return env.require("agent/loop").run(session, clean, images)
 				end)
 				if not ok then session.abortFlag = true end
 				running = math.max(0, running - 1)

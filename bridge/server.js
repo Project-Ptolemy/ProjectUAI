@@ -82,7 +82,8 @@ const commands = new Map();
 // holds image bytes; retained briefly with the receipt for reload/reconciliation.
 const commandPictures = new Map();
 const pictures = LEGACY ? null : createPictureStore({ limits: PICTURE_LIMITS });
-const inference = createInference({ publish: broadcast, legacy: LEGACY });
+const inference = createInference({ publish: broadcast, legacy: LEGACY,
+  prepareBody: (body, sessionId) => pictures ? pictures.providerBody(body, sessionId) : body });
 let gameInstance = null;
 
 const state = {
@@ -238,7 +239,7 @@ function admitSubmission() {
 // Handing the command straight to a held-open poll is what makes this feel live
 // rather than polled: the game is already waiting when the message arrives. The
 // fingerprintSource (defaults to the command) drives idempotency; pictureIds are
-// part of it but are stripped from the object the game receives.
+// part of it. Only compact image references cross the game boundary.
 function enqueue(command, fingerprintSource) {
   const id = command.commandId || crypto.randomUUID();
   if (typeof id !== 'string' || !/^[\w-]{8,100}$/.test(id)) throw new Error('Invalid command ID');
@@ -264,7 +265,7 @@ function enqueue(command, fingerprintSource) {
   return { id, created: true };
 }
 
-// Deterministic marker composition shared by /api/send and /api/command send.
+// Validated image references shared by /api/send and /api/command send.
 function prepareSend(body, owner) {
   const rawText = body && typeof body.text === 'string' ? body.text.trim() : '';
   const pictureIds = Array.isArray(body && body.pictureIds) ? body.pictureIds : [];
@@ -272,6 +273,7 @@ function prepareSend(body, owner) {
   const metas = [];
   if (pictureIds.length) {
     if (!pictures) throw badRequest('Pictures are not enabled on this bridge');
+    if (state.agentState?.imageInput !== true) throw badRequest('Reload the updated Project UAI client before sending images');
     if (pictureIds.length > PICTURE_LIMITS.picturesPerSend) throw badRequest('Too many pictures in one send');
     const seen = new Set();
     for (const id of pictureIds) {
@@ -287,14 +289,11 @@ function prepareSend(body, owner) {
       metas.push(meta);
     }
   }
-  // One [PICTURE] line per id in input order, then a blank line and the text.
-  const markers = pictureIds.map(() => '[PICTURE]').join('\n');
-  let text;
-  if (markers && rawText) text = markers + '\n\n' + rawText;
-  else if (markers) text = markers;
-  else text = rawText;
+  const images = pictureIds.map(id => pictures.reference(id, owner));
+  const text = rawText || (images.length ? 'Please look at the attached ' + (images.length === 1 ? 'image.' : 'images.') : '');
   if (!text) throw badRequest('no text');
-  const command = { type: 'send', text, files: body && body.files, sessionId: body && body.sessionId, commandId: body && body.commandId };
+  const command = { type: 'send', text, files: body && body.files, sessionId: body && body.sessionId, commandId: body && body.commandId,
+    ...(images.length ? { images } : {}) };
   const fingerprintSource = { type: 'send', text, files: body && body.files, sessionId: body && body.sessionId, pictureIds };
   return { command, fingerprintSource, pictureIds, metas };
 }
@@ -665,7 +664,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (route === '/api/hello' && req.method === 'GET') {
       const capabilities = { browserStream: { schema: 1, replay: true } };
-      if (!LEGACY) capabilities.pictures = { mode: 'browser-preview-and-text-marker', version: 1 };
+      if (!LEGACY) capabilities.pictures = { mode: 'provider-image-content', version: 2 };
       sendJson(res, 200, {
         ok: true, connected: state.connected, protocol: 2, instance: inference.instance,
         capabilities,

@@ -4,8 +4,8 @@ const crypto = require('node:crypto');
 
 // Bounded, in-memory picture registry. Bytes are staged here only for browser
 // preview/replay and are never written to disk or the served web tree; a bridge
-// restart intentionally invalidates every staged picture. Nothing here ever
-// crosses the Roblox boundary -- only a text marker does.
+// restart intentionally invalidates every staged picture. Roblox retains a
+// scoped reference; bytes are expanded only on the bridge's provider connection.
 
 const DEFAULT_LIMITS = {
   pictureBytes: 5 * 1024 * 1024,
@@ -232,7 +232,7 @@ function createPictureStore(options = {}) {
     if (totalBytes(now) + bytes.length > pictureTotalBytes) throw fail('too_many', 'Total staged picture bytes exceeded; remove some pictures');
     if (records.size >= MAX_RECORDS) throw fail('too_many', 'Too many staged pictures; remove some first');
 
-    const record = { id, browserId, sessionId, name: sanitizeName(name), mediaType: info.mediaType,
+    const record = { id, browserId, sessionId, name: sanitizeName(name), mediaType: info.mediaType, providerKey: crypto.randomBytes(32).toString('hex'),
       bytes: bytes.length, sha256, width: info.width, height: info.height, status: 'staged',
       createdAt: now, lastAccess: now, expiresAt: now + pictureTtlMs, commandId: null, data: bytes, expiredAt: null };
     records.set(id, record);
@@ -261,6 +261,54 @@ function createPictureStore(options = {}) {
     if (r.status === 'queued') { r.discard = true; return true; }
     records.delete(id);
     return true;
+  }
+
+  function reference(id, owner) {
+    const found = get(id, owner);
+    if (!found || found.expired) throw fail('expired', 'Image expired; attach it again', 410);
+    const record = records.get(id);
+    return { url: 'uai-image://' + id + '/' + record.providerKey, sessionId: record.sessionId,
+      name: record.name, mediaType: record.mediaType, bytes: record.bytes };
+  }
+
+  // Hydrate only explicit image content blocks. Text containing a reference is
+  // ordinary text, and references cannot select another conversation's bytes.
+  function providerBody(body, sessionId) {
+    if (!body.includes('uai-image://')) return body;
+    let payload;
+    try { payload = JSON.parse(body); } catch { throw fail('invalid', 'Invalid image request JSON'); }
+    if (!Array.isArray(payload?.messages)) throw fail('invalid', 'Image requests require messages');
+    let latestUser = -1;
+    for (let index = 0; index < payload.messages.length; index++) {
+      const message = payload.messages[index];
+      if (message?.role === 'user' && (!Array.isArray(message.content) || message.content.some(block => block?.type !== 'tool_result'))) latestUser = index;
+    }
+    let count = 0, bytes = 0;
+    for (let index = 0; index < payload.messages.length; index++) {
+      const message = payload.messages[index];
+      if (!Array.isArray(message?.content)) continue;
+      message.content = message.content.map(block => {
+        const openai = block?.type === 'image_url';
+        const url = openai ? block.image_url?.url : block?.type === 'image' && block.source?.type === 'url' ? block.source.url : null;
+        if (typeof url !== 'string' || !url.startsWith('uai-image://')) return block;
+        const match = /^uai-image:\/\/(pic_[\w-]{8,64})\/([a-f0-9]{64})$/.exec(url);
+        if (message.role !== 'user' || !match || typeof sessionId !== 'string') throw fail('invalid', 'Invalid image reference');
+        const record = records.get(match[1]);
+        if (record && (record.sessionId !== sessionId || record.providerKey !== match[2])) throw fail('owner', 'Image does not belong to this conversation', 403);
+        if (!record || expired(record) || !record.data) {
+          if (index >= latestUser) throw fail('expired', 'An attached image has expired or the bridge restarted. Attach it again to send its content.', 410);
+          return { type: 'text', text: '[An earlier image is no longer available. Ask for it to be attached again if needed.]' };
+        }
+        if (!['queued', 'acked'].includes(record.status)) throw fail('invalid', 'Image was not attached to a delivered message');
+        count++; bytes += record.bytes;
+        if (count > 64 || bytes > pictureTotalBytes) throw fail('too_large', 'Image context exceeds the 20 MiB limit; start a new conversation', 413);
+        record.lastAccess = Date.now(); record.expiresAt = record.lastAccess + pictureTtlMs;
+        const data = record.data.toString('base64');
+        return openai ? { type: 'image_url', image_url: { url: 'data:' + record.mediaType + ';base64,' + data, detail: block.image_url.detail || 'auto' } }
+          : { type: 'image', source: { type: 'base64', media_type: record.mediaType, data } };
+      });
+    }
+    return JSON.stringify(payload);
   }
 
   function markQueued(ids, commandId) {
@@ -310,7 +358,7 @@ function createPictureStore(options = {}) {
     for (const [id, record] of records) if (record.sessionId === sessionId) records.delete(id);
   }
 
-  return { policy, stage, get, remove, markQueued, markStatus, catalog, sweep, cleanup: sweep, clearSession, close };
+  return { policy, stage, get, reference, providerBody, remove, markQueued, markStatus, catalog, sweep, cleanup: sweep, clearSession, close };
 }
 
 module.exports = { createPictureStore, DEFAULT_LIMITS, MEDIA_TYPES, MAX_WIDTH, MAX_HEIGHT, MAX_PIXELS };

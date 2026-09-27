@@ -7,10 +7,10 @@ local window = UI:CreateWindow({
 	Search = true,
 })
 
-local overview = window:Tab({ Title = "Overview", Icon = "grid" })
-local controls = window:Tab({ Title = "Controls", Icon = "sliders" })
-local appearance = window:Tab({ Title = "Appearance", Icon = "code" })
-local preferences = window:Tab({ Title = "Preferences", Icon = "check" })
+local overview = window:Tab({ Title = "Overview" })
+local controls = window:Tab({ Title = "Controls" })
+local appearance = window:Tab({ Title = "Appearance" })
+local preferences = window:Tab({ Title = "Preferences" })
 
 local session = overview:Section({ Title = "Session", Description = "Small, purposeful controls. One consistent interface." })
 session:Badge({ Text = "Workspace", Default = "Ready", Kind = "Success" })
@@ -64,6 +64,7 @@ style:ColorPicker({ Id = "color", Text = "Accent color", Description = "Preview 
 	window:SetTheme(window:Get("theme"):Get(), value)
 end })
 style:Slider({ Id = "text-scale", Text = "Text size", Min = 0.85, Max = 1.5, Step = 0.05, Default = 1, Suffix = "×", Callback = function(value) window:SetTextScale(value) end })
+style:Toggle({ Id = "reduced-motion", Text = "Reduce motion", Default = window.ReducedMotion, Callback = function(value) window:SetReducedMotion(value) end })
 style:Divider({ Text = "Details" })
 style:Label({ Text = "Built for desktop and touch", Description = "Resize the window or rotate your device to see the layout adapt." })
 style:Paragraph({ Text = "A familiar foundation", Content = "Warm neutrals, careful spacing, and a single accent keep the controls clear. Your script supplies the behavior." })
@@ -79,6 +80,7 @@ profiles:Button({ Text = "Load profile", ActionText = "Load", Callback = functio
 	if ok then
 		window:SetTheme(window:Get("theme"):Get(), window:Get("color"):Get())
 		window:SetTextScale(window:Get("text-scale"):Get())
+		window:SetReducedMotion(window:Get("reduced-motion"):Get())
 	end
 	window:Notify({ Title = ok and "Profile loaded" or "Could not load", Content = ok and "Your controls have been restored." or tostring(result), Kind = ok and "Success" or "Warning" })
 end })

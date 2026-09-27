@@ -141,7 +141,7 @@ function refresh(){
   $('localConnection').textContent=link==='online'?'Connected locally':'Draft kept here';
   $('connectionBanner').hidden=connected||page==='cowork';
   $('connectionMessage').textContent=link==='online'?'One last step: connect Roblox to this bridge.':'Connection interrupted. Keep the bridge terminal open; your draft is safe here.';
-  $('composerHint').textContent=UAI.pictures?.hasErrors()?'Retry or remove the picture that could not be attached.':picturesBusy()?'Preparing picture previews…':readingFiles?'Reading attached files…':draftLoads.has(sessionId)?'Restoring your draft…':sendPhase!=='idle'?(OP_LABEL[sendPhase]||'Working…'):'Enter to send · Shift+Enter for a new line';
+  $('composerHint').textContent=UAI.pictures?.hasErrors()?'Retry or remove the picture that could not be attached.':picturesBusy()?'Preparing images…':readingFiles?'Reading attached files…':draftLoads.has(sessionId)?'Restoring your draft…':sendPhase!=='idle'?(OP_LABEL[sendPhase]||'Working…'):'Enter to send · Shift+Enter for a new line';
   $('deliveryNotice').hidden=sendPhase!=='uncertain';
   $('deliveryMessage').textContent=sendOperation?.lost?'Delivery could not be confirmed. Review your conversation before sending again.':'Still waiting for a delivery receipt. Your draft is safe.';
   $('deliveryReview').hidden=!sendOperation?.lost;
@@ -175,7 +175,7 @@ function armButton(btn,confirmLabel,fn){
   };
 }
 function stick(){const t=$('transcript');return t.scrollHeight-t.scrollTop-t.clientHeight<120;}
-function append(node){const pinned=stick();const root=$('transcript');root.querySelector('.welcome')?.remove();root.append(node);while(root.children.length>450){const old=root.firstElementChild;if(old.contains(document.activeElement))break;old.remove();}if(pinned)root.scrollTop=root.scrollHeight;}
+function append(node){const pinned=!renderingSnapshot&&stick();const root=$('transcript');root.querySelector('.welcome')?.remove();root.append(node);while(root.children.length>450){const old=root.firstElementChild;if(old.contains(document.activeElement))break;old.remove();}if(pinned)scrollToEnd();}
 function message(who,text,model){const node=el('article','message '+who),byline=el('div','byline');if(who==='agent'){const mark=el('img');mark.src='icon.svg';mark.alt='';byline.append(mark);}byline.append(el('span',null,who==='user'?(state.player||'You'):'UAI'),el('small','message-model',model||''));const body=el('div','body');if(who==='user')body.textContent=text;else body.innerHTML=md(text);node.append(byline,body);const result={node,body};if(who==='user')decorateMessage(result,text);append(node);return result;}
 function decorateMessage(message,text,model){
   message.node._uaiText=text;
@@ -239,7 +239,7 @@ function finishTool(e){
 }
 function renderEvent(e){
   if(e.sessionId&&sessionId&&e.sessionId!==sessionId)return;
-  const pinned=stick();
+  const pinned=!renderingSnapshot&&stick();
   switch(e.kind){
     case 'user':{const m=message('user',e.text||'');if(window.UAI&&UAI.pictures)UAI.pictures.correlateUser(m,e);break;}
     case 'assistant:text':renderer.commitText(e);break;
@@ -259,8 +259,8 @@ function renderEvent(e){
     case 'subagent:text':{const report=el('details','subagent-report'),body=el('div','body');report.append(el('summary',null,(e.label||'Subagent')+' · report'));body.innerHTML=md(e.text||'');report.append(body);append(report);break;}
     case 'compact':append(el('div','note','Older context compacted'));break;
   }
-  if(pinned)$('transcript').scrollTop=$('transcript').scrollHeight;
-  $('latest').hidden=stick();
+  if(pinned)scrollToEnd();
+  if(!renderingSnapshot)$('latest').hidden=stick();
 }
 function scrollToEnd(){$('transcript').scrollTop=$('transcript').scrollHeight;}
 function resendLast(target){
@@ -288,11 +288,14 @@ function apply(e){
   if(typeof e.kind!=='string')return;
   if(e.kind==='bridge:reset'){events=[];eventBytes=0;renderer.reset();tools.clear();UAI.pictures.resetMessages();$('transcript').replaceChildren();welcome();if(e.resync)toast('Connection restored. Reloaded the latest saved conversation.');return;}
   if(e.kind==='bridge:snapshot'){
+    const readingSession=sessionId,readingY=$('transcript').scrollTop,wasPinned=stick();
     events=[];eventBytes=0;for(const event of Array.isArray(e.events)?e.events:[])retainEvent(event);
     renderer.reset();tools.clear();UAI.pictures.resetMessages();$('transcript').replaceChildren();changeSession(e.sessionId);
     renderingSnapshot=true;
     try{for(const event of events)renderEvent(event);}finally{renderingSnapshot=false;}
-    welcome();return;
+    welcome();
+    if(readingSession===sessionId&&!wasPinned)$('transcript').scrollTop=readingY;else scrollToEnd();
+    $('latest').hidden=stick();return;
   }
   if(e.kind==='bridge:state'){
     const next=e.state||{};changeSession(next.sessionId);state=next;renderState();
@@ -577,7 +580,7 @@ function renderCowork(root){
   for(const [question,answer]of [
     ['Roblox is still waiting to connect','Keep Roblox and the terminal open on the same computer. Match the port shown above, paste the latest token, and turn Enabled on in UAI → Cowork. After a bridge restart, both windows need the new token.'],
     ['Node or the start file cannot be found','Install Node.js, then reopen your terminal. Open it in your executor’s workspace folder—the one containing UAI. If you downloaded this repository instead, choose Git checkout in step 1 and run its command from the repository folder.'],
-    ['Can the AI see attached pictures?','Not yet. PNG, JPEG, and WebP pictures are local previews. The game receives a [PICTURE] text marker. Describe the parts that matter in your message. Text and code attachments can be read by the AI.'],
+    ['Can the AI see attached pictures?','Yes, when your selected model supports vision. PNG, JPEG, and WebP images are sent with your message. Keep the bridge running; if an image expires or the bridge restarts, attach it again. Reload the updated game client to enable image sends.'],
     ['What happens if I refresh or close the browser?','Refreshing reconnects to the conversation. Drafts are saved in this browser when storage is available. Closing the browser does not stop work in Roblox. Use Stop to cancel a turn. Pictures expire after 15 minutes of inactivity and are cleared when the bridge stops.']
   ]){const detail=el('details');detail.append(el('summary',null,question),el('p',null,answer));faq.append(detail);}root.append(faq);
   const advanced=el('details','card');advanced.append(el('summary',null,'Advanced connection settings'));
@@ -754,7 +757,7 @@ $('permissionBadge').onclick=()=>show('settings');
 $('deliveryCheck').onclick=checkDelivery;
 $('deliveryReview').onclick=()=>{const operation=sendOperation;if(!operation?.lost)return;UAI.pictures.releaseCommand(operation.commandId);forgetOperation();setPhase('idle');show('chat');$('input').focus();toast('Draft kept. Check the conversation before sending it again.');};
 $('sidebarOverlay').onclick=()=>closeSidebar(true);
-$('options').onclick=()=>modal('Conversation options',root=>{root.className='stack';root.append(button('Model and effort',models),button('Permissions',()=>{$('modal').close();show('settings');}),button('Chat loops',()=>{$('modal').close();show('loops');}));for(const [title,,prompt]of starters)root.append(button(title,()=>{$('modal').close();insert(prompt);}));root.append(button('Export JSON',()=>download('uai-events.json',JSON.stringify({events,pictures:UAI.pictures.manifest(),pictureNote:'Picture metadata only. Image bytes are not included or sent to the AI.'},null,2),'application/json')));});
+$('options').onclick=()=>modal('Conversation options',root=>{root.className='stack';root.append(button('Model and effort',models),button('Permissions',()=>{$('modal').close();show('settings');}),button('Chat loops',()=>{$('modal').close();show('loops');}));for(const [title,,prompt]of starters)root.append(button(title,()=>{$('modal').close();insert(prompt);}));root.append(button('Export JSON',()=>download('uai-events.json',JSON.stringify({events,pictures:UAI.pictures.manifest(),pictureNote:'Picture metadata only. Images are sent to the selected model but their bytes are not included in this export.'},null,2),'application/json')));});
 $('sidebarToggle').onclick=()=>{const mobile=innerWidth<=768;document.body.classList.toggle(mobile?'sidebar-open':'sidebar-hidden');syncSidebar();if(mobile&&document.body.classList.contains('sidebar-open'))$('closeSidebar').focus();};
 document.addEventListener('keydown',e=>{
   if(innerWidth>768||!document.body.classList.contains('sidebar-open')||$('modal').open)return;
@@ -777,11 +780,12 @@ document.addEventListener('pointercancel',()=>{if(panelPointerActive)panelPointe
 document.addEventListener('click',()=>{if(panelPointerActive)queueMicrotask(releasePanelPointer);});
 window.addEventListener('blur',releasePanelPointer);
 document.addEventListener('selectionchange',()=>queueMicrotask(flushPanelRefresh));
-$('latest').onclick=()=>{$('transcript').scrollTop=$('transcript').scrollHeight;};$('transcript').onscroll=()=>$('latest').hidden=stick();
+$('latest').onclick=scrollToEnd;
+$('transcript').onscroll=()=>$('latest').hidden=stick();
 $('exportChat').onclick=()=>{
   const transcript=events.filter(e=>['user','assistant:text'].includes(e.kind)).map(e=>`### ${e.kind==='user'?'You':'Assistant'}\n\n${e.text}\n`).join('\n');
   const pictures=UAI.pictures.manifest();
-  const appendix=pictures.length?'\n### Picture previews\n\nMetadata only; image bytes are not included or sent to the AI.\n\n'+pictures.map(p=>`- ${String(p.name).replace(/[\r\n]/g,' ')} · ${p.width} × ${p.height} · ${p.bytes} bytes`).join('\n'):'';
+  const appendix=pictures.length?'\n### Picture previews\n\nMetadata only; image bytes sent to the selected model are not included in this export.\n\n'+pictures.map(p=>`- ${String(p.name).replace(/[\r\n]/g,' ')} · ${p.width} × ${p.height} · ${p.bytes} bytes`).join('\n'):'';
   download('uai-transcript.md',transcript+appendix,'text/markdown');
 };
 document.addEventListener('click',e=>{const b=e.target.closest('.copy-code');if(b)copyText(b.closest('.code-block')?.querySelector('pre code')?.textContent||'');});

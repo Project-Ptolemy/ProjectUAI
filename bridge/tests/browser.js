@@ -50,10 +50,38 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     await page.waitForFunction(()=>document.querySelector('#input').value==='');
     await post('/api/agent/events',{batchId:'switch-back-browser',snapshot:[],sessionId:'s1',state});
     await page.waitForFunction(()=>document.querySelector('#input').value==='keep draft on switch');
+    const history = Array.from({ length: 320 }, (_, index) => ({ kind: index % 2 ? 'assistant:text' : 'user',
+      text: 'Retained message ' + index + '\n\n' + 'A readable paragraph. '.repeat(20), transcriptId: 1000 + index, sessionId: 's1' }));
+    await post('/api/agent/events', { batchId: 'long-browser', sessionId: 's1', snapshot: history, state });
+    await page.waitForFunction(() => document.querySelectorAll('#transcript > .message').length === 320);
+    await page.locator('#transcript').evaluate(node => { node.scrollTop = 0; });
+    assert.ok(await page.locator('#transcript').evaluate(node => node.scrollHeight > node.clientHeight), 'long history is scrollable');
+    await post('/api/agent/events', { batchId: 'long-refresh-browser', sessionId: 's1', snapshot: history, state });
+    await sleep(180);
+    assert.ok(await page.locator('#transcript').evaluate(node => node.scrollTop < 5), 'snapshot refresh preserves reading at the start');
+    assert.equal(await page.locator('#transcript > .message').count(), 320, 'snapshot refresh preserves retained messages');
+    await page.locator('#latest').click();
+    await page.waitForFunction(() => { const n = document.querySelector('#transcript'); return n.scrollHeight - n.scrollTop - n.clientHeight < 120; });
+    const resumed = await page.evaluate(async () => {
+      const node = document.createElement('article'), body = document.createElement('div');
+      node.append(body); document.body.append(node);
+      const renderer = UAIStreamRenderer.create({ getSession: () => 'fixture', defaultModel: () => 'fixture',
+        createAgentMessage: () => ({ node, body }), md: text => text, isPinned: () => false });
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      try {
+        renderer.delta({ id: 'hidden-fixture', sessionId: 'fixture', channel: 'text', text: 'Deferred content', seq: 1 });
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const hiddenText = body.textContent;
+        delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
+        await new Promise(resolve => setTimeout(resolve, 120));
+        return { hiddenText, visibleText: body.textContent };
+      } finally { delete document.hidden; renderer.destroy(); node.remove(); }
+    });
+    assert.deepEqual(resumed, { hiddenText: '', visibleText: 'Deferred content' });
     if(process.env.UAI_SCREENSHOTS)await page.screenshot({path:process.env.UAI_SCREENSHOTS+'/bridge-desktop.png',animations:'disabled'});
     await page.setViewportSize({width:390,height:844});await page.locator('#sidebarToggle').click();await page.locator('#sidebar').waitFor({state:'visible'});await page.locator('#closeSidebar').click();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);assert.equal(overflow,false);
     if(process.env.UAI_SCREENSHOTS)await page.screenshot({path:process.env.UAI_SCREENSHOTS+'/bridge-mobile.png',animations:'disabled'});
-    assert.deepEqual(errors,[]);console.log('Browser checks passed: navigation, model picker, real streaming, reload reconciliation, drafts, mobile bounds');
+    assert.deepEqual(errors,[]);console.log('Browser checks passed: navigation, model picker, streaming, reload reconciliation, drafts, viewport retention, hidden preview resume, mobile bounds');
   }finally{await browser?.close();upstream?.close();server.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

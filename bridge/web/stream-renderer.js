@@ -17,6 +17,7 @@
     function cancel(entry) {
       clearTimeout(entry.timer); cancelAnimationFrame(entry.raf);
       entry.timer = entry.raf = null; entry.scheduled = false;
+      entry.needsPaint = false;
       if (entry.deferred) {
         document.removeEventListener('selectionchange', entry.deferred);
         entry.body.removeEventListener('focusout', entry.deferred);
@@ -63,6 +64,8 @@
     function paint(entry) {
       entry.scheduled = false; entry.lastPaint = performance.now();
       if (!entry.node.isConnected) return;
+      if (document.hidden) { entry.needsPaint = true; return; }
+      entry.needsPaint = false;
       const pinned = deps.isPinned();
       const remainder = entry.text.slice(entry.stableLength), cut = stableCut(remainder);
       if (cut) {
@@ -80,6 +83,7 @@
     }
 
     function schedule(entry) {
+      if (document.hidden) { entry.needsPaint = true; return; }
       if (entry.scheduled) return;
       entry.scheduled = true;
       entry.timer = setTimeout(() => {
@@ -207,7 +211,10 @@
       for (const map of [live, committed]) { for (const entry of map.values()) cancel(entry); map.clear(); }
       signal();
     }
+    const resume = () => { if (!document.hidden) for (const entry of live.values()) if (entry.needsPaint) schedule(entry); };
+    document.addEventListener('visibilitychange', resume);
     return { start, delta, done, resync, commitText, commitReasoning, endTurn, dropSession, reset,
+      destroy() { reset(); document.removeEventListener('visibilitychange', resume); },
       has: id => [...live.keys(), ...committed.keys()].some(value => value.endsWith(':' + id)) };
   }
 

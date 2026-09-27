@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.0.0**, September 26, 2026.
+Current native feature contract for **2.0.5**, September 27, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -11,15 +11,28 @@ Revised notes restore the unread marker even when the client version stays the s
 
 ## Script UI library
 
-Project UAI 2.0.0 introduces the independent [UI LIB](UI_LIBRARY.md). Agents use
-its bundled reference to declare script controls and application callbacks. The
-library owns responsive layout, input, configuration, resource cleanup, and the
-fixed `Project UAI | UI LIB.` footer, and it draws its mark and icons from frames
-rather than uploaded assets. The current library is v1.1.0: dropdown options accept
-a player headshot shown at the start of the row and in the closed field, the
-window controls carry no resting fill, and minimize leaves a draggable restore
-pill. The established agent client interface is preserved. See the
-[library audit](UI_LIBRARY_AUDIT.md) for behavioral coverage and native-device limits.
+The independent [UI LIB](UI_LIBRARY.md) is now v1.2.0. Agents declare script
+controls and callbacks through its bundled reference. The library owns layout,
+input, configuration, cleanup, and the fixed `Project UAI | UI LIB.` footer.
+Navigation, window actions, and disclosure/selection states use text. The sidebar
+profile supplies a Roblox headshot, display name, username, and game. Transitions
+are owned and reversible, respect reduced motion, and settle during cleanup.
+The agent client remains its own application.
+
+## Chat viewport
+
+Conversation history stays in the session while the view uses measured spacers
+for offscreen messages and mounts nearby Markdown chunks. Long lists split into
+small drawing batches; code and tables retain their existing bounded previews.
+At most four chunks are built in a scheduled slice, with an approximately 6 ms
+cooperative budget between builds. This is not a hard limit on a single engine
+layout or Markdown operation. Minimize and navigation release the view, timers,
+and pending replay; restoring replays the retained events at the saved reading
+anchor or latest output. Retention limits and the composer draft are unchanged.
+
+The browser batches snapshot layout, preserves reading position, and defers
+live preview painting while its document is hidden. Native
+Roblox performance and input need live-client validation.
 
 ## Explorer
 

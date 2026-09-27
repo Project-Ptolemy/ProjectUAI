@@ -120,10 +120,12 @@ test('pictures stage, read, and delete over the authenticated route for png/jpeg
   assert.ok(bad.status >= 400 && bad.status < 500);
 });
 
-test('a picture send composes markers, strips pictureIds, and emits metadata-only events', async t => {
+test('a picture send carries compact image references and emits metadata-only events', async t => {
   const { base, token } = await startBridge(t);
   const browserId = 'browser-xyz', sessionId = 's1';
   const auth = { Authorization: 'Bearer ' + token };
+  await fetch(base + '/api/agent/events', { method: 'POST', headers: { ...auth, 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, state: { sessionId, imageInput: true } }) });
   const idA = picId(), idB = picId();
   await upload(base, token, { id: idA, browserId, sessionId, name: 'a.png', mediaType: 'image/png', bytes: makePng(4, 4) });
   await upload(base, token, { id: idB, browserId, sessionId, name: 'b.jpg', mediaType: 'image/jpeg', bytes: makeJpeg(6, 6) });
@@ -136,13 +138,19 @@ test('a picture send composes markers, strips pictureIds, and emits metadata-onl
     headers: { ...auth, 'content-type': 'application/json', 'X-UAI-Browser-Id': browserId },
     body: JSON.stringify({ text: 'What is this?', pictureIds: [idA, idB], sessionId, commandId: 'pic-send-1' }) });
   assert.equal(send.status, 202);
-  // The Roblox command is exactly the marker text with no picture leakage.
+  // Lua receives a private reference, while the bridge retains all binary data.
   const inbox = await (await fetch(base + '/api/agent/inbox', { headers: { ...auth, 'X-UAI-Client': 'game-1' } })).json();
   const cmd = inbox.commands.find(c => c.commandId === 'pic-send-1');
   assert.equal(cmd.type, 'send');
-  assert.equal(cmd.text, '[PICTURE]\n[PICTURE]\n\nWhat is this?');
+  assert.equal(cmd.text, 'What is this?');
   assert.ok(!('pictureIds' in cmd) && !('bytes' in cmd) && !('path' in cmd) && !('data' in cmd));
-  assert.equal(JSON.stringify(cmd).includes('pic_'), false);
+  assert.equal(cmd.images.length, 2);
+  for (const image of cmd.images) {
+    assert.match(image.url, /^uai-image:\/\/pic_[A-Za-z0-9_-]+\/[a-f0-9]{64}$/);
+    assert.equal(image.sessionId, sessionId);
+    assert.equal(typeof image.bytes, 'number');
+    assert.ok(!('data' in image) && !('base64' in image));
+  }
   await sleep(60);
   controller.abort(); await pump;
   const events = sse.split('\n').filter(l => l.startsWith('data:')).map(l => { try { return JSON.parse(l.slice(5)); } catch { return null; } }).filter(Boolean);
@@ -153,21 +161,26 @@ test('a picture send composes markers, strips pictureIds, and emits metadata-onl
     assert.equal(e.commandId, 'pic-send-1');
     assert.ok(e.sha256 && e.width && e.height && e.mediaType);
     assert.ok(!('url' in e) && !('path' in e) && !('data' in e) && !('base64' in e));
+    assert.ok(cmd.images.every(image => !JSON.stringify(e).includes(image.url)));
   }
 });
 
-test('markers-alone is a valid send and a cross-session picture is rejected', async t => {
+test('an image-only send is valid and a cross-session picture is rejected', async t => {
   const { base, token } = await startBridge(t);
   const browserId = 'browser-1', sessionId = 's1';
+  await fetch(base + '/api/agent/events', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, state: { sessionId, imageInput: true } }) });
   const id = picId();
   await upload(base, token, { id, browserId, sessionId, name: 'a.png', mediaType: 'image/png', bytes: makePng(5, 5) });
-  // No text: the marker alone is a valid non-empty send.
+  // No text is required when a usable image is attached.
   const send = await fetch(base + '/api/send', { method: 'POST',
     headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json', 'X-UAI-Browser-Id': browserId },
-    body: JSON.stringify({ text: '', pictureIds: [id], sessionId, commandId: 'markers-only-1' }) });
+    body: JSON.stringify({ text: '', pictureIds: [id], sessionId, commandId: 'images-only-1' }) });
   assert.equal(send.status, 202);
   const inbox = await (await fetch(base + '/api/agent/inbox', { headers: { Authorization: 'Bearer ' + token, 'X-UAI-Client': 'g1' } })).json();
-  assert.equal(inbox.commands.find(c => c.commandId === 'markers-only-1').text, '[PICTURE]');
+  const command = inbox.commands.find(c => c.commandId === 'images-only-1');
+  assert.equal(command.text, 'Please look at the attached image.');
+  assert.equal(command.images.length, 1);
   // Same picture id from a different session cannot be attached.
   const otherId = picId();
   await upload(base, token, { id: otherId, browserId, sessionId, name: 'b.png', mediaType: 'image/png', bytes: makePng(5, 5) });
@@ -182,12 +195,13 @@ test('delivery retries survive unavailable previews and snapshot correlation use
   const browserId = 'retry-browser', sessionId = 's1', id = picId();
   const auth = { ...owner(token, browserId, sessionId), 'content-type': 'application/json' };
   const post = (route, body) => fetch(base + route, { method: 'POST', headers: auth, body: JSON.stringify(body) });
+  await post('/api/agent/events', { sessionId, state: { sessionId, imageInput: true } });
   await upload(base, token, { id, browserId, sessionId, name: 'a.png', mediaType: 'image/png', bytes: makePng(4, 4) });
   const payload = { type: 'send', text: 'Look here', pictureIds: [id], sessionId, commandId: 'retry-picture-send' };
   assert.equal((await post('/api/command', payload)).status, 202);
-  const saved = { kind: 'user', text: '[PICTURE]\n\nLook here', at: 1000, transcriptId: 1 };
+  const saved = { kind: 'user', text: 'Look here', at: 1000, transcriptId: 1 };
   const live = await readStream(base, token, async () => {
-    await post('/api/agent/events', { batchId: 'picture-live', sessionId, state: { sessionId }, events: [saved] });
+    await post('/api/agent/events', { batchId: 'picture-live', sessionId, state: { sessionId, imageInput: true }, events: [saved] });
     await post('/api/agent/ack', { results: [{ id: payload.commandId, ok: true }] });
   });
   assert.equal(live.find(e => e.kind === 'user').commandId, payload.commandId);

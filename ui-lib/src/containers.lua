@@ -23,9 +23,16 @@ return function(env)
 			BackgroundColor3 = "Accent", BackgroundTransparency = function() return window._activeTab == tab and 0 or 1 end,
 		})
 		C.corner(indicator, 1)
-		local glyph = C.icon(tab, tab._button, options.Icon or "grid", "Secondary", 18)
-		glyph.Position, glyph.AnchorPoint = UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)
-		C.text(tab, tab._button, title, "Body", "Text", { Position = UDim2.fromOffset(40, 0), Size = UDim2.new(1, -48, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		-- Legacy Icon options are ignored. Navigation is always readable text.
+		C.text(tab, tab._button, title, "Body", "Text", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local hovered = false
+		C.bind(tab, tab._button, { BackgroundColor3 = function(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end })
+		local function hover(value)
+			hovered = value
+			env.require("motion").to(tab, tab._button, { BackgroundColor3 = window._activeTab == tab and window.Theme.Selected or hovered and window.Theme.Hover or window.Theme.Sidebar })
+		end
+		tab._scope:Connect(tab._button.MouseEnter, function() hover(true) end)
+		tab._scope:Connect(tab._button.MouseLeave, function() hover(false) end)
 		tab._scope:Connect(tab._button.Activated, function() window:SelectTab(tab) end)
 		window.Tabs[#window.Tabs + 1] = tab
 		window:_Layout()
@@ -73,9 +80,8 @@ return function(env)
 		section._heading = C.text(section, section._header, section.Title, "Heading", "Text", { Size = UDim2.new(1, -24, 0, 22) })
 		section._description = C.text(section, section._header, section.Description, "Caption", "Muted", { Position = UDim2.fromOffset(0, 24), TextYAlignment = Enum.TextYAlignment.Top })
 		if options.Collapsible then
-			local icon = C.icon(section, section._header, "chevron", "Muted", 16)
-			icon.Position, icon.AnchorPoint = UDim2.new(1, 0, 0, 12), Vector2.new(1, 0.5)
-			C.bind(section, icon, { Rotation = function() return section.Collapsed and -90 or 0 end })
+			section._collapseLabel = C.text(section, section._header, section.Collapsed and "Show" or "Hide", "Caption", "Muted", {
+				Position = UDim2.new(1, -64, 0, 0), Size = UDim2.fromOffset(64, window.Target), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 			section._scope:Connect(section._header.Activated, function() section:SetCollapsed(not section.Collapsed) end)
 		end
 		section._body = C.node(section, "Frame", section.Frame, {
@@ -85,12 +91,14 @@ return function(env)
 		C.list(section._body, false, 0); C.pad(section._body, 0, 4)
 		C.reflow(section, function()
 			local width = math.max(1, window._contentWidth - 40)
-			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - 24) or 0
+			local reserve = options.Collapsible and 72 or 0
+			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - reserve) or 0
 			section._header.Visible = section.Title ~= "" or section.Description ~= ""
 			section._header.Size = UDim2.new(1, 0, 0, math.max(options.Collapsible and window.Target or 0, 22 * window.TextScale + (descriptionHeight > 0 and descriptionHeight + 4 or 0)))
-			section._heading.Size = UDim2.new(1, -24, 0, 22 * window.TextScale)
+			section._heading.Size = UDim2.new(1, -reserve, 0, 22 * window.TextScale)
 			section._description.Position = UDim2.fromOffset(0, 22 * window.TextScale + 4)
-			section._description.Size = UDim2.new(1, -24, 0, descriptionHeight)
+			section._description.Size = UDim2.new(1, -reserve, 0, descriptionHeight)
+			if section._collapseLabel then section._collapseLabel.Size = UDim2.fromOffset(64, window.Target) end
 			section._description.Visible = descriptionHeight > 0
 		end)
 		self.Sections[#self.Sections + 1] = section
@@ -98,6 +106,7 @@ return function(env)
 	end
 	function Section:SetCollapsed(collapsed)
 		self.Collapsed = collapsed == true
+		if self._collapseLabel then self._collapseLabel.Text = self.Collapsed and "Show" or "Hide" end
 		self._window:_Filter()
 		self._window:_Refresh()
 		return self

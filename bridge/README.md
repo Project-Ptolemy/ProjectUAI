@@ -44,8 +44,9 @@ enter that port in Roblox too.
   paste long text. Large inputs become verified files that the agent can read.
   Limits: 2 MiB per file/input, 16 text files and 8 MiB per draft.
 - **Attach pictures** with the image button, paste, or drop. PNG, JPEG and WebP
-  are **previews only**: the AI receives one `[PICTURE]` text marker per picture,
-  so describe what matters. Limits: 8 pictures, 5 MiB each, 20 MiB held by the
+  are sent as **actual image content** to your selected model; choose one that
+  supports vision. Reload the updated game client and restart the bridge first.
+  Limits: 8 pictures, 5 MiB each, 20 MiB held by the
   bridge, 4096 × 4096 and 12 megapixels. Animated images are not supported.
 - **Stop** cancels the current turn. Closing or refreshing the browser does not.
   If delivery is unclear, use **Check delivery** before sending again.
@@ -115,6 +116,19 @@ replace a live executor check. See the [UI audit](UI_AUDIT.md) for the findings.
 Protocol remains version 2. `/api/hello` advertises optional picture and normalized
 stream capabilities. `--legacy` disables pictures and uses compatibility delta
 frames. Raw provider response bodies remain separate from browser preview rings;
-oversized or truncated responses fail explicitly. The bridge never uploads picture
-bytes to a model. It binds to loopback, rotates its bearer token on restart,
+oversized or truncated responses fail explicitly. Picture capability v2 uses
+`provider-image-content`; game state advertises `imageInput = true`. The bridge
+rejects image sends to older clients instead of substituting text markers.
+
+Image sends carry compact, conversation-scoped references into model context.
+At inference dispatch, the bridge expands them to OpenAI `image_url` data URLs or
+Anthropic base64 `image` blocks. Image-bearing requests use the relay in either
+runtime. Tokens, image bytes, and provider keys are never added to browser event
+frames. A missing current image fails explicitly; expired earlier images become
+a clear unavailable-image text block so a later text-only turn can continue.
+Request retries use their original ID before resolving images, so expiry cannot
+cause a second provider dispatch. Active upload bodies and provider bodies are
+bounded separately. Model vision support remains provider-specific.
+
+The bridge binds to loopback, rotates its bearer token on restart,
 checks browser origins and serves local assets under a same-origin CSP.

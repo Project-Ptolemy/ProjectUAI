@@ -389,14 +389,15 @@ return function(env)
 
 	-- Renders markdown blocks into an existing column. Returned so a streaming or
 	-- edited message can clear and re-render.
-	local function renderBlocks(column, text)
-		local blocks = markdown.blocks(text)
+	local function renderBlocks(column, text, supplied, first)
+		local blocks = supplied or markdown.blocks(text)
 		if #blocks == 0 then
 			P.text(column, { text = "", role = "body", wrap = true, auto = "Y" })
 			return
 		end
 
-		for index, block in ipairs(blocks) do
+		for position, block in ipairs(blocks) do
+			local index = position + (first or 1) - 1
 			if block.kind == "code" then
 				-- A fenced block is an object in the prose rather than another paragraph of
 				-- it, so it gets more air than the uniform paragraph gap -- above and below
@@ -552,10 +553,47 @@ return function(env)
 
 	-- Build a replacement before releasing the current reply/preview. An unusual
 	-- Markdown block must not leave a byline above an empty, permanently broken row.
-	function M.renderBlocks(column, text)
+	function M.renderBlocks(column, text, viewport, state)
 		local staged = P.column(column, { name = "Blocks", size = UDim2.new(1, 0, 0, 0),
 			auto = "Y", gap = theme.space.md, visible = false })
-		local ok, err = pcall(renderBlocks, staged, tostring(text or ""))
+		local ok, err = pcall(function()
+			if not viewport then renderBlocks(staged, tostring(text or "")); return end
+			local blocks = state and state.text == text and state.blocks or markdown.blocks(tostring(text or ""))
+			if state then state.text, state.blocks = text, blocks end
+			local order = 0
+			for _, source in ipairs(blocks) do
+				-- Long lists are several independent drawing chunks. Code and tables
+				-- already have bounded, scrollable previews of their own.
+				local pieces = { source }
+				if source.kind == "bullets" and #source.items > 16 then
+					pieces = {}
+					for first = 1, #source.items, 16 do
+						pieces[#pieces + 1] = { kind = "bullets", items = util.slice(source.items, first, first + 15) }
+					end
+				end
+				for _, block in ipairs(pieces) do
+					order = order + 1
+					local slot = order
+					local plain = block.text or ""
+					if block.items then
+						local lines = {}; for _, item in ipairs(block.items) do lines[#lines + 1] = item.text end
+						plain = table.concat(lines, "\n")
+					end
+					viewport.add(staged, { order = slot, fallback = plain,
+						estimate = function(width)
+							if block.kind == "table" then return theme.text.body.height * math.min(12, #(block.rows or {}) + 2) end
+							local height = env.require("ui/chat/viewport").estimate(plain, width, theme.space.sm)
+							return block.kind == "code" and math.min(height, theme.text.body.height * 14) or height
+						end,
+						build = function(parent)
+							local chunk = P.column(parent, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = 0 })
+							renderBlocks(chunk, "", { block }, slot)
+							return { root = chunk }
+						end,
+					})
+				end
+			end
+		end)
 		if not ok then
 			staged:Destroy()
 			staged = P.text(column, { name = "PlainTextFallback", text = util.sanitise(tostring(text or "")),
@@ -630,6 +668,13 @@ return function(env)
 
 	-- Sent prompts keep their byline inside one quiet, bordered surface.
 	function M.user(parent, text, order, props)
+		if props and props.viewport and not props.mounted then
+			local options = util.copy(props); options.mounted, options.messageState = true, {}
+			return props.viewport.add(parent, { name = "User", order = order, fallback = tostring(text),
+				estimate = function(width) return env.require("ui/chat/viewport").estimate(util.truncate(tostring(text), 1200), width - theme.space.md * 2, theme.text.label.height + theme.space.lg) end,
+				build = function(into) return M.user(into, text, 1, options) end })
+		end
+		local state = props and props.messageState or {}
 		local holder = P.column(parent, {
 			name = "User",
 			size = UDim2.new(1, 0, 0, 0),
@@ -646,7 +691,7 @@ return function(env)
 		byline(body, { name = localName(), color = theme.color.textTertiary, layoutOrder = 1 })
 
 		local label = P.text(body, {
-			text = util.truncate(tostring(text), 1200),
+			text = state.expanded and tostring(text) or util.truncate(tostring(text), 1200),
 			role = "body",
 			layoutOrder = 2,
 			wrap = true,
@@ -654,10 +699,9 @@ return function(env)
 		})
 		label.Size = UDim2.new(1, 0, 0, 0)
 		if #tostring(text) > 1200 then
-			local expanded = false
 			P.button(body, {
 				name = "ExpandMessage",
-				text = "Show full message",
+				text = state.expanded and "Show less" or "Show full message",
 				variant = "ghost",
 				size = "sm",
 				align = "Left",
@@ -665,9 +709,9 @@ return function(env)
 				padX = 0,
 				layoutOrder = 3,
 				onClick = function(button)
-					expanded = not expanded
-					label.Text = expanded and tostring(text) or util.truncate(tostring(text), 1200)
-					button.setText(expanded and "Show less" or "Show full message")
+					state.expanded = not state.expanded
+					label.Text = state.expanded and tostring(text) or util.truncate(tostring(text), 1200)
+					button.setText(state.expanded and "Show less" or "Show full message")
 				end,
 			})
 		end
@@ -675,6 +719,22 @@ return function(env)
 	end
 
 	function M.agent(parent, text, order, attribution, props)
+		if props and props.viewport and not props.mounted then
+			local value, model, partial = text or "", attribution, false
+			local options = util.copy(props); options.mounted, options.renderState = true, {}
+			local item = props.viewport.add(parent, { name = "Agent", order = order, fallback = tostring(text or ""),
+				estimate = function(width) return env.require("ui/chat/viewport").estimate(value, width, theme.text.label.height + theme.space.lg) end,
+				build = function(into)
+					local handle = M.agent(into, partial and "" or value, 1, model, options)
+					if partial then handle.stream(value) end
+					return handle
+				end })
+			function item.setModel(nextModel) model = nextModel or model; item.update("setModel", model) end
+			function item.setText(nextText) value, partial = nextText or "", false; item.fallback = value; item.update("setText", value) end
+			function item.stream(nextText) value, partial = tostring(nextText or ""), true; item.fallback = value; item.update("stream", value) end
+			function item.finish(nextText, nextModel) item.setModel(nextModel); item.setText(nextText or value) end
+			return item
+		end
 		local holder = P.column(parent, {
 			name = "Agent",
 			size = UDim2.new(1, 0, 0, 0),
@@ -718,7 +778,7 @@ return function(env)
 		function handle.setText(value)
 			currentText = value or ""
 			streamLabel = nil
-			M.renderBlocks(column, currentText)
+			M.renderBlocks(column, currentText, props and props.viewport, props and props.renderState)
 		end
 
 		function handle.stream(partial)

@@ -68,6 +68,14 @@ sched.advance(0)
 check("defer runs after the current thread", table.concat(order, " "), "inline deferred")
 
 local ui = require("env").new()
+local gui = ui.services.GuiService
+check("empty gamepad selection is nil", gui.SelectedObject, nil)
+local selected = ui.Instance.new("TextButton")
+gui.SelectedObject = selected
+check("gamepad selection retains its instance", gui.SelectedObject, selected)
+gui.SelectedObject = nil
+check("clearing gamepad selection restores nil", gui.SelectedObject, nil)
+selected:Destroy()
 local gradient = ui.Instance.new("UIGradient")
 gradient.Transparency = ui.dt.NumberSequence.new(0.5)
 check("gradient transparency accepts a NumberSequence", #ui.instanceState.typeErrors, 0)

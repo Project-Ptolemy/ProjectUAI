@@ -30,6 +30,7 @@ return function(env)
 				via = "web", terminal = true }, nil
 		end
 		if token == "" then return failure("Web runtime needs the bridge token in Cowork settings.") end
+		if not config.get("bridge.enabled", false) then return failure("Reconnect the web bridge to use the images in this conversation.") end
 		local hello = short("GET", "/api/hello")
 		local info = hello and hello.ok and util.decode(hello.body)
 		if type(info) ~= "table" or info.protocol ~= 2 or not info.instance then
@@ -58,7 +59,9 @@ return function(env)
 				end
 			elseif response and response.status >= 400 and response.status < 500 then
 				cancel()
-				return failure("Relay rejected the request (" .. response.status .. "). Check the bridge token and restart state; inference was not resubmitted.")
+				local decoded = util.decode(response.body or "")
+				local reason = type(decoded) == "table" and type(decoded.error) == "string" and util.truncate(decoded.error, 400) or "Check the bridge token and restart state."
+				return failure("Relay rejected the request (" .. response.status .. "): " .. reason .. " Inference was not resubmitted.")
 			elseif not submitted and attempts >= 3 then
 				cancel(); return failure("Could not confirm relay submission; stopped without resubmitting inference.")
 			end

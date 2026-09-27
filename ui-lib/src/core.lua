@@ -115,7 +115,7 @@ return function(env)
 		local window = owner._window
 		local binding = window._paintNodes[instance]
 		if not binding then
-			binding = { node = instance, properties = {} }
+			binding = { node = instance, owner = owner, properties = {} }
 			window._paint[binding], window._paintNodes[instance] = true, binding
 			owner._scope:Add(function()
 				window._paint[binding] = nil
@@ -210,60 +210,9 @@ return function(env)
 			ClipsDescendants = true, Size = UDim2.fromScale(1, 1),
 		}, { ScrollBarImageColor3 = "Muted" })
 	end
-	local ICONS = {
-		close = { { 4, 4, 16, 16 }, { 16, 4, 4, 16 } },
-		minus = { { 4, 10, 16, 10 } },
-		chevron = { { 5, 8, 10, 13 }, { 10, 13, 15, 8 } },
-		check = { { 4, 10, 8, 14 }, { 8, 14, 16, 5 } },
-		arrow = { { 4, 10, 16, 10 }, { 11, 5, 16, 10 }, { 16, 10, 11, 15 } },
-		sliders = { { 3, 5, 17, 5 }, { 3, 10, 17, 10 }, { 3, 15, 17, 15 }, { 7, 3, 7, 7 }, { 13, 8, 13, 12 }, { 8, 13, 8, 17 } },
-		grid = { { 4, 4, 8, 4 }, { 12, 4, 16, 4 }, { 4, 10, 8, 10 }, { 12, 10, 16, 10 }, { 4, 16, 8, 16 }, { 12, 16, 16, 16 } },
-		code = { { 6, 5, 2, 10 }, { 2, 10, 6, 15 }, { 14, 5, 18, 10 }, { 18, 10, 14, 15 }, { 12, 3, 8, 17 } },
-	}
-	function M.icon(owner, parent, name, color, size)
-		size = size or 18
-		local frame = M.node(owner, "Frame", parent, { Name = name, BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size) })
-		for _, points in ipairs(ICONS[name] or ICONS.grid) do
-			local dx, dy = points[3] - points[1], points[4] - points[2]
-			local line = M.node(owner, "Frame", frame, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale((points[1] + points[3]) / 40, (points[2] + points[4]) / 40),
-				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) * size / 20, 1.5),
-				Rotation = math.deg(math.atan2(dy, dx)),
-			}, { BackgroundColor3 = color or "Secondary" })
-			M.corner(line, 1)
-		end
-		return frame
-	end
-	-- The Project UAI mark. Same eleven uneven rays, open gaps and softly cut
-	-- ends as the application brand, drawn from frames so the library still
-	-- needs no uploaded image and no logo download. Color binds like any other
-	-- node, so a theme or accent change repaints it with everything else.
-	local RAYS = {
-		{ -8, 0.440, 0.086 }, { 24, 0.365, 0.105 }, { 58, 0.425, 0.080 },
-		{ 91, 0.390, 0.096 }, { 126, 0.445, 0.078 }, { 158, 0.380, 0.106 },
-		{ 192, 0.435, 0.088 }, { 225, 0.370, 0.105 }, { 257, 0.445, 0.079 },
-		{ 291, 0.390, 0.096 }, { 325, 0.430, 0.082 },
-	}
-	function M.mark(owner, parent, size, color)
-		local frame = M.node(owner, "Frame", parent, { Name = "Brand", BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size) })
-		for index, ray in ipairs(RAYS) do
-			local radians = math.rad(ray[1])
-			local overlap = 0.055
-			local centre = (ray[2] - overlap) * 0.5
-			local piece = M.node(owner, "Frame", frame, {
-				Name = "Ray" .. index,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.49 + math.cos(radians) * centre, 0.51 + math.sin(radians) * centre),
-				Size = UDim2.fromScale(ray[2] + overlap, ray[3]),
-				Rotation = ray[1],
-			}, { BackgroundColor3 = color or "Accent" })
-			M.corner(piece, math.max(1, math.floor(size * 0.05)))
-		end
-		return frame
-	end
 	function M.feedback(owner, button, style, enabled)
-		local window, hovered, selected = owner._window, false, false
+		local window, hovered, selected, pressed = owner._window, false, false, false
+		local motion = env.require("motion")
 		local stroke = M.node(owner, "UIStroke", button, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
 		local function paint(theme)
 			local active = not enabled or enabled()
@@ -271,14 +220,23 @@ return function(env)
 			stroke.Thickness = selected and 2 or 1
 			if style == "Primary" then return active and theme.Primary or theme.Raised end
 			if style == "Danger" then return active and theme.Danger or theme.Raised end
-			return active and hovered and theme.Hover or theme.Raised
+			return active and pressed and theme.Pressed or active and hovered and theme.Hover or theme.Raised
 		end
 		M.bind(owner, button, { BackgroundColor3 = paint })
-		local function refresh() if owner._scope.alive then button.BackgroundColor3 = paint(window.Theme) end end
+		local function refresh()
+			if owner._scope.alive then motion.to(owner, button, { BackgroundColor3 = paint(window.Theme) }) end
+		end
+		local function release() if pressed then pressed = false; refresh() end end
+		window._presses[release] = true
+		owner._scope:Add(function() window._presses[release] = nil end)
 		owner._scope:Connect(button.MouseEnter, function() hovered = true; refresh() end)
-		owner._scope:Connect(button.MouseLeave, function() hovered = false; refresh() end)
+		owner._scope:Connect(button.MouseLeave, function() hovered, pressed = false, false; refresh() end)
 		owner._scope:Connect(button.SelectionGained, function() selected = true; refresh() end)
-		owner._scope:Connect(button.SelectionLost, function() selected = false; refresh() end)
+		owner._scope:Connect(button.SelectionLost, function() selected, pressed = false, false; refresh() end)
+		owner._scope:Connect(button.InputBegan, function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+				or input.KeyCode == Enum.KeyCode.ButtonA or input.KeyCode == Enum.KeyCode.Return then pressed = true; refresh() end
+		end)
 		return refresh
 	end
 	function M.pointer(owner, target, began, moved, ended)
@@ -306,7 +264,7 @@ return function(env)
 		}, { BackgroundColor3 = "Sidebar" })
 		M.node(owner, "Frame", footer, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
-			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
+			Name = "Attribution", Size = UDim2.new(1, parent == owner._window.Frame and -64 or 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center,
 		})
 		return footer
 	end

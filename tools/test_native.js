@@ -8,13 +8,15 @@ const root = path.resolve(__dirname, '..');
 const logDir = path.join(root, 'refer', 'native-verification');
 fs.mkdirSync(logDir, { recursive: true });
 const results = [];
+const skipImages = process.argv.includes('--skip-images');
+const skipped = skipImages ? ['image_input.lua (image verification omitted by request)'] : [];
 const reportPath = path.join(logDir, 'results.json');
 const startedAt = new Date().toISOString();
 const luajit = process.env.LUAJIT || 'luajit';
 const toolPath = path.join(root, 'refer', 'native-tools', 'luau', process.platform === 'win32' ? 'luau-compile.exe' : 'luau-compile');
 const compiler = process.env.LUAU_COMPILE || (fs.existsSync(toolPath) ? toolPath : 'luau-compile');
 function report(complete) {
-  fs.writeFileSync(reportPath, JSON.stringify({ startedAt, complete, coverage: 'Synthetic behavioral contracts and native syntax; not Roblox renderer or host coverage', results }, null, 2) + '\n');
+  fs.writeFileSync(reportPath, JSON.stringify({ startedAt, complete, coverage: 'Synthetic behavioral contracts and native syntax; not Roblox renderer or host coverage', skipped, results }, null, 2) + '\n');
 }
 function run(label, command, args) {
   const index = results.length + 1;
@@ -53,6 +55,7 @@ run('Native static checker', luajit, ['test/check.lua', '--native']);
 run('Main native suite', luajit, ['test/run.lua', '--native']);
 const helpers = new Set(['run.lua', 'check.lua', 'luau.lua', 'coding_fixture.lua', 'workspace_fixture.lua', 'mobile_snapshots.lua', 'native_performance.lua']);
 const outOfScope = new Set(['bridge_install.lua', 'web_runtime.lua']);
+if (skipImages) { outOfScope.add('image_input.lua'); process.stdout.write('SKIP image_input.lua (--skip-images)\n'); }
 const focused = fs.readdirSync(path.join(root, 'test')).filter(file => file.endsWith('.lua') && !helpers.has(file) && !outOfScope.has(file)).sort();
 const priority = ['native_improvements.lua', 'native_workspace.lua', 'code_workspace.lua', 'coding_tab.lua', 'coding_layout.lua', 'execution_tools.lua', 'execution_ui.lua', 'chat_loops.lua'];
 const rank = file => priority.includes(file) ? priority.indexOf(file) : priority.length;

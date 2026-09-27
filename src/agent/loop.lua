@@ -178,7 +178,7 @@ return function(env)
 	end
 
 	-- Runs one user prompt to completion. Returns the assistant's final text.
-	function M.run(session, text)
+	function M.run(session, text, images)
 		local ctx = session.ctx
 		local maxTurns = session.maxTurns or config.get("agent.maxTurns", 24)
 		local repeatLimit = config.get("agent.repeatLimit", 3)
@@ -209,7 +209,7 @@ return function(env)
 		-- showing, and a batch of them reset it repeatedly, mid-turn, to whatever the
 		-- last child happened to have spent.
 		if not session.headless then usage.startTurn() end
-		ctx.pushUser(text)
+		ctx.pushUser(text, images)
 		session.emit("turn:start", { turns = unlimited and 0 or maxTurns, unlimited = unlimited })
 
 		local lastSignature, streak = "", 0

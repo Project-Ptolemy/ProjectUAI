@@ -1,14 +1,14 @@
 {
   "format": "project-uai-ui",
-  "version": "1.1.0",
-  "sha256": "ed27e0fbe0c12d32df184fb8d871f1d6b3465f7841e55bd30f8be8eda5b22166",
-  "bytes": 127106,
-  "loaderSha256": "d91ea7117adc520e2d8bafb1a613688bd0b35879578044dfa8696e2645bdc903",
+  "version": "1.2.0",
+  "sha256": "99522b2cfb859479c2e3f4640b33defde467ebf05557bd946e839cc52cd116e8",
+  "bytes": 135503,
+  "loaderSha256": "88447fb4987885e1435103b57cf660a58511564fbc5f4adb66c46ef348bfcbd5",
   "modules": [
     {
       "id": "choice",
-      "bytes": 18570,
-      "sha256": "6125919eed0f22765849f7263c88627cc27fc0ddc906ba17bd18d0aca6f76c61"
+      "bytes": 18817,
+      "sha256": "93048aecca3212b094f123fdebef6aee7bc33ba30f87d5cbdafbc4f1976693d2"
     },
     {
       "id": "color",
@@ -22,18 +22,18 @@
     },
     {
       "id": "containers",
-      "bytes": 6820,
-      "sha256": "b82b184f0e29e3c70722421257e16981c0691acfa7917354fa4610399d2e88cb"
+      "bytes": 7592,
+      "sha256": "91d5c70624d7ec5e667d6af3f234aecd0544efecdf2e8426b6deffa2cf9353fe"
     },
     {
       "id": "controls",
-      "bytes": 23023,
-      "sha256": "481a2660594477dee57c9442a37b356ee0b21cf4bec4ef79c62d7e739a9decbd"
+      "bytes": 23745,
+      "sha256": "74f8601a26aa29dbcbcf08d63e757fd07824b9df782f5c3cfd9a2b90a7531671"
     },
     {
       "id": "core",
-      "bytes": 13632,
-      "sha256": "2bd9688c51c79e608b2b7b96ddd87ef23316b525f24e12fe082b36f2744cd046"
+      "bytes": 11650,
+      "sha256": "9ce4f12a2b796249abb3c26cb95f882fe81b3180d50b62301844be4fe0713a1b"
     },
     {
       "id": "library",
@@ -41,19 +41,29 @@
       "sha256": "92e407d28205bf29246f837e77617c52c3f1fb202d2cf24b73811a27a0a576e9"
     },
     {
+      "id": "motion",
+      "bytes": 3034,
+      "sha256": "fa0313bb71309d07eb8114248283ba8ec5b5dac4f9a8091943f7673561c2f1ca"
+    },
+    {
       "id": "overlays",
-      "bytes": 11447,
-      "sha256": "b7ea912b4b9ee4e0a5fa942969250efcee0fbbc76fb3bf5bf84adcd0beac76f1"
+      "bytes": 11797,
+      "sha256": "7df65aef9cc21540d4adc58cd0bb91bab30c3783384a5067780ad54bda493525"
+    },
+    {
+      "id": "profile",
+      "bytes": 4079,
+      "sha256": "fb47454f635bbe3837248bbed3ae30e89bfbffc86a21fbaf5751a4a1d5c9da84"
     },
     {
       "id": "theme",
-      "bytes": 2293,
-      "sha256": "ab2afc35c010d21ff7c86774d514090ca18bbd759ce22103efa8004953db6521"
+      "bytes": 2385,
+      "sha256": "c2f13e0f22ac5089f2fdf60a7eeebd5e9bec1a260b2ae2243fa8494dfac01f59"
     },
     {
       "id": "window",
-      "bytes": 29185,
-      "sha256": "3875f4c74dec3239265fd9bf3b1bdf4b704b3b1b9646bc6439b2b983e2bf8111"
+      "bytes": 30160,
+      "sha256": "6f2774b0f70e75db21a614801b816d0503b787cc761f766922b35a2e14b6b322"
     }
   ]
 }

@@ -19,6 +19,27 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.0.5",
+			revision = "2026-09-27",
+			date = "September 27, 2026",
+			title = "Lighter chats, images, and UI LIB",
+			highlights = "Chat draws nearby text in chunks, bridge attachments reach vision models, and UI LIB adds a player profile, text controls, and smoother motion.",
+			sections = {
+				{ category = "fixed", label = "Chat and images", items = {
+					"Long chats mount nearby messages and Markdown chunks. Minimize suspends rendering; restoring preserves the draft, reading anchor, and retained updates.",
+					"Browser snapshots avoid repeated layout and preserve reading position. Hidden documents defer live preview paints.",
+					"PNG, JPEG and WebP attachments now send actual image content through the bridge to Chat Completions and Anthropic Messages models. Reload the client, restart the updated bridge, and choose a model with vision support.",
+					"Image references stay scoped to their conversation. Expired current images request reattachment; duplicate relay submissions cannot dispatch twice.",
+				} },
+				{ category = "improved", label = "UI LIB v1.2.0", items = {
+					"The desktop sidebar shows the local player's avatar, display name, username, and game, with readable loading fallbacks.",
+					"Navigation and actions use text throughout. Legacy tab Icon options are ignored, and the Project UAI | UI LIB. footer stays fixed.",
+					"Owned transitions reverse cleanly and settle on hide or cleanup. Reduced motion follows the host preference when available and can be set per window.",
+					"Dragging moves the window without remeasuring the full control list. Focus and loading states remain readable.",
+				} },
+			},
+		},
+		{
 			version = "2.0.0",
 			revision = "2026-09-26",
 			date = "September 26, 2026",

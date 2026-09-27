@@ -1,6 +1,6 @@
 # Provider compatibility and WebSockets
 
-Applies to **2.0.0**, September 26, 2026.
+Applies to **2.0.5**, September 27, 2026.
 
 UAI implements two inference protocols: **Chat Completions** and **Anthropic
 Messages**. A provider works through one of these APIs, including when it is a
@@ -11,6 +11,20 @@ The compatibility checks use synthetic HTTP responses and socket events. They
 need no running models, API keys or paid inference. Live server availability,
 model quality, tool-call accuracy, executor networking and TLS are outside that
 coverage.
+
+## Image input
+
+PNG, JPEG and WebP attachments from the web bridge are delivered as actual image
+content: Chat Completions receives `image_url` data URLs and Messages receives
+base64 `image` blocks. Select a model and endpoint that support vision. Text-only
+models remain usable for conversations without image attachments.
+
+Reload the updated game client and restart the updated bridge to enable this
+capability. Image-bearing requests use the bridge relay in both Game and Web
+runtime, keeping image bytes outside Lua and the transcript. The bridge keeps
+images in memory for 15 idle minutes; deletion, expiry or restart requires
+reattaching a current image. An unavailable image in an earlier user turn is
+replaced with an explicit text notice so subsequent text turns can proceed.
 
 ## Local servers
 

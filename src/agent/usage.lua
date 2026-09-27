@@ -80,6 +80,15 @@ return function(env)
 		for _, message in ipairs(messages or {}) do
 			-- Per-message framing overhead, plus the role name.
 			total = total + 4 + M.estimateText(message.content)
+			-- Image costs depend on the model. Reserve a conservative estimate until
+			-- provider usage calibrates the request; never count base64 as prose.
+			total = total + #(message.images or {}) * 1600
+			if type(message.content) == "table" then
+				for _, block in ipairs(message.content) do
+					if block.type == "text" then total = total + M.estimateText(block.text)
+					elseif block.type == "image_url" or block.type == "image" then total = total + 1600 end
+				end
+			end
 			local reasoning = message.reasoning_content or message.reasoning
 			if reasoning then total = total + M.estimateText(reasoning) end
 			-- Internal messages carry toolCalls; wire messages carry tool_calls, and

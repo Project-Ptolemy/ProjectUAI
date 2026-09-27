@@ -5,7 +5,7 @@ local window = UI:CreateWindow({
 	Title = "Session tools",
 	Subtitle = "A focused workspace for this session",
 })
-local main = window:Tab({ Title = "Main", Icon = "sliders" })
+local main = window:Tab({ Title = "Main" })
 local actions = main:Section({ Title = "Selection" })
 local enabled = actions:Toggle({ Id = "enabled", Text = "Enable processing", Default = true })
 local amount = actions:Slider({ Id = "amount", Text = "Amount", Description = "How many items to include.", Min = 1, Max = 20, Step = 1, Default = 5 })

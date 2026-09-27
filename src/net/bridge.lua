@@ -158,7 +158,7 @@ return function(env)
 		if not session then error("Conversation no longer exists", 0) end
 
 		if kind == "send" then
-			local ok, why = session.send(tostring(command.text or ""), nil, command.files)
+			local ok, why = session.send(tostring(command.text or ""), nil, command.files, command.images)
 			-- A refusal has to travel back, or the browser shows a message it sent and
 			-- then nothing at all. session.send declines while a turn is in flight.
 			if not ok then
@@ -355,6 +355,7 @@ return function(env)
 
 		return {
 			protocol = 2,
+			imageInput = true,
 			attachments = { inlineLimit = env.require("runtime/attachments").INLINE_LIMIT,
 				maxBytes = env.require("runtime/attachments").MAX_BYTES, available = caps.fs },
 			runtime = config.get("bridge.runtime", "game"),

@@ -133,7 +133,7 @@ test('server advertises capabilities, uses canonical fingerprints, and enforces 
   const hello = await api('/api/hello');
   assert.equal(hello.data.protocol, 2);
   assert.equal(hello.data.capabilities.browserStream.schema, 1);
-  assert.equal(hello.data.capabilities.pictures.version, 1);
+  assert.equal(hello.data.capabilities.pictures.version, 2);
   assert.equal(hello.data.limits.pictureBytes, 5242880);
   assert.equal(hello.data.limits.picturesPerSend, 8);
   assert.equal(hello.data.limits.pictureTtlMs, 900000);

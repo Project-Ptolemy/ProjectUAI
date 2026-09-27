@@ -29,11 +29,12 @@ return function(env)
 	}
 	M.Size = {
 		Target = 40, TouchTarget = 44, Gap = 12, Pad = 20,
-		Header = 76, Footer = 30, Sidebar = 172, Tabs = 52,
+		Header = 76, Footer = 30, Sidebar = 208, Tabs = 52, Avatar = 36,
 		Radius = 10, FieldRadius = 6, Scrollbar = 3,
 		Width = 780, Height = 580, Compact = 640,
 	}
 	M.Type = { Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11 }
+	M.Motion = { Fast = 0.14, Enter = 0.2, Toggle = 0.18, EntranceScale = 0.985 }
 	function M.resolve(name, accent)
 		assert(name == nil or name == "Dark" or name == "Light", "Theme must be Dark or Light")
 		local result = {}

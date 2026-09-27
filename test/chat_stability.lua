@@ -3,6 +3,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 io.stdout:setvbuf("no")
 local F = require("coding_fixture")
+local Layout = require("chat_layout")
 local suite = F.suite("Chat stability")
 local case, check = suite.case, suite.check
 local function has(text, needle) return tostring(text):find(needle, 1, true) ~= nil end
@@ -154,6 +155,8 @@ case("live history releases old GUI rows and keeps nested agent reports", functi
 	local initial = #view.scroll.instance:GetDescendants()
 	for i = 1, 300 do tool(session, "second-" .. i, "fixture_tool_" .. i) end
 	f.h.settle(0.1)
+	check("offscreen dialogue remains in the retained transcript", dialogue(session) == "The conversation must remain\nEarlier answer remains too")
+	view.scroll.instance.CanvasPosition = f.h.dt.Vector2.new(0, 0); f.h.settle(0.3)
 	check("conversation text stays visible during sustained activity", has(f.h.textOf(view.scroll.instance), "The conversation must remain") and has(f.h.textOf(view.scroll.instance), "Earlier answer remains too"))
 	check("expired dispatch parents cannot destroy protected reports", agent.root.Parent and agent.root:IsDescendantOf(view.scroll.instance) and has(f.h.textOf(agent.root), "Protected worker report"))
 	check("GUI retention plateaus instead of growing with every event", #view.scroll.instance:GetDescendants() <= initial + 30 and size(view.rows) <= #session.log)
@@ -217,6 +220,7 @@ case("discarded reasoning previews release their activity handles immediately", 
 		session.emit("assistant:preview", { streamId = "retry-" .. i, reasoning = "Unfinished preview" })
 		session.emit("request:done", { error = "Synthetic interrupted stream" })
 	end
+	f.h.settle(0.3)
 	check("transient retries do not leave destroyed activity handles", size(view.runs) == 0 and view.run == nil and #named(view.scroll.instance, "ToolRun") == 0)
 	check("cleanup does not depend on evicting durable history", #session.log == 1 and has(f.h.textOf(view.scroll.instance), "Keep this conversation during retries"))
 	session.emit("assistant:reasoning", { text = "A retained completed trace" })
@@ -237,7 +241,7 @@ case("long replay yields and accepts live events exactly once", function()
 	session.emit("tool:progress", { id = "live-call", text = "Latest tool progress" })
 	session.emit("request:start", { provider = "Fixture", model = "live-model" })
 	session.emit("assistant:preview", { streamId = "preview", model = "live-model", text = "Reply still streaming" })
-	f.h.settle(2)
+	Layout.settle(f.h, view, 2)
 	check("queued durable text renders once", not view.replaying and #named(view.scroll.instance, "User") == 90 and #named(view.scroll.instance, "Agent") == 92)
 	check("the queued tool receives current progress", view.tools["live-call"] and has(f.h.textOf(view.tools["live-call"].root), "Latest tool progress"))
 	check("live preview is reconstructed after history", view.preview and has(f.h.textOf(view.preview.textHandle.root), "Reply still streaming"))
@@ -280,7 +284,7 @@ case("several active chats keep independent history while navigating and resizin
 		view.attach(session); f.h.settle(2)
 		local user = named(view.scroll.instance, "User")[1]
 		for _, width in ipairs({ 360, 950, 500 }) do view.scroll.instance.AbsoluteSize = f.h.dt.Vector2.new(width, 400) end
-		f.h.settle(0.1)
+		view.scroll.instance.CanvasPosition = f.h.dt.Vector2.new(0, 0); f.h.settle(0.3)
 		local shown = f.h.textOf(view.scroll.instance)
 		check("chat " .. i .. " retains its original dialogue and row identity", named(view.scroll.instance, "User")[1] == user and has(shown, "Private request for chat " .. i) and has(shown, "Answer for chat " .. i))
 		for j, other in ipairs(threads) do
@@ -381,12 +385,14 @@ case("maximize, resize and recovery controls preserve a busy full application", 
 		window.root.Size = h.dt.UDim2.fromOffset(width, 540); window.root.AbsoluteSize = h.dt.Vector2.new(width, 540)
 		panel.view.scroll.instance.AbsoluteSize = h.dt.Vector2.new(width - 50, 360)
 	end
-	h.settle(0.2)
-	check("repeated resize keeps earlier chat and streaming content", has(h.textOf(panel.view.scroll.instance), "Question 1") and has(h.textOf(panel.view.scroll.instance), "Live content"))
-	h.click(h.byName("ComposerOptions", panel.composer.shell)); h.click(assert(h.byName("Option_refresh"))); h.settle(2)
+	Layout.settle(h, panel.view, 0.4)
+	check("repeated resize retains history and renders the streaming reply", has(dialogue(session), "Question 1") and has(h.textOf(panel.view.scroll.instance), "Live content"))
+	Layout.scroll(h, panel.view, 0); Layout.settle(h, panel.view, 0.4)
+	check("the player can scroll back to the first retained question", has(h.textOf(panel.view.scroll.instance), "Question 1") and panel.view.preview)
+	h.click(h.byName("ComposerOptions", panel.composer.shell)); h.click(assert(h.byName("Option_refresh"))); Layout.settle(h, panel.view, 2)
 	check("Refresh conversation works during an active request", handle.app.chatPanel == panel and panel.view.preview and panel.composer.field.get() == "Keep this unsent draft")
-	handle.app.rebuild("chat stability fixture"); h.settle(2)
-	check("a full layout rebuild retains history, live preview and draft", has(h.textOf(handle.app.chatPanel.view.scroll.instance), "Question 1") and handle.app.chatPanel.view.preview and handle.app.chatPanel.composer.field.get() == "Keep this unsent draft")
+	handle.app.rebuild("chat stability fixture"); Layout.settle(h, handle.app.chatPanel.view, 2)
+	check("a full layout rebuild retains history, reading position, live preview and draft", has(h.textOf(handle.app.chatPanel.view.scroll.instance), "Question 1") and handle.app.chatPanel.view.preview and handle.app.chatPanel.composer.field.get() == "Keep this unsent draft")
 	check("full application operations produce no scheduler errors", #h.errors() == 0)
 	handle.env.require("runtime/dispose").drain()
 end)

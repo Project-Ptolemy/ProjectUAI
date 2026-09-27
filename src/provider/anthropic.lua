@@ -161,7 +161,7 @@ return function(env)
 					if #blocks > 0 then push("assistant", blocks) end
 				end
 			else
-				push("user", tostring(message.content or ""))
+				push("user", env.require("runtime/images").anthropic(message.content, message.images))
 			end
 		end
 
@@ -516,7 +516,8 @@ return function(env)
 			if registry.compatibilityKey(record) ~= requestScope then return nil, "aborted" end
 			local requestStarted = clock.ms()
 			local res, err = http.send({
-				relay = config.get("bridge.enabled", false) and config.get("bridge.runtime", "game") == "web",
+				relay = env.require("runtime/images").hasReferences(request.messages)
+					or (config.get("bridge.enabled", false) and config.get("bridge.runtime", "game") == "web"),
 				sessionId = request.sessionId,
 				url = url,
 				method = "POST",

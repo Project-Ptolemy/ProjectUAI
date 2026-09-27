@@ -66,8 +66,8 @@ return function(env)
 			return message
 		end
 
-		function ctx.pushUser(text)
-			return ctx.push({ role = "user", content = tostring(text) })
+		function ctx.pushUser(text, images)
+			return ctx.push({ content = tostring(text), role = "user", images = images and #images > 0 and util.deepCopy(images) or nil })
 		end
 
 		-- Reasoning text is kept locally for the transcript and replayed on
@@ -417,6 +417,7 @@ return function(env)
 				out.messages[#out.messages + 1] = {
 					role = message.role,
 					content = message.content,
+					images = message.images,
 					toolCalls = message.toolCalls,
 					tool_call_id = message.tool_call_id,
 					name = message.name,

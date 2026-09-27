@@ -117,10 +117,10 @@ return function(env)
 		configure(self, options)
 		local button, label, refresh = Controls.action(self, "", nil)
 		button.Name = "Dropdown"
-		label.TextXAlignment, label.Size = Enum.TextXAlignment.Left, UDim2.new(1, -48, 1, 0)
+		label.TextXAlignment, label.Size = Enum.TextXAlignment.Left, UDim2.new(1, -96, 1, 0)
 		label.Position = UDim2.fromOffset(12, 0)
-		local chevron = C.icon(self, button, "chevron", "Muted", 16)
-		chevron.Position, chevron.AnchorPoint = UDim2.new(1, -14, 0.5, 0), Vector2.new(1, 0.5)
+		local hint = C.text(self, button, "Choose", "Small", "Muted", { Size = UDim2.fromOffset(72, 24), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		hint.Position, hint.AnchorPoint = UDim2.new(1, -12, 0.5, 0), Vector2.new(1, 0.5)
 		-- The closed field shows the selected profile image at its start, so a
 		-- player target reads as a face and a name rather than a name alone.
 		local fieldAvatarSize = math.min(24, self._window.Target - 16)
@@ -140,10 +140,10 @@ return function(env)
 			if image then
 				fieldAvatar.Visible = true
 				setFieldAvatar(image, caption)
-				label.Position, label.Size = UDim2.fromOffset(12 + fieldAvatarSize + 10, 0), UDim2.new(1, -(12 + fieldAvatarSize + 10) - 36, 1, 0)
+				label.Position, label.Size = UDim2.fromOffset(12 + fieldAvatarSize + 10, 0), UDim2.new(1, -(12 + fieldAvatarSize + 10) - 84, 1, 0)
 			else
 				fieldAvatar.Visible = false
-				label.Position, label.Size = UDim2.fromOffset(12, 0), UDim2.new(1, -48, 1, 0)
+				label.Position, label.Size = UDim2.fromOffset(12, 0), UDim2.new(1, -96, 1, 0)
 			end
 			refresh()
 			if paintMenu then paintMenu() end
@@ -181,10 +181,10 @@ return function(env)
 					labelLeft = 8 + rowAvatar + 10
 				end
 				C.text(panel, row, option.Label, "Body", option.Disabled and "Muted" or "Text", {
-					Name = "OptionLabel", Position = UDim2.fromOffset(labelLeft, 0), Size = UDim2.new(1, -(labelLeft + 36), 1, 0),
+					Name = "OptionLabel", Position = UDim2.fromOffset(labelLeft, 0), Size = UDim2.new(1, -(labelLeft + 84), 1, 0),
 					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 				})
-				local check = C.icon(panel, row, "check", "Accent", 16)
+				local check = C.text(panel, row, "Selected", "Small", "Accent", { Size = UDim2.fromOffset(72, 24), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 				check.Position, check.AnchorPoint = UDim2.new(1, -12, 0.5, 0), Vector2.new(1, 0.5)
 				rows[#rows + 1] = { row = row, check = check, option = option }
 				panel._scope:Connect(row.Activated, function()

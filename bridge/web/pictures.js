@@ -1,4 +1,4 @@
-/* Pictures stay in the browser/bridge. The game receives a text marker only. */
+/* The bridge sends image content to the provider; the game keeps compact references. */
 (function (root) {
   'use strict';
   root.UAI = root.UAI || {};
@@ -136,7 +136,7 @@
       if (!list.length) { restoreFocus(); return; }
       const summary = el('div', 'picture-summary');
       summary.append(el('strong', '', list.length + (list.length === 1 ? ' picture' : ' pictures') + ' · ' + fmtBytes(list.reduce((n, r) => n + r.bytes, 0))),
-        el('span', '', 'Preview only. Describe the image for the AI.'));
+        el('span', '', 'Images are sent to your selected model. Choose a model that supports vision.'));
       const cards = el('div', 'picture-cards'); deps.tray.append(summary, cards);
       for (const rec of list) {
         const card = el('div', 'picture-card'); card.dataset.status = rec.status; card.dataset.pictureId = rec.id;

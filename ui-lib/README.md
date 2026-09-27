@@ -15,5 +15,6 @@ Manually review changes, build with `node tools/build_ui_lib.js`, and inspect th
 outputs before checking with `luajit test/ui_library.lua`. Follow the full
 verification sequence in the guide after client or documentation changes.
 The library owns layout, input, state, cleanup, and the permanent
-`Project UAI | UI LIB.` footer. Its mark and icons are drawn from frames, not
-uploaded assets. Scripts own application logic.
+`Project UAI | UI LIB.` footer. Navigation and actions use text. A pinned sidebar profile shows the
+local player and game; Roblox supplies the headshot. Owned transitions support
+reduced motion. Scripts own application logic.

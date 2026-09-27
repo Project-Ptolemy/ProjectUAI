@@ -218,6 +218,7 @@ scenario("compact messages omit action bars and keep long content accessible", f
 	local long = string.rep("A long question. ", 110)
 	session.emit("user", { text = long })
 	session.emit("assistant:text", { text = "First line.\nSecond line.", final = true })
+	harness.settle(0.2)
 	local user = harness.byName("User", panel.view.scroll.instance)
 	local agent = harness.byName("Agent", panel.view.scroll.instance)
 	for _, name in ipairs({ "CopyMessage", "ReuseMessage", "QuoteMessage", "MessageActions" }) do
@@ -297,8 +298,9 @@ scenario("buffered replies render completely without simulated streaming", funct
 	end
 	local reply = string.rep("你好🌟こんにちは ", 35)
 	handle.sessions.current().emit("assistant:text", { text = reply, final = true })
+	harness.settle(0.3)
 	check("completed replies never enter a simulated stream", partials == 0 and panel.view.reveal == nil)
-	check("final response is complete", harness.textOf(panel.view.agentHandle.column):find(handle.env.require("runtime/util").trim(reply), 1, true))
+	check("final response is complete", harness.textOf(panel.view.agentHandle.root):find(handle.env.require("runtime/util").trim(reply), 1, true))
 	check("reply remains free of action bars", harness.byName("MessageActions", panel.view.agentHandle.root) == nil)
 	check("immediate replies have no thread errors", #harness.errors() == 0)
 end)
@@ -312,6 +314,7 @@ scenario("real response previews update in place and reconcile with durable mess
 	local thought = harness.byName("Reasoning", panel.view.scroll.instance)
 	check("received reasoning is visible before completion", thought and harness.textOf(thought):find("Checking the fixture.", 1, true))
 	session.emit("assistant:preview", { streamId = "live-fixture", reasoning = "Checking the fixture.", text = "First step", model = "fixture-model" })
+	harness.settle(0.2)
 	local streamText = harness.byName("StreamText", panel.view.scroll.instance)
 	session.emit("assistant:preview", { streamId = "live-fixture", reasoning = "Checking the fixture.", text = "First step\nSecond step", model = "fixture-model" })
 	check("multiline chunks reuse the same live label", streamText and streamText == harness.byName("StreamText", panel.view.scroll.instance) and streamText.Text:find("Second step", 1, true))
@@ -325,6 +328,7 @@ scenario("real response previews update in place and reconcile with durable mess
 	check("previews never enter the durable transcript", #session.log == 3 and session.livePreview == nil)
 	check("streaming leaves no stale cursor", harness.byName("StreamText", panel.view.scroll.instance) == nil)
 	panel.view.attach(nil); panel.view.attach(session)
+	harness.settle(0.3)
 	check("reopening retains final attribution and one reply", #harness.allByName("Agent", panel.view.scroll.instance) == 1
 		and harness.byName("ModelAttribution", panel.view.agentHandle.root).Text == "served-model")
 	check("preview rendering has no thread errors", #harness.errors() == 0)
@@ -336,6 +340,7 @@ scenario("Markdown tables render in replies without reveal-time layout churn", f
 	handle.env.require("ui/responsive").reduceMotion = false
 	local text = "Here are the results.\n\n| Name | Score |\n| :--- | ---: |\n| **Alice** | 42 |\n| Bob | 7 |"
 	handle.sessions.current().emit("assistant:text", { text = text, final = true })
+	harness.settle(0.3)
 	local tableRoot = harness.byName("MarkdownTable", panel.view.scroll.instance)
 	check("reply contains a real table grid", tableRoot ~= nil)
 	check("structured reply skips progressive rebuilds", panel.view.reveal == nil)

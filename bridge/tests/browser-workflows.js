@@ -268,7 +268,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await page.locator('#latest').click();
     await post({ events: [{ kind: 'tool:call', id: 'bottom', name: 'run_luau', arguments: JSON.stringify({ code: 'print(1)\n'.repeat(30) }), sessionId: 's1' }] });
     await page.waitForFunction(() => document.querySelectorAll('.tool-call').length === 1);
-    assert.ok(await page.locator('#transcript').evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight < 4));
+    await page.waitForFunction(() => { const node = document.querySelector('#transcript'); return node.scrollHeight - node.scrollTop - node.clientHeight < 4; });
     console.log('Transcript: scoped progress, child results, code listings, restored state, reading position');
 
     for (const width of [390, 320]) {

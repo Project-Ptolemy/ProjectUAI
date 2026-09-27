@@ -1,6 +1,6 @@
 -- Standalone entry point. The build supplies factories and release metadata.
--- No Project UAI client, network requests, icon downloads, or executor required
--- after this chunk has been loaded. A LocalScript can use the returned API too.
+-- No Project UAI client, external asset downloads, or executor is required.
+-- Roblox services supply the local profile; LocalScripts can use the API too.
 local environment = { metadata = __UI_METADATA }
 environment.services = setmetatable({}, {
 	__index = function(services, name)

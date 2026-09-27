@@ -1,5 +1,6 @@
 return function(env)
 	local C = env.require("core")
+	local motion = env.require("motion")
 	local M, Control = {}, {}
 	Control.__index = Control
 
@@ -147,12 +148,14 @@ return function(env)
 	function M.action(control, text, style)
 		local button = M.input(control, "TextButton", control._slot, { Name = "Action", Size = UDim2.fromScale(1, 1) })
 		C.corner(button)
-		local refresh = C.feedback(control, button, style, function() return not control.Disabled and not control.Loading end)
+		local feedback = C.feedback(control, button, style, function() return not control.Disabled and not control.Loading end)
 		local label = C.text(control, button, text, "Body", "Text", { Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.bind(control, label, { TextColor3 = function(theme)
+		local function color(theme)
 			if control.Disabled or control.Loading then return theme.Muted end
 			return (style == "Primary" or style == "Danger") and theme.OnPrimary or theme.Text
-		end })
+		end
+		C.bind(control, label, { TextColor3 = color })
+		local function refresh() feedback(); motion.to(control, label, { TextColor3 = color(control._window.Theme) }) end
 		return button, label, refresh
 	end
 	function M.Button(section, options)
@@ -185,28 +188,33 @@ return function(env)
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Toggle", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 		local track = C.node(self, "Frame", hit, {
 			Name = "Track", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(checkbox and 22 or 38, 22),
+			Size = UDim2.fromOffset(checkbox and 44 or 38, 22),
 		})
 		C.corner(track, checkbox and 5 or 11)
 		C.stroke(self, track)
 		C.bind(self, track, { BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Raised end })
 		local thumb
 		if checkbox then
-			thumb = C.icon(self, track, "check", "OnAccent", 18)
-			thumb.Position = UDim2.fromOffset(2, 2)
+			thumb = C.text(self, track, "Off", "Small", "Secondary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+			C.bind(self, thumb, { TextColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end })
 		else
 			thumb = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(16, 16) }, {
 				BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end,
 			})
 			C.corner(thumb, 8)
 		end
+		local initialized = false
 		self._render = function()
-			if checkbox then thumb.Visible = self._value
+			local duration = initialized and C.tokens.Motion.Toggle or 0
+			if checkbox then
+				thumb.Text = self._value and "On" or "Off"
+				motion.to(self, thumb, { TextColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			else
-				thumb.Position = UDim2.new(0, self._value and 19 or 3, 0.5, 0)
-				thumb.BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary
+				motion.to(self, thumb, { Position = UDim2.new(0, self._value and 19 or 3, 0.5, 0),
+					BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			end
-			track.BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Raised
+			motion.to(self, track, { BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Raised }, duration)
+			initialized = true
 		end
 		local focus = C.stroke(self, hit, "Accent")
 		focus.Transparency = 1

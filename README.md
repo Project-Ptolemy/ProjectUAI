@@ -4,10 +4,10 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.0.0 — September 26, 2026.** Project UAI UI LIB gives script tools a
-shared, responsive interface. Agents declare controls and write application logic;
-the library handles layout, input, configuration, and cleanup. The existing
-client interface is preserved.
+**Version 2.0.5 — September 27, 2026.** Long chats render nearby text in
+chunks and suspend their view while minimized. Browser attachments now send real
+image content to vision-capable models. UI LIB v1.2.0 adds a sidebar player/game
+profile, text-only actions, and owned, reversible motion.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua
@@ -618,9 +618,12 @@ permissions, tool forms, subagents, chat loops, memory, logs, exports and settin
 Drafts are saved per conversation using asynchronous browser storage. System,
 light, dark, and Match Roblox themes work on desktop and small screens.
 
-PNG, JPEG and WebP pictures can be pasted, dropped, or attached as **local previews**.
-The AI receives a `[PICTURE]` text marker, not image bytes; describe the details
-that matter. Text and code attachments can be read by the agent.
+PNG, JPEG and WebP pictures can be pasted, dropped, or attached for models that
+support **image input**. The bridge inserts the actual bytes into Chat Completions
+or Anthropic Messages image blocks, including when Game runtime is selected.
+Reload the updated client and restart the updated bridge for this capability.
+Image bytes remain in bridge memory and expire after 15 idle minutes or restart;
+reattach an expired image when needed. Text/code attachments remain readable files.
 
 Roblox remains in control of tools, permissions, memory, accounting, and saved
 conversation history. It must stay connected to advance a turn. Refreshing the
