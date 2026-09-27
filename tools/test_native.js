@@ -73,7 +73,7 @@ function collect(directory) {
     else if (file.endsWith('.lua') && !exclusions.has(file.slice(4, -4))) nativeSources.push(file);
   }
 }
-collect('src'); collect('ui-lib/src'); collect('ui-lib/examples');
+collect('src'); collect('ui-lib/src'); collect('ui-lib/examples'); collect('examples/embedding');
 nativeSources.sort(); nativeSources.push('init.lua', 'dist/uai.lua', 'dist/uai-ui.lua');
 run('Official Luau compiler', compiler, ['--null', ...nativeSources]);
 run('Native verification script syntax', process.execPath, ['--check', 'tools/test_native.js']);

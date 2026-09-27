@@ -1497,6 +1497,58 @@ return function(env)
 			ClipsDescendants = true, Size = UDim2.fromScale(1, 1),
 		}, { ScrollBarImageColor3 = "Muted" })
 	end
+	local ICONS = {
+		close = { { 4, 4, 16, 16 }, { 16, 4, 4, 16 } },
+		minus = { { 4, 10, 16, 10 } },
+		chevron = { { 5, 8, 10, 13 }, { 10, 13, 15, 8 } },
+		check = { { 4, 10, 8, 14 }, { 8, 14, 16, 5 } },
+		arrow = { { 4, 10, 16, 10 }, { 11, 5, 16, 10 }, { 16, 10, 11, 15 } },
+		sliders = { { 3, 5, 17, 5 }, { 3, 10, 17, 10 }, { 3, 15, 17, 15 }, { 7, 3, 7, 7 }, { 13, 8, 13, 12 }, { 8, 13, 8, 17 } },
+		grid = { { 4, 4, 8, 4 }, { 12, 4, 16, 4 }, { 4, 10, 8, 10 }, { 12, 10, 16, 10 }, { 4, 16, 8, 16 }, { 12, 16, 16, 16 } },
+		code = { { 6, 5, 2, 10 }, { 2, 10, 6, 15 }, { 14, 5, 18, 10 }, { 18, 10, 14, 15 }, { 12, 3, 8, 17 } },
+	}
+	function M.icon(owner, parent, name, color, size)
+		size = size or 18
+		local frame = M.node(owner, "Frame", parent, { Name = name, BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size) })
+		for _, points in ipairs(ICONS[name] or ICONS.grid) do
+			local dx, dy = points[3] - points[1], points[4] - points[2]
+			local line = M.node(owner, "Frame", frame, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale((points[1] + points[3]) / 40, (points[2] + points[4]) / 40),
+				Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) * size / 20, 1.5),
+				Rotation = math.deg(math.atan2(dy, dx)),
+			}, { BackgroundColor3 = color or "Secondary" })
+			M.corner(line, 1)
+		end
+		return frame
+	end
+	-- The Project UAI mark. Same eleven uneven rays, open gaps and softly cut
+	-- ends as the application brand, drawn from frames so the library still
+	-- needs no uploaded image and no logo download. Color binds like any other
+	-- node, so a theme or accent change repaints it with everything else.
+	local RAYS = {
+		{ -8, 0.440, 0.086 }, { 24, 0.365, 0.105 }, { 58, 0.425, 0.080 },
+		{ 91, 0.390, 0.096 }, { 126, 0.445, 0.078 }, { 158, 0.380, 0.106 },
+		{ 192, 0.435, 0.088 }, { 225, 0.370, 0.105 }, { 257, 0.445, 0.079 },
+		{ 291, 0.390, 0.096 }, { 325, 0.430, 0.082 },
+	}
+	function M.mark(owner, parent, size, color)
+		local frame = M.node(owner, "Frame", parent, { Name = "Brand", BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size) })
+		for index, ray in ipairs(RAYS) do
+			local radians = math.rad(ray[1])
+			local overlap = 0.055
+			local centre = (ray[2] - overlap) * 0.5
+			local piece = M.node(owner, "Frame", frame, {
+				Name = "Ray" .. index,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.49 + math.cos(radians) * centre, 0.51 + math.sin(radians) * centre),
+				Size = UDim2.fromScale(ray[2] + overlap, ray[3]),
+				Rotation = ray[1],
+			}, { BackgroundColor3 = color or "Accent" })
+			M.corner(piece, math.max(1, math.floor(size * 0.05)))
+		end
+		return frame
+	end
 	function M.feedback(owner, button, style, enabled)
 		local window, hovered, selected, pressed = owner._window, false, false, false
 		local motion = env.require("motion")
@@ -1551,7 +1603,7 @@ return function(env)
 		}, { BackgroundColor3 = "Sidebar" })
 		M.node(owner, "Frame", footer, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
-			Name = "Attribution", Size = UDim2.new(1, parent == owner._window.Frame and -64 or 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center,
+			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
 		})
 		return footer
 	end
@@ -2227,16 +2279,22 @@ return function(env)
 		self.Frame.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
 		self._header.Size = UDim2.new(1, 0, 0, header)
 		self._header.Visible = header > 0
-		local titleInset = 20
-		local actionWidth = math.max(self.Target, math.ceil(66 * self.TextScale))
+		-- The mark sits beside the title when there is room for both to read;
+		-- the title keeps its old inset when it is hidden, so only extremely
+		-- narrow layouts lose the logo before they lose their name.
+		local brand = math.min(22, math.max(14, math.floor(18 * self.TextScale)))
+		self._brand.Size = UDim2.fromOffset(brand, brand)
+		self._brand.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2))
+		self._brand.Visible = header > 0 and width >= 300
+		local titleInset = self._brand.Visible and (18 + brand + 10) or 20
 		self._title.Position = UDim2.fromOffset(titleInset, short and 12 or 14)
-		self._title.Size = UDim2.new(1, -(titleInset + actionWidth * 2 + 28), 0, titleHeight)
+		self._title.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, titleHeight)
 		self._subtitle.Visible = not short and self._subtitle.Text ~= ""
 		self._subtitle.Position = UDim2.fromOffset(titleInset, 17 + titleHeight)
-		self._subtitle.Size = UDim2.new(1, -(titleInset + actionWidth * 2 + 28), 0, subtitleHeight)
-		self._headerActions.Position = UDim2.new(1, -actionWidth * 2 - 16, 0, (header - self.Target) / 2)
-		self._headerActions.Size = UDim2.fromOffset(actionWidth * 2 + 4, self.Target)
-		self._minimize.Size, self._close.Size = UDim2.fromOffset(actionWidth, self.Target), UDim2.fromOffset(actionWidth, self.Target)
+		self._subtitle.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, subtitleHeight)
+		self._headerActions.Position = UDim2.new(1, -self.Target * 2 - 20, 0, (header - self.Target) / 2)
+		self._headerActions.Size = UDim2.fromOffset(self.Target * 2 + 4, self.Target)
+		self._minimize.Size, self._close.Size = UDim2.fromOffset(self.Target, self.Target), UDim2.fromOffset(self.Target, self.Target)
 		local profileHeight = 0
 		if self._profile then
 			profileHeight = self._profile.Layout(sidebar)
@@ -2280,7 +2338,10 @@ return function(env)
 		placeY = C.clamp(placeY, margin, math.max(margin, availableHeight - launcherHeight - margin))
 		self._launcher.Position = UDim2.fromOffset(math.floor(placeX), math.floor(placeY))
 		self._launcher.Size = UDim2.fromOffset(math.floor(launcherWidth), math.floor(launcherHeight))
-		local launcherText = 14
+		local launcherMark = math.min(24, launcherBody - 8)
+		self._launcherBrand.Size = UDim2.fromOffset(launcherMark, launcherMark)
+		self._launcherBrand.Position = UDim2.fromOffset(14, math.floor((launcherBody - launcherMark) / 2))
+		local launcherText = 14 + launcherMark + 10
 		local launcherTop = math.max(4, math.floor((launcherBody - launcherTitle - launcherDetail) / 2))
 		self._launcherTitle.Position = UDim2.fromOffset(launcherText, launcherTop)
 		self._launcherTitle.Size = UDim2.new(1, -(launcherText + 64), 0, launcherTitle)
@@ -2337,28 +2398,33 @@ return function(env)
 		C.corner(self.Frame, T.Size.Radius)
 		C.stroke(self, self.Frame, "Border")
 		self._header = C.node(self, "Frame", self.Frame, { Name = "Header", BackgroundTransparency = 1, Active = true })
+		self._brand = C.mark(self, self._header, 18)
 		self._title = C.text(self, self._header, self.Title, "Title", "Text", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._subtitle = C.text(self, self._header, options.Subtitle or "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		C.node(self, "Frame", self._header, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		self._headerActions = C.node(self, "Frame", self._header, { BackgroundTransparency = 1 })
 		C.list(self._headerActions, true, 4)
 		-- Window controls sit directly on the header with no resting fill: the
-		-- label is the control. Hover and gamepad selection brighten the text
+		-- glyph is the control. Hover and gamepad selection brighten that glyph
 		-- instead of painting a tile behind it, and Close warms to the danger
 		-- tone rather than shouting in red until it is pointed at.
-		local function headerButton(name, callback, tone)
+		local function headerButton(name, icon, callback, tone)
 			local button = C.node(self, "TextButton", self._headerActions, { Name = name, BackgroundTransparency = 1 })
 			C.corner(button)
 			local hovered, selected = false, false
-			local function labelColor(theme)
+			local function glyphColor(theme)
 				if selected then return theme.Text end
 				if hovered then return (tone == "Danger") and theme.Danger or theme.Text end
 				return theme.Muted
 			end
-			local label = C.text(self, button, name, "Caption", labelColor, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+			local glyph = C.icon(self, button, icon, glyphColor)
+			glyph.AnchorPoint, glyph.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
 			local focus = C.stroke(self, button, "Accent"); focus.Transparency = 1
 			local function repaint()
-				motion.to(self, label, { TextColor3 = labelColor(self.Theme) })
+				local color = glyphColor(self.Theme)
+				for _, line in ipairs(glyph:GetChildren()) do
+					if line:IsA("Frame") then motion.to(self, line, { BackgroundColor3 = color }) end
+				end
 				motion.to(self, focus, { Transparency = selected and 0 or 1 })
 			end
 			self._scope:Connect(button.MouseEnter, function() hovered = true; repaint() end)
@@ -2368,8 +2434,8 @@ return function(env)
 			self._scope:Connect(button.Activated, callback)
 			return button
 		end
-		self._minimize = headerButton("Minimize", function() self:Minimize() end)
-		self._close = headerButton("Close", function() self:Destroy() end, "Danger")
+		self._minimize = headerButton("Minimize", "minus", function() self:Minimize() end)
+		self._close = headerButton("Close", "close", function() self:Destroy() end, "Danger")
 		self._nav = C.scroll(self, self.Frame, "Tabs")
 		C.bind(self, self._nav, { BackgroundColor3 = "Sidebar" })
 		self._nav.BackgroundTransparency = 0
@@ -2392,10 +2458,12 @@ return function(env)
 		C.footer(self, self.Frame)
 		self._resize = C.node(self, "TextButton", self.Frame, {
 			Name = "Resize", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
-			Size = UDim2.fromOffset(64, T.Size.Footer), Selectable = false,
+			Size = UDim2.fromOffset(24, 24), Selectable = false,
 		})
-		C.text(self, self._resize, "Resize", "Small", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
-		-- The restore pill. It carries the window title and a status
+		for index = 1, 3 do
+			C.node(self, "Frame", self._resize, { Position = UDim2.fromOffset(8 + index * 3, 20), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
+		end
+		-- The restore pill. It carries the mark, the window title and a status
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
@@ -2408,6 +2476,7 @@ return function(env)
 		C.bind(self, self._launcherStroke, {
 			Color = function(theme) return launcherHover and theme.Accent or theme.Border end,
 		})
+		self._launcherBrand = C.mark(self, self._launcher, 20)
 		self._launcherTitle = C.text(self, self._launcher, self.Title, "Heading", "Text", { Name = "RestoreTitle", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -84, 0, 20), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._launcherDetail = C.text(self, self._launcher, self._subtitle.Text ~= "" and self._subtitle.Text or "Minimized", "Caption", "Muted", { Name = "RestoreDetail", Position = UDim2.fromOffset(44, 26), Size = UDim2.new(1, -84, 0, 16), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._launcherHint = C.text(self, self._launcher, "Open", "Caption", "Secondary", { Size = UDim2.fromOffset(44, 24), TextXAlignment = Enum.TextXAlignment.Right })

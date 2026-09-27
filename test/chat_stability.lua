@@ -397,4 +397,25 @@ case("maximize, resize and recovery controls preserve a busy full application", 
 	handle.env.require("runtime/dispose").drain()
 end)
 
+case("returning to the chat panel reuses rendered rows instead of replaying them", function()
+	local h = require("env").new(); local handle = assert(h.boot()); h.settle(1)
+	handle.app.show("chat")
+	local session = handle.sessions.current(); history(session, 8)
+	local panel = handle.app.chatPanel
+	Layout.settle(h, panel.view, 0.4)
+	local first = panel.view.rows[session.log[1].transcriptId]
+	local rows = size(panel.view.rows)
+	check("the transcript renders the opening question", first ~= nil and first.root.Parent ~= nil and rows > 0)
+	handle.app.showPanel("logs"); h.settle(0.2)
+	handle.app.showPanel("chat"); Layout.settle(h, panel.view, 0.4)
+	check("switching panels retains the same rendered rows", panel.view.rows[session.log[1].transcriptId] == first and first.root.Parent ~= nil and size(panel.view.rows) == rows)
+	Layout.scroll(h, panel.view, 0); Layout.settle(h, panel.view, 0.4)
+	check("retained rows still show their original text", has(h.textOf(panel.view.scroll.instance), "Question 1") and has(h.textOf(panel.view.scroll.instance), "Answer 1"))
+	handle.app.hide(); h.settle(0.2)
+	handle.app.show("chat"); Layout.settle(h, panel.view, 0.4)
+	check("restoring from minimized retains the same rendered rows", panel.view.rows[session.log[1].transcriptId] == first and first.root.Parent ~= nil and size(panel.view.rows) == rows)
+	check("panel lifecycle produces no scheduler errors", #h.errors() == 0)
+	handle.env.require("runtime/dispose").drain()
+end)
+
 suite.finish()

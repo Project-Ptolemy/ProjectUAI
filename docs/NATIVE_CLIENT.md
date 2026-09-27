@@ -14,7 +14,8 @@ Revised notes restore the unread marker even when the client version stays the s
 The independent [UI LIB](UI_LIBRARY.md) is now v1.2.0. Agents declare script
 controls and callbacks through its bundled reference. The library owns layout,
 input, configuration, cleanup, and the fixed `Project UAI | UI LIB.` footer.
-Navigation, window actions, and disclosure/selection states use text. The sidebar
+Navigation, action labels, and disclosure/selection states use text; the
+frame-drawn brand mark and minimize/close/resize glyphs remain. The sidebar
 profile supplies a Roblox headshot, display name, username, and game. Transitions
 are owned and reversible, respect reduced motion, and settle during cleanup.
 The agent client remains its own application.

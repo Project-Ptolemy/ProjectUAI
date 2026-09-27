@@ -19,11 +19,11 @@ return function(env)
 		{
 			name = "ui_library_docs",
 			risk = "read",
-			description = "Read the bundled Project UAI UI LIB reference before creating a script UI. This is our GitHub-loadable library for responsive windows, controls, dialogs, configuration and cleanup. Start with quickstart, controls and lifecycle; follow continuation offsets. No network or execution required.",
+			description = "Read the bundled Project UAI UI LIB reference before creating a script UI. Covers responsive windows, controls, configuration, cleanup, embedding, application patterns, runtime integration and extending the shared library. Start with quickstart, controls and lifecycle; follow continuation offsets. No network or execution required.",
 			parameters = {
 				type = "object",
 				properties = {
-					section = { type = "string", enum = { "index", "quickstart", "controls", "layout", "lifecycle", "configuration", "recipes", "development" }, description = "Reference section; index lists the sections and release URL." },
+					section = { type = "string", enum = { "index", "quickstart", "embedding", "controls", "layout", "lifecycle", "configuration", "application_patterns", "runtime_integration", "recipes", "performance", "troubleshooting", "extending", "development" }, description = "Reference section; index lists the sections and release URL." },
 					offset = { type = "integer", minimum = 1, description = "Continuation byte offset from the previous result." },
 					limit = { type = "integer", minimum = 256, maximum = 16000, description = "Bytes to read; also bounded by the conversation's result budget." },
 				},

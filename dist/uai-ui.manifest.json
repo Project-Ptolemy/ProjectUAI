@@ -1,8 +1,8 @@
 {
   "format": "project-uai-ui",
   "version": "1.2.0",
-  "sha256": "99522b2cfb859479c2e3f4640b33defde467ebf05557bd946e839cc52cd116e8",
-  "bytes": 135503,
+  "sha256": "83dcb4616a41f5df65775aaa98a675177ca9766831a9ba0443d38794c2c8d99d",
+  "bytes": 139113,
   "loaderSha256": "88447fb4987885e1435103b57cf660a58511564fbc5f4adb66c46ef348bfcbd5",
   "modules": [
     {
@@ -32,8 +32,8 @@
     },
     {
       "id": "core",
-      "bytes": 11650,
-      "sha256": "9ce4f12a2b796249abb3c26cb95f882fe81b3180d50b62301844be4fe0713a1b"
+      "bytes": 14277,
+      "sha256": "fdd00c4046347875189dea3c7e25e7e8f7e66daaf447de188ee3e39947e3504c"
     },
     {
       "id": "library",
@@ -62,8 +62,8 @@
     },
     {
       "id": "window",
-      "bytes": 30160,
-      "sha256": "6f2774b0f70e75db21a614801b816d0503b787cc761f766922b35a2e14b6b322"
+      "bytes": 31143,
+      "sha256": "9526e88d161252184b1c4d12841c9e8253d5bfdc89275aa6969bca533189044c"
     }
   ]
 }

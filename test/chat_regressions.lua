@@ -4,6 +4,7 @@
 -- Run: luajit test/chat_regressions.lua
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
+local Layout = require("chat_layout")
 local passed, failed = 0, 0
 
 local function check(label, condition)
@@ -218,7 +219,7 @@ scenario("compact messages omit action bars and keep long content accessible", f
 	local long = string.rep("A long question. ", 110)
 	session.emit("user", { text = long })
 	session.emit("assistant:text", { text = "First line.\nSecond line.", final = true })
-	harness.settle(0.2)
+	Layout.settle(harness, panel.view, 0.3)
 	local user = harness.byName("User", panel.view.scroll.instance)
 	local agent = harness.byName("Agent", panel.view.scroll.instance)
 	for _, name in ipairs({ "CopyMessage", "ReuseMessage", "QuoteMessage", "MessageActions" }) do

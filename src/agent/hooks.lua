@@ -9,11 +9,11 @@ return function(env)
 	local log = env.require("runtime/log")
 
 	local KINDS = {
-		preRequest = true,   -- (payload) -> may mutate payload.body / payload.record
+		preRequest = true,   -- (payload) -> may mutate or replace payload.request
 		postResponse = true, -- (payload) -> may mutate payload.result
 		preTool = true,      -- (payload) -> return false to veto; payload.reason explains
 		postTool = true,     -- (payload) -> may mutate payload.text
-		onError = true,      -- (payload) observer only
+		onError = true,      -- reserved; observe error events through onEvent today
 		onEvent = true,      -- (payload) every session event, observer only
 	}
 

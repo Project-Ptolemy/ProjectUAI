@@ -7,7 +7,8 @@ local servers and relays.
 **Version 2.0.5 — September 27, 2026.** Long chats render nearby text in
 chunks and suspend their view while minimized. Browser attachments now send real
 image content to vision-capable models. UI LIB v1.2.0 adds a sidebar player/game
-profile, text-only actions, and owned, reversible motion.
+profile, text navigation with its drawn mark and window-control glyphs, and owned,
+reversible motion.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua
@@ -45,7 +46,10 @@ local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Pt
 ```
 
 See the [starter](ui-lib/examples/starter.lua), [component showcase](ui-lib/examples/showcase.lua),
-and [full API guide](docs/UI_LIBRARY.md).
+[full API and application guide](docs/UI_LIBRARY.md), and
+[complete assistant workbench](examples/embedding/README.md).
+The [embedding reference](docs/EMBEDDING.md) covers host scripts, custom UIs,
+sessions, tools, hooks, providers, state binding, and cleanup.
 
 **A real agent loop.** Streaming, parallel tool calls, retry with backoff that
 honours `Retry-After`, provider fallback, automatic context compaction with a
@@ -637,25 +641,32 @@ troubleshooting, limits, architecture, and organized Node/Lua/browser tests.
 
 ## Embedding
 
+Use UI LIB by itself for a script-owned interface, or load the full client and
+connect your controls to its sessions and tools. Read the comprehensive
+[embedding guide](docs/EMBEDDING.md) and
+[runnable workbench example](examples/embedding/README.md).
+
 ```lua
 local uai = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/CarlDV/ProjectUAI/main/dist/uai.lua"))({
-    prompt = "You also control the Foo system. Use foo_* tools first.",
-    hooks = {
-        preTool = function(payload)
-            if payload.tool.name == "instance_destroy" then return false end
-        end,
-    },
+	"https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"
+))({
+	prompt = "This host provides workbench_status and workbench_configure for its local settings.",
 })
-
-uai.ask("what is in this place")
-uai.show("logs")
+assert(uai and uai.alive, "UAI did not start; inspect the console error")
+uai.show("providers")
 ```
 
-The returned handle exposes `env`, `app`, `sessions`, `config`, `providers`,
-`tools`, `caps` and `log`, so a host script can drive or inspect any part of it.
-Running the loader twice toggles the existing instance instead of stacking a
-second one.
+Register the named host tools through `uai.tools.register` before asking the
+agent to use them; prompt text alone does not install capabilities. The returned
+handle exposes `env`, `app`, `sessions`, `config`, `providers`, `tools`, `caps`,
+`bridge`, and `log`. Runtime methods use dots; UI LIB methods use colons.
+
+The full client always mounts its standard app. UI LIB is independent and mounts
+nothing until `CreateWindow`. A same-build client loader rerun toggles the live
+instance and ignores new context; reuse a saved handle or `getgenv().UAI` when
+attaching another view. Changed builds replace the client only after active and
+unsaved work is protected. Pin all bundle/module URLs to one reviewed commit SHA
+for reproducible host releases.
 
 ## Notes on the constraints
 

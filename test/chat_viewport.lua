@@ -51,6 +51,7 @@ case("minimize releases render work while events and drafts stay in the session"
 	local f, session, view = setup(35)
 	Layout.scroll(f.h, view, 0); Layout.settle(f.h, view, 0.3)
 	local state = session.viewState
+	local first = view.rows[session.log[1].transcriptId]
 	view.setVisible(false); f.h.settle(0.1)
 	local created = f.h.instanceState.count
 	session.busy = true
@@ -61,6 +62,7 @@ case("minimize releases render work while events and drafts stay in the session"
 	check("hidden updates still belong to the conversation", #session.log == 110 and session.livePreview.text == "Hidden live reply")
 	view.setVisible(true); Layout.settle(f.h, view, 2)
 	check("restoring preserves reading state and reconciles preview", not view.pinned and state.pinned == false and view.preview and session.events:count() == 1)
+	check("restoring reuses the measured rows instead of replaying the transcript", view.rows[session.log[1].transcriptId] == first and first.root.Parent ~= nil)
 	view.pinned = true; view.repin(); Layout.settle(f.h, view, 1)
 	check("jumping to latest exposes work received while minimized", has(view.scroll.instance, "Hidden live reply", f))
 	view.destroy(); created = f.h.instanceState.count

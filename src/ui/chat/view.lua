@@ -684,27 +684,17 @@ return function(env)
 			end
 		end
 
-		function view.attach(session, force)
-			if destroyed then return end
-			if session and view.session == session and view.unsubscribe and not force then
-				if not view.replaying then
-					if session.busy then ensureWorking().set(session.status or "Working") else clearWorking() end
-				end
-				view.repin(); return
-			end
-			saveReading()
-			if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
-			view.empty(); view.session = session
-			if not session then view.greeting(); return end
-			reading = session.viewState and util.copy(session.viewState) or nil
-			view.pinned = not reading or reading.pinned ~= false
-			if not visible then return end
+		-- Subscribe before the snapshot so no event can fall between the two. A full
+		-- replay rebuilds every retained row; an incremental one keeps the measured
+		-- rows and renders only events that are not already tracked, which is what a
+		-- hidden window or another panel needs on the way back.
+		local function startReplay(session, incremental)
 			view.replaying = true
 			local mine = view.generation
-			local replay = { events = {}, cursor = 1, pending = {} }
+			local replay = { events = {}, cursor = 1, pending = {}, incremental = incremental == true }
 			view.replay = replay
-			-- Connect before taking the snapshot. New durable events queue in order;
-			-- transient preview/progress is reconciled from current state at the end.
+			-- New durable events queue in order; transient preview/progress is
+			-- reconciled from current state at the end.
 			view.unsubscribe = session.events:connect(function(event)
 				if destroyed or view.session ~= session then return end
 				if event.kind == "cleared" then
@@ -736,10 +726,14 @@ return function(env)
 							settleLive(session); view.retentionRevision = nil; prune(); follow(); return
 						end
 						replay.events, replay.pending, replay.cursor = replay.pending, {}, 1
+						replay.incremental = false
 					end
 					local event = replay.events[replay.cursor]
 					replay.cursor, processed = replay.cursor + 1, processed + 1
-					if not event.transcriptId or not session.transcript or session.transcript.get(event.transcriptId) then render(event) end
+					-- An incremental replay skips rows that survived the release: their
+					-- geometry and content are already measured or mounted.
+					local tracked = replay.incremental and event.transcriptId and view.rows[event.transcriptId]
+					if not tracked and (not event.transcriptId or not session.transcript or session.transcript.get(event.transcriptId)) then render(event) end
 					if destroyed or view.generation ~= mine then return end
 					if clock.since(started) >= 6 then break end
 				end
@@ -749,7 +743,46 @@ return function(env)
 			batch()
 		end
 
+		function view.attach(session, force)
+			if destroyed then return end
+			if session and view.session == session and not force then
+				-- A paused view (hidden window or another panel) returns through an
+				-- incremental replay. It must not tear down its measured rows first.
+				if visible and not view.unsubscribe then
+					reading = session.viewState and util.copy(session.viewState) or reading
+					view.pinned = not reading or reading.pinned ~= false
+					startReplay(session, true)
+					return
+				end
+				if not view.replaying then
+					if session.busy then ensureWorking().set(session.status or "Working") else clearWorking() end
+				end
+				view.repin(); return
+			end
+			saveReading()
+			if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
+			view.empty(); view.session = session
+			if not session then view.greeting(); return end
+			reading = session.viewState and util.copy(session.viewState) or nil
+			view.pinned = not reading or reading.pinned ~= false
+			if not visible then return end
+			startReplay(session, false)
+		end
+
 		function view.refresh() view.attach(view.session, true) end
+
+		-- Coming back from a hidden window or another panel keeps the measured
+		-- spacers and reconciles only the events that arrived while the view was
+		-- released. A conversation cleared while hidden has no retained rows left to
+		-- trust, so it takes the full rebuild; the transcript is empty, so that costs
+		-- nothing. A switched session has already been emptied by attach.
+		local function resume()
+			local session = view.session
+			if not session then view.attach(nil, true); return end
+			if view.order > 0 and #(session.log or {}) == 0 then view.attach(session, true); return end
+			startReplay(session, true)
+		end
+
 		function view.setVisible(value)
 			value = value == true
 			if destroyed or visible == value then return end
@@ -758,13 +791,16 @@ return function(env)
 			viewport.setVisible(value)
 			-- The session keeps receiving events while minimized. Releasing the view
 			-- stops layout, replay, timers and preview work without losing its anchor.
-			local session = view.session
+			-- The measured rows stay, so restoring reconciles updates instead of
+			-- replaying and rebuilding the whole transcript.
 			if not value then
-				local state = reading
 				if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
-				view.empty(); reading = state
-				view.pinned = not state or state.pinned ~= false
-			else view.attach(session, true) end
+				clearPreview()
+				clearWorking()
+				closeRun()
+				view.generation = view.generation + 1
+				view.replaying, view.replay = false, nil
+			else resume() end
 		end
 		local function cleanup()
 			if destroyed then return end

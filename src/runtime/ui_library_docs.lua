@@ -57,6 +57,97 @@ must be available in the host; surface their errors instead of silently fetching
 a different UI library. In Studio, the bundle can be placed in a ModuleScript
 and loaded with `require` from a LocalScript.
 ]=],
+			["embedding"] = [=[
+## Embedding
+
+### Choose the right bundle
+
+| Need | Entry point |
+| --- | --- |
+| Script-owned controls without an AI client | `dist/uai-ui.lua` |
+| UAI's existing assistant application | `dist/uai.lua` |
+| Your controls backed by UAI sessions/tools | Load both, then pass the live client and UI API into a view factory |
+| Local Studio UI | Place the UI bundle in a ModuleScript and require it from a LocalScript |
+| Browser UI | Use the web bridge; this Roblox library is not a JavaScript package |
+
+Loading UI LIB returns the API without mounting a window. `CreateWindow` mounts
+one. It does not depend on `getgenv().UAI`, configure providers, change tool
+permissions, or create agent sessions. The full client always mounts its standard
+application; there is no client-loader `Headless` or alternate `Parent` option.
+
+### Keep downloads at the entry point
+
+Load one UI API in your entry script and pass it to your application modules.
+Modules should declare controls and callbacks, not download a second library.
+Keep production URLs on one reviewed commit SHA when you need reproducibility.
+
+```lua
+local revision = "main" -- Replace with a reviewed commit SHA for a pinned release.
+local url = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/"
+	.. revision .. "/dist/uai-ui.lua"
+local ok, source = pcall(function() return game:HttpGet(url) end)
+assert(ok and type(source) == "string", "UI library download failed: " .. tostring(source))
+local chunk, why = loadstring(source, "@uai-ui")
+assert(chunk, "UI library compilation failed: " .. tostring(why))
+local UI = chunk()
+```
+
+The library's metadata (`UI.Version`, `UI.URL`, `UI.Repository`) identifies its
+release and canonical location. `UI.URL` is canonical metadata; it does not
+become your commit-pinned download URL automatically. Keep the selected revision
+in your host's own release metadata.
+
+### Local ModuleScript setup
+
+Place the **contents** of `dist/uai-ui.lua` in
+`ReplicatedStorage/UAIUI` as a ModuleScript, then use a LocalScript:
+
+```lua
+local UI = require(game:GetService("ReplicatedStorage"):WaitForChild("UAIUI"))
+local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local window = UI:CreateWindow({
+	Id = "my-game-workbench", Title = "Workbench", Parent = playerGui,
+	ToggleKey = false,
+})
+local main = window:Tab({ Id = "main", Title = "Main" })
+main:Section({ Title = "Actions" }):Button({
+	Id = "inspect", Text = "Inspect selection", ActionText = "Inspect",
+	Callback = function() print("Call your validated application operation here") end,
+})
+```
+
+This UI path needs no runtime HTTP or `loadstring`. File-backed `SaveConfig` and
+`LoadConfig` still require executor filesystem capabilities. A Studio game can
+use JSON import/export with its own storage flow. Server-owned effects still
+belong behind the game's own validated server APIs.
+
+### Parent means ScreenGui parent
+
+`Parent` chooses where the library creates its ScreenGui. Supply a
+PlayerGui/CoreGui-compatible parent. It does not mount controls in an existing
+Frame, inherit that Frame's layout rectangle, or create a dockable component.
+The library still owns its screen, safe-area layout, overlays, and restore pill.
+
+`window.ScreenGui`, `window.Frame`, and `control.Frame` are exposed for inspection
+and tests. Do not reparent, restyle, replace, or use them as custom-content slots
+in consumer scripts. There is no public arbitrary-content or docking API.
+
+### Identity and replacement
+
+Use one stable window Id per logical application, such as `myhost-workbench`.
+Controls need unique stable Ids **within that window**, even across different
+tabs. Two tabs cannot both use `Id = "enabled"` for different controls. Prefix
+control IDs by feature (`scan-enabled`, `export-enabled`) when composing modules.
+
+Creating a new window with an existing Id releases the previous one and its
+registered resources. Different window IDs coexist. `UI:GetWindow(id)` finds a
+live registered window. Use the supplied handles instead of enumerating
+ScreenGuis by title or deleting GUI objects by a broad name match.
+
+For a supplied full-client handle, use `uai.show(...)` and `session.send(...)`
+with dots. UI LIB uses `window:Show()` and `control:Set(...)` with colons. See
+[Runtime integration](#runtime-integration) for the connection between them.
+]=],
 			["controls"] = [=[
 ## Controls
 
@@ -150,12 +241,14 @@ Window methods: `Show()`, `Hide()`, `Minimize()`, `Toggle()`, `Destroy()`,
 `SelectTab(idOrTab)`, `SetTitle(title, subtitle?)`,
 `SetTheme("Dark"|"Light", accent?)`, `SetTextScale(number)`,
 `SetReducedMotion(boolean)`, `Get(controlId)`.
-Minimize keeps a branded restore pill on screen: it shows the title, subtitle and
+Minimize keeps a branded restore pill on screen: it shows the mark, title,
+subtitle and
 attribution, can be dragged anywhere in the safe viewport, and restores on a click
 that was not a drag. Hide removes that pill too, and a notification that arrives
-while minimized updates its status. The top-right close button destroys the window, and the
-Minimize and Close controls are text buttons with no resting fill;
-hover brightens their labels and gamepad selection adds a focus outline. Each window has independent theme and state. The footer
+while minimized updates its status. The top-right close button destroys the window. The
+Minimize and Close glyphs have no resting fill;
+hover brightens them and gamepad selection adds a focus outline. The desktop
+resize grip stays in the bottom-right corner. Each window has independent theme and state. The footer
 remains pinned outside scrolling content. The sidebar profile stays below the
 scrolling tabs; compact and short layouts use the horizontal tabs and omit the
 profile to preserve room for controls. `GameName` overrides the automatic game
@@ -199,6 +292,69 @@ windows, and `UI.Version` / `UI.URL` / `UI.Repository` identify the release.
 GUI instance handles are exposed as `window.ScreenGui`, `window.Frame`, and
 `control.Frame` for inspection and testing. Do not style or reparent these in
 consumer scripts; doing so breaks the layout and ownership contract.
+
+### Pick an owner for every resource
+
+| Resource | Register | Lifetime |
+| --- | --- | --- |
+| Roblox service connection | `window:Give(signal:Connect(fn))` | Window |
+| Host-model or UAI unsubscribe function | `window:Give(unsubscribe)` | Window |
+| Short scheduled debounce/paint | `window:Give(thread)`; unregister when it completes | Window or completion |
+| Temporary domain state | One `window:OnDestroy(cleanup)` | Window |
+| Shared model or UAI client | Host-owned cleanup outside the view | Host/client, which can outlive the window |
+
+Hide and Minimize retain your subscriptions and application state. Destroy
+releases them. The library releases active key holds/toggles when hidden, but
+that does not stop an unrelated agent turn or your own domain operation.
+
+The early-release function returned by `Give` normally disposes the resource.
+`release(false)` unregisters without disposing. Use the latter when a task has
+already completed. Releasing twice is harmless. Cleanup order across independent
+resources is not guaranteed; combine dependent teardown steps in one function.
+
+### Own a delayed update
+
+This helper schedules one pending paint, uses the most recent model state when
+it runs, and removes completed tasks from the window's cleanup registry:
+
+```lua
+local function makeQueuedRefresh(window, refresh)
+	local queued = false
+	return function()
+		if queued or not window.Alive then return end
+		queued = true
+		local release, finished
+		local thread = task.delay(0.06, function()
+			finished, queued = true, false
+			if release then release(false) end
+			if window.Alive then refresh() end
+		end)
+		if not finished then release = window:Give(thread) end
+	end
+end
+```
+
+`refresh` is your synchronous, bounded view update. Subscribe a model's change
+signal to the returned function and register that subscription with the window.
+The example uses a 60 ms delay; choose a rate suited to the domain, and display
+final state immediately when the interaction requires it.
+
+### Guard asynchronous results
+
+A request can finish after the window closes or after a newer request starts.
+Keep a generation counter in the view and check it plus `window.Alive` before
+applying a result. This is necessary even when the visible initiating button
+has been disabled: another model update or teardown can still make work stale.
+
+Do not force-cancel a coroutine suspended inside a native API that may resume it
+later. For that kind of work, invalidate the result and let the native call
+settle. Short library-owned tasks and a host operation with its own cancellation
+contract have different lifetimes. Buttons already run their callbacks in owned
+tasks; avoid putting an indefinite polling loop inside one.
+
+Never use closing a view as an implicit command to destroy a shared UAI client
+or delete a saved conversation. If your application offers those actions, give
+them explicit names and callbacks separate from view cleanup.
 ]=],
 			["configuration"] = [=[
 ## Configuration
@@ -224,6 +380,302 @@ Files are namespaced per window; paths cannot traverse directories.
 Missing executor filesystem functions return a clear error; JSON export/import
 works with Roblox HttpService and does not require executor storage.
 No configuration is read, saved, or applied automatically.
+
+### Control values versus application state
+
+Configuration restores the values declared by the window. It does not call your
+model's API, set UAI provider options, or validate game-level relationships.
+Keep an explicit function that reads a complete form, validates it, and applies
+it to your application. Call that function at your chosen boundary: an Apply
+button, or a deliberate load-and-apply action.
+
+For example, given existing `title`, `enabled`, and `batch` controls and a model
+with `update(patch)`:
+
+```lua
+local function applyForm()
+	local ok, why = model.update({
+		title = title:Get(), enabled = enabled:Get(), batchSize = batch:Get(),
+	})
+	if not ok then
+		window:Notify({ Title = "Settings kept", Content = tostring(why), Kind = "Warning" })
+	end
+	return ok
+end
+```
+
+After a silent import, call any derived-view refresh function yourself. For
+example, an imported mode might require showing a detail section or disabling an
+irrelevant field. Silent imports do not invoke the `OnChanged` subscriber that
+normally handles that work.
+
+Use `Persist = false` for prompts, temporary status, and sensitive inputs. UI
+configurations are ordinary JSON, not encrypted storage. An API-key field should
+not be included in a shareable window profile.
+
+### Evolve a saved configuration
+
+Keep control Ids and types stable when only labels or tab layout change. A
+renamed label keeps its saved value; a new Id creates a new setting. A removed
+control's old entry is ignored. Reusing an Id for a different control type is
+rejected on import, so give a replacement setting a new Id or implement a
+deliberate migration before passing the JSON to `ImportConfig`.
+
+Known values are validated before changes are applied. That protects the form
+from partial invalid imports; it does not make subsequent application callbacks
+a transaction or roll back their effects. Prefer silent import followed by one
+validated domain operation for settings that must be applied together.
+]=],
+			["application_patterns"] = [=[
+## Application patterns
+
+### Start with a model contract
+
+A small application normally needs three operations:
+
+| Host operation | Meaning |
+| --- | --- |
+| `model.read()` | Return a snapshot of current applied state |
+| `model.update(patch)` | Validate and apply a domain change; return true/snapshot or false/reason |
+| `model.subscribe(callback)` | Notify views of applied changes; return an unsubscribe function |
+
+These names are an example contract, not built-in UI LIB methods. The complete
+[workbench model](../examples/embedding/host_tools.lua) supplies one. A different
+application can adapt an existing controller to this shape.
+
+### Immediate settings and silent reflection
+
+This factory expects that model contract with `enabled` and `batchSize` fields.
+It declares controls, sends user changes into the model, and reflects model
+changes without triggering another write:
+
+```lua
+return function(window, model)
+	local tab = window:Tab({ Id = "settings", Title = "Settings" })
+	local section = tab:Section({ Title = "Processing" })
+	local initial = model.read()
+	local controls = {}
+	local function reflect(value)
+		if not window.Alive then return end
+		controls.enabled:Set(value.enabled, true)
+		controls.batch:Set(value.batchSize, true)
+		controls.batch:SetDisabled(not value.enabled)
+	end
+	local function apply(patch)
+		local ok, why = model.update(patch)
+		if not ok then
+			reflect(model.read())
+			window:Notify({ Title = "Change kept", Content = tostring(why), Kind = "Warning" })
+		end
+	end
+	controls.enabled = section:Toggle({
+		Id = "processing-enabled", Text = "Enable processing", Default = initial.enabled,
+		Callback = function(value) apply({ enabled = value }) end,
+	})
+	controls.batch = section:Slider({
+		Id = "processing-batch", Text = "Batch size", Min = 1, Max = 20, Step = 1,
+		Default = initial.batchSize,
+		OnCommit = function(value) apply({ batchSize = value }) end,
+	})
+	window:Give(model.subscribe(reflect))
+	reflect(model.read())
+	return controls
+end
+```
+
+The slider's `OnCommit` applies at gesture end. Use `Callback` for a cheap
+immediate preview and `OnCommit` for the corresponding final operation. A
+programmatic `Set` uses value callbacks; do not assume it simulates a slider
+gesture and invokes `OnCommit`.
+
+### Editable forms and applied state
+
+An Input has a draft while focused and a last valid value. With `Live = false`,
+ordinary edits commit on focus loss. With `Live = true`, valid edits publish
+while the field retains its caret and draft. Invalid numeric input remains
+visible as an error; `Get()` still returns the last valid value.
+
+For several settings that form one operation, initialize controls from a
+snapshot and provide an Apply button. Let external model changes refresh an
+**Applied state** summary. Provide a separate Refresh action to replace form
+values. This prevents an agent or background event from erasing a user's
+unfinished input.
+
+The [assistant panel example](../examples/embedding/assistant_panel.lua) implements
+this pattern. Its Workbench tab applies all three settings through one model
+call. Your domain operation should report conflicts or stale target revisions
+when overwriting a changed object would be inappropriate.
+
+### Dependent controls
+
+Derived visibility and enabled state belong in one refresh function:
+
+```lua
+local mode = section:Segmented({
+	Id = "export-mode", Text = "Export mode", Options = { "Summary", "Detailed" },
+	Default = "Summary",
+})
+local detail = section:Input({
+	Id = "export-note", Text = "Detail note", Default = "", MaxLength = 200,
+})
+local function refreshMode()
+	detail:SetVisible(mode:Get() == "Detailed")
+end
+window:Give(mode:OnChanged(refreshMode))
+refreshMode()
+```
+
+A hidden or disabled control keeps its value and can still be updated through
+`Set`. Those are presentation states, not authorization. Read and validate only
+the fields applicable to the selected mode when executing an operation.
+
+### Dynamic choices and stable values
+
+Use stable IDs as option `Value` and human-readable names as `Label`. A player
+can change their display name without changing `UserId`; use that identity for
+selection. Do not use a list index as the durable value if options can reorder.
+`SetOptions` retains still-valid choices and normalizes removed selections.
+Handle nil or an empty array as a normal no-selection state.
+
+Search is literal. Keep Dropdown collections within the 500-choice bound and
+use a domain search/filtered collection for larger datasets. A disabled option
+cannot be selected interactively; check domain eligibility again when running
+the operation because a target can change after selection.
+
+### Split a growing interface into modules
+
+One entry point loads UI LIB and creates the window. Feature factories receive
+that window (or a tab) and their model/controller. Each feature owns its
+subscriptions through the supplied window. Return the controls or an explicit
+refresh method when the entry point needs them.
+
+```text
+my-host/
+  launcher.lua          loads UI once and composes the application
+  model.lua             state, validation, and domain operations
+  processing_tab.lua    declares processing controls against the model
+  history_tab.lua       declares a bounded history view
+```
+
+In Studio, those modules can be ModuleScripts required by a LocalScript. In an
+executor host, load your reviewed source modules at the entry point. A source
+module can `return function(window, model) ... end`, as above. Do not duplicate
+window creation, styles, fonts, padding, drag systems, or helper ScreenGuis in
+each feature module.
+
+### Communicate state with text
+
+Use short action verbs: Run, Apply, Stop, Refresh, Export. Pair an action with a
+clear field label and a description when the result needs explanation. Use a
+Badge or Progress for status, a Paragraph for a bounded explanation, and a
+notification for a transient outcome. Color should support readable status text.
+
+The library owns typography, spacing, touch targets, and focus presentation.
+Set Title/Subtitle, choose Dark/Light, adjust TextScale through the window API,
+and offer reduced motion where useful. Do not add icon-only buttons, Unicode
+symbols as replacement icons, or decorative marks to navigation. A subject's
+avatar in a player choice is content, not an action icon.
+
+The sidebar profile is automatic. `GameName` supplies an already-known name;
+there is no need to fetch a logo or player avatar yourself. Compact and short
+layouts omit the profile while keeping the controls reachable.
+]=],
+			["runtime_integration"] = [=[
+## Runtime integration
+
+UI LIB can be the presentation layer for a host model and a UAI session. The
+complete [embedding guide](EMBEDDING.md) documents the runtime APIs; this section
+provides the essential view contract for script authors reading `ui_library_docs`.
+
+### Attach a companion panel
+
+Given an existing live `uai` handle and loaded `UI` API:
+
+```lua
+local createPanel = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/examples/embedding/assistant_panel.lua"
+))()
+local window, session = createPanel(uai, UI, {
+	Id = "my-assistant-panel",
+	Session = uai.sessions.current(),
+})
+```
+
+The example returns a factory; the first call evaluates the source module and
+the second constructs the view. It accepts `Id`, `Session`, optional `Parent`,
+and an optional `Model` with the read/update/subscribe contract described above.
+Use the [launcher](../examples/embedding/launcher.lua) for checked downloads and
+installation of the example model/tools. Pin all modules to the same reviewed
+revision in a distributed host script.
+
+The panel stays attached to the supplied registered conversation. It does not
+follow active-thread changes automatically. Use `uai.sessions.newThread(...)`
+for a dedicated thread; `sessions.create(...)` is untracked and is not accepted
+by this companion example.
+
+### Send is an admission result
+
+`session.send(text, onDone, files, images)` returns `true` or `false, reason`.
+Clear a draft only after true, and only if the current draft still matches what
+was submitted. The callback runs after the busy state is released and receives
+reply text, which may describe a failure. Observe `error` and `turn:end.failed`
+for failure state. Check `window.Alive` before a delayed callback updates controls.
+
+`status = "Ready"` and `turn:end` can arrive before `session.busy` becomes false.
+Subscribe to `uai.sessions.listChanged` or use `onDone` to refresh admission
+controls after the worker releases busy. Also respect `session.preparing` and
+`session.removed`. Stop calls `session.abort()`; it is cooperative, so keep a
+stopping state until the session finishes.
+
+### Signals and replay
+
+```lua
+window:Give(session.events:connect(function(event)
+	if event.kind == "assistant:text" then
+		reply:SetDescription(event.text or "")
+	elseif event.kind == "error" then
+		window:Notify({ Title = "Request failed", Content = event.message, Kind = "Warning" })
+	end
+end))
+```
+
+Here `reply` is an existing Paragraph. Its body setter is `SetDescription`,
+not `SetContent`. This small example illustrates the binding; production panels
+should bound the displayed text and coalesce frequent updates as the complete
+companion panel does.
+
+UAI signals use lowercase `:connect` and return an unsubscribe function, unlike
+Roblox's `:Connect` returning an RBXScriptConnection. `window:Give` accepts both.
+For initial state, read `session.transcript.snapshot()` after subscribing and
+read `session.livePreview` for a running response. `assistant:preview` contains
+the accumulated current preview; replace it instead of appending it as a delta.
+Clear previews on completion, abort, error, and reset. Full transcript views
+must reconcile retained IDs and omissions; a latest-response view can replace
+one bounded Paragraph.
+
+### Keep host and view lifetimes distinct
+
+Register a client-lifetime cleanup that closes the dependent view:
+
+```lua
+window:Give(uai.env.require("runtime/dispose").add(function()
+	window:Destroy()
+end, "my assistant panel"))
+```
+
+Closing the panel then unregisters that runtime cleanup. It does not call
+`uai.unload()`, abort the turn, or delete its conversation. Put those actions
+behind explicit application commands if the host owns them.
+
+Custom agent tools should call a stable host model, not a control or a captured
+window. `uai.tools.register(definition)` refuses duplicate names and offers no
+public unregister method. Install tools once per live client. Both those tools
+and manual UI actions can call the same validated domain operations.
+
+Keep access to the standard app for provider setup and approvals:
+`uai.show("providers")` opens setup; `uai.app.openSession(session.id)` followed by
+`uai.show("chat")` opens the conversation. A custom window does not grant new
+capabilities or bypass existing permission rules.
 ]=],
 			["recipes"] = [=[
 ## Recipes
@@ -301,6 +753,160 @@ end))
 Full examples: [starter.lua](../ui-lib/examples/starter.lua) and
 [showcase.lua](../ui-lib/examples/showcase.lua). They load the same public bundle
 as production scripts and contain no GUI instance construction.
+
+For a complete model, tool registration, and custom assistant panel, use
+[examples/embedding](../examples/embedding/README.md).
+]=],
+			["performance"] = [=[
+## Performance
+
+### Keep work proportional to what the view needs
+
+| Work | Recommended pattern |
+| --- | --- |
+| A setting changes | Update the affected controls, using silent setters for reflection |
+| Many state events arrive | Queue one bounded refresh that reads the newest state |
+| A slider moves | Cheap preview through Callback; expensive operation on OnCommit |
+| A player list changes | Replace a bounded options list by stable identity |
+| An assistant response grows | Replace a bounded latest-response preview; open UAI for full history |
+| A window is rerun | Stable Id replacement and owned cleanup |
+| A native operation completes late | Generation/lifetime checks before publishing the result |
+
+Do not recreate the window for each settings change, poll every frame for state
+that already has an event, or build one control for every log line. The window
+already owns layout and reflow. Changing Frame positions or sizes in consumer
+code competes with that system.
+
+Dropdowns support at most 500 choices. Segmented controls are for 1–8 choices.
+Paragraphs wrap plain text and are not Markdown renderers, code editors, or
+virtualized transcripts. Bound your data first; add a shared paginated or
+virtualized component under `ui-lib/src` when the product needs one.
+
+### Hidden views still have state
+
+Hide/Minimize stop the window's visible presentation and release active input
+actions, while your subscriptions remain owned and active. Destroy is the
+resource-release boundary. A host event can still arrive while minimized; it
+must update state without assuming a visible measured rectangle.
+
+The companion example keeps one bounded response and schedules at most one
+pending paint. It does not implement a separate virtual transcript. For a
+larger reusable view, retain state separately from mounted rows, preserve a
+reading anchor, treat zero measurements during hiding as temporary, and refresh
+from retained state on restore. Viewport chunking must never delete the model's
+conversation or lose a user's draft.
+
+There is no public window visibility-change signal in 1.2.0. Do not invent
+`OnShow`/`OnHide` options or patch a window's methods to simulate them. Simple
+bounded views can remain subscribed. A reusable view that needs dedicated
+visibility lifecycle support should add that capability to the library first.
+
+### Motion and responsiveness
+
+Use the library's owned transitions and `SetReducedMotion` API. Do not add
+per-frame entrance tweens, custom drag motion, or artificial typewriter loops to
+consumer scripts. `SetReducedMotion(true)` settles active transitions, and
+window destruction/replacement releases their resources.
+
+Choose preferred Width/Height, then let the library fit the safe viewport.
+Long descriptions wrap, value rows stack, and tabs switch to a horizontal strip
+when space is limited. Avoid treating a desktop pixel width as an invariant in
+application code. Preserve useful text at larger TextScale values and provide
+readable statuses alongside color.
+]=],
+			["troubleshooting"] = [=[
+## Troubleshooting
+
+| Problem | Resolution |
+| --- | --- |
+| A callback does not run when the control is created | Constructors deliberately do not invoke callbacks; read initial values or call a domain initializer |
+| Programmatic updates call the model repeatedly | Use `Set(value, true)` when reflecting model state |
+| Import changes a value but not dependent controls | Silent import suppresses callbacks; call your derived-view refresh afterward |
+| Import rejects a formerly valid setting | Check window Id, control type, and current value bounds; migrate intentionally |
+| Filesystem save fails | Use ExportConfig/ImportConfig or supply the host's storage flow; Studio has no executor files |
+| Text body does not update | Paragraph body uses `SetDescription`, while `SetText` changes its title |
+| Numeric input shows an error but Get returns an older value | Invalid drafts preserve the last valid value; do not treat that value as the raw draft |
+| A slider callback is too expensive | Keep value-change previews cheap and commit expensive work at gesture end |
+| Set does not trigger OnCommit | A setter is not a user gesture; invoke the domain operation explicitly when needed |
+| Player selection changes after list refresh | Use stable UserId values, not list indices or mutable display names |
+| A keybind does not fire while typing/in a dialog | Input capture protects editing and overlays; choose another interaction |
+| A keybind conflicts with the window toggle | The window toggle key is reserved; disable/change it through CreateWindow options |
+| Two scripts replace each other's windows | Give different applications different stable window Ids |
+| Two controls collide across tabs | Control Ids are unique across the whole window |
+| The sidebar profile disappears on a compact window | The layout prioritizes control space; horizontal tabs remain available |
+| An Icon option does nothing | Navigation and actions are text-only; legacy Icon options are ignored |
+| A Frame Parent does not behave like docking | Parent is for the owned ScreenGui; arbitrary Frame embedding is unsupported |
+| A closed view still handles model events | Register the returned unsubscribe/connection with window:Give |
+| Work continues after Minimize | Minimize retains the application; use an explicit Stop command for domain work |
+| A delayed task updates a replaced window | Guard with window.Alive and generation tokens; own/unregister scheduled tasks |
+| Full UAI settings do not change after a window import | Window configuration and UAI client configuration are separate systems |
+| A custom send button stays disabled | Refresh actual session.busy after sessions.listChanged/onDone |
+| A large reply makes the panel slow | Bound the response view and coalesce updates; use a proper shared transcript component for history |
+
+Read the implementation and add a reusable capability when a requirement falls
+outside the public API. Do not solve an API gap by editing private Frames or
+copying a second UI library into the script.
+]=],
+			["extending"] = [=[
+## Extending
+
+This section is for repository contributors. Consumer scripts use the public
+API; new reusable controls and lifecycle capabilities belong in `ui-lib/src`.
+
+### Source map
+
+| Module | Responsibility |
+| --- | --- |
+| `library.lua` | Public UI object, window lookup, configuration method composition |
+| `window.lua` | Window creation, input, safe layout, visibility, lifetime |
+| `containers.lua` | Tabs, sections, control constructor exposure, search/layout |
+| `controls.lua` | Base control contract and common control implementations |
+| `choice.lua` | Choice-based controls and pickers |
+| `color.lua` | Color picker behavior |
+| `config.lua` | Typed state serialization, validation, import/export, file profiles |
+| `core.lua` | Resource scopes, instance helpers, layout/measurement, callbacks |
+| `theme.lua` | Shared visual tokens and theme values |
+| `motion.lua` | Owned reversible transitions and reduced-motion handling |
+| `overlays.lua` | Dialogs, notifications, and overlay ownership |
+| `profile.lua` | Local player profile and experience information |
+
+`ui-lib/loader.lua` creates the independent factory environment. Each source
+module returns `function(env) ... end` and uses that environment's memoized
+loader. These modules do not use the client `src/ui` module environment.
+
+### Add a control as a shared capability
+
+1. Define the consumer API: constructor, valid values, methods, callbacks,
+   defaults, disabled/hidden states, and persistence behavior.
+2. Implement the control using the shared base/ownership helpers. Keep stable
+   values independent from visible labels and validate before changing state.
+3. Wire it into control dispatch and the constructor exposure in
+   `containers.lua`. There is no consumer `UI:RegisterControl` hook.
+4. Define configuration serialization/validation if it is stateful. Invalid
+   imports must not partially apply, and imports remain silent by default.
+5. Handle pointer, touch, keyboard/gamepad selection, overlay dismissal, hide,
+   replacement, and destruction. Use shared motion/theme primitives.
+6. Document the API in Controls and add a focused usage example. Add meaningful
+   behavioral coverage for its distinct state/input/lifecycle cases.
+7. Finish and manually audit all source, documentation, example, and test edits
+   before building or testing.
+
+For a capability such as virtualization or docking, first define its lifetime,
+measurement, accessibility, and data ownership contracts. A control that happens
+to fit one script is not yet a stable shared interface. Keep the permanent
+attribution and text navigation in the design.
+
+### Keep the agent reference discoverable
+
+Every H2 section in this file becomes a lowercase underscore key in the generated
+`runtime/ui_library_docs` module. `src/tools/gui.lua` advertises those keys in the
+`ui_library_docs` schema. Add new keys there whenever adding a section here.
+Do not edit `src/runtime/ui_library_docs.lua` directly.
+
+`test/ui_library_agent.lua` checks that the tool's advertised sections match the
+generated guide and that pagination reconstructs every section exactly. The
+tool returns bounded UTF-8 pages; agents must follow `nextOffset` until it is
+absent to read a long section completely.
 ]=],
 			["development"] = [=[
 ## Development
@@ -320,10 +926,18 @@ node tools/build_ui_lib.js
 luajit tools/bundle.lua --native
 node tools/build_site.js
 # Manually inspect the generated bundles, manifests, guide, and catalog here.
-node tools/test_native.js
+luajit test/ui_library.lua
+luajit test/ui_library_agent.lua
+luajit test/embedding_examples.lua
+node tools/build_ui_lib.js --check
+luajit tools/bundle.lua --native --check
+node tools/build_site.js --check
 ```
 
-`--skip-images` omits the dedicated image-input suite when image verification is
+These are the focused guide/library/example checks. For broader client/runtime
+changes, follow the [native verification sequence](CODE_WORKSPACE_TESTING.md)
+with `node tools/test_native.js`. Its `--skip-images` flag omits the dedicated
+image-input suite when image verification is
 out of scope; the verification report lists that omission. The bridge scenario
 runner accepts the same flag and suppresses screenshots and image-specific suites.
 

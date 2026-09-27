@@ -31,8 +31,8 @@ end
 local function key(name) return input(E.UserInputType.Keyboard, 0, 0, E.KeyCode[name]) end
 check("fixed attribution is part of the window and launcher", node("Attribution", window.Frame).Text == "Project UAI | UI LIB." and node("Attribution", node("Restore")).Text == "Project UAI | UI LIB.")
 check("public metadata points to this repository", UI.Version == "1.2.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
-check("window chrome uses text and leaves the window controls unfilled",
-	h.byName("Brand", window._header) == nil and h.textOf(window._minimize) == "Minimize" and h.textOf(window._close) == "Close"
+check("window chrome draws the mark and leaves the window controls unfilled",
+	node("Brand", window._header) ~= nil and h.byName("minus", window._minimize) ~= nil and h.byName("close", window._close) ~= nil
 		and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)
 local profile = node("Profile")
 check("the desktop sidebar shows the local player and a game fallback",
@@ -211,8 +211,8 @@ check("hold key releases even when the release is processed", #activation == 2 a
 uis.InputBegan:Fire(key("K"), false); window:Minimize()
 check("minimizing releases held logic and retains branded launcher", activation[#activation] == false and not window.Visible and node("Restore").Visible)
 local launcher = node("Restore")
-check("the minimized pill carries a text action, title, status and attribution",
-	h.byName("Brand", launcher) == nil and h.textOf(launcher):find("Open", 1, true) and node("RestoreTitle", launcher).Text == "Library contract"
+check("the minimized pill carries the mark, title, status and attribution",
+	node("Brand", launcher) ~= nil and h.textOf(launcher):find("Open", 1, true) and node("RestoreTitle", launcher).Text == "Library contract"
 		and node("RestoreDetail", launcher).Text ~= "" and node("Attribution", launcher).Text == "Project UAI | UI LIB.")
 local pillStart = launcher.AbsolutePosition
 launcher.InputBegan:Fire(input(E.UserInputType.MouseButton1, pillStart.X + 10, pillStart.Y + 10))
@@ -301,13 +301,13 @@ for _, viewport in ipairs({ { 1280, 720, false }, { 390, 844, true }, { 844, 390
 	local size, position = window.Frame.AbsoluteSize, window.Frame.AbsolutePosition
 	check("window stays in " .. viewport[1] .. "x" .. viewport[2], position.X >= 0 and position.Y >= 0 and position.X + size.X <= viewport[1] and position.Y + size.Y <= viewport[2])
 	check("controls retain readable width at " .. viewport[1], slider._slot.AbsoluteSize.X > 150 and toggle._label.AbsoluteSize.X > 100)
-	check("text window actions fit at " .. viewport[1], window._title.AbsoluteSize.X > 0 and window._close.AbsolutePosition.X + window._close.AbsoluteSize.X <= position.X + size.X)
+	check("the header mark stays visible at " .. viewport[1], window._brand.Visible)
 	check("the sidebar profile follows compact layout at " .. viewport[1], profile.Visible == not window._compact)
 	if viewport[3] then check("touch targets remain at least 44px", window.Target >= 44) end
 end
 window:SetTextScale(1.5)
 check("large text expands controls without shrinking the UI", window.Target >= 54 and slider.Frame.AbsoluteSize.Y > 90)
-check("large text preserves the text chrome on a small phone", window._title.AbsoluteSize.X > 0 and window._close.AbsolutePosition.X + window._close.AbsoluteSize.X <= window.Frame.AbsolutePosition.X + window.Frame.AbsoluteSize.X)
+check("large text preserves the mark and chrome on a small phone", window._brand.Visible and window._title.AbsoluteSize.X > 0 and window._close.AbsolutePosition.X + window._close.AbsoluteSize.X <= window.Frame.AbsolutePosition.X + window.Frame.AbsoluteSize.X)
 check("large-text status rows preserve label width on a small phone", badge._label.AbsoluteSize.X > 200 and badge._slot.AbsolutePosition.Y > badge._label.AbsolutePosition.Y)
 uis.OnScreenKeyboardVisible = true; uis.OnScreenKeyboardSize = dt.Vector2.new(320, 260); uis.OnScreenKeyboardPosition = dt.Vector2.new(0, 308)
 window:_Layout()

@@ -38,7 +38,7 @@ return function(env)
 end
 ```
 
-`env` is built once by `src/boot.lua`:
+`env` is built once by `init.lua`:
 
 | Field | Meaning |
 | --- | --- |
@@ -61,10 +61,11 @@ it; `ui/*` must not require `agent/*` except through `agent/session`.
 as `dist/uai-ui.lua`. It shares the application's visual language without changing
 the existing `src/ui` application. Script authors declare tabs/sections/controls and
 logic; the library owns layout, input, state, lifetime, and the fixed bottom
-`Project UAI | UI LIB.` attribution. Navigation and actions are text-only; legacy
-Icon options are ignored. The
+`Project UAI | UI LIB.` attribution. Navigation and action labels are text-only;
+legacy script Icon options are ignored. The library draws its own frame-based
+brand mark and window-control glyphs, so no uploaded assets are required. The
 sidebar profile uses Roblox headshots with a readable initial, display name,
-username and game. No uploaded assets are required. Motion is owned, reversible,
+username and game. Motion is owned, reversible,
 and reduced-motion aware; cleanup settles active transitions exactly.
 See `docs/UI_LIBRARY.md` for the public API.
 
@@ -536,9 +537,9 @@ replay queue in order; current preview/progress is reconciled afterward. Generat
 cancel work on switch, clear and destruction. Completed replay buffers and expired
 GUI rows are released; dialogue uses measured spacers and mounts only nearby
 message/Markdown chunks in batches of up to four, yielding between batches.
-Hidden/minimized views release their renderers and replay retained events on
-restore with the previous reading anchor. Retained nested agents survive removal
-of a dispatch row.
+Hidden/minimized views release their renderers and reconcile only the events that
+arrived while released on restore, keeping measured spacers and the previous
+reading anchor. Retained nested agents survive removal of a dispatch row.
 History notices disclose retention/recovery. Reading position and follow preference
 are session-local, with a measured message anchor when available. **Refresh
 conversation** redraws the view without changing the session or composer draft.

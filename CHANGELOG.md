@@ -6,7 +6,8 @@ Responsive long chats, real image input, and UI LIB v1.2.0.
 
 - Mount nearby messages and Markdown chunks while measured spacers preserve
   scroll position. Minimize and navigation suspend rendering and release timers;
-  restoring reconciles retained updates without losing the draft or reading anchor.
+  restoring keeps the measured rows and reconciles retained updates without
+  losing the draft or reading anchor.
 - Batch browser snapshot layout, preserve reading position, and defer
   streaming preview paints while the browser document is hidden.
 - Send actual PNG/JPEG/WebP content through the bridge to Chat Completions and
@@ -16,14 +17,19 @@ Responsive long chats, real image input, and UI LIB v1.2.0.
   is required; older clients cannot accept these image sends.
 - Add a pinned UI library sidebar profile with the local player's headshot,
   display name, username, and game. Keep readable fallbacks during Roblox lookups.
-- Use text throughout library navigation and actions, including window controls,
-  dropdown selection states, and disclosure buttons. Legacy tab Icon fields are
-  ignored; the fixed `Project UAI | UI LIB.` attribution remains.
+- Use text for library navigation and action labels, including dropdown selection
+  states and disclosure buttons. The frame-drawn Project UAI mark and the
+  minimize/close/resize window glyphs remain. Legacy tab Icon fields are ignored;
+  the fixed `Project UAI | UI LIB.` attribution stays.
 - Add owned, reversible transitions and reduced-motion support for library
   entrances, controls, pickers, and notifications. Settle interrupted animations,
   retain visible focus, and stop remeasuring every control during window dragging.
 - Update the public guide, examples, in-game notes, and regression coverage for
   viewport lifecycle, provider image payloads, profile layout, and motion cleanup.
+- Add a comprehensive [embedding reference](docs/EMBEDDING.md) and
+  [assistant workbench example](examples/embedding/README.md) for custom host UIs,
+  sessions, tools, hooks, provider setup, state binding, and cleanup. Expand the
+  UI library's embedded agent guide with application and extension patterns.
 
 ## 2.0.0 — September 26, 2026
 

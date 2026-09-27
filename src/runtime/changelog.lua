@@ -26,14 +26,14 @@ return function(env)
 			highlights = "Chat draws nearby text in chunks, bridge attachments reach vision models, and UI LIB adds a player profile, text controls, and smoother motion.",
 			sections = {
 				{ category = "fixed", label = "Chat and images", items = {
-					"Long chats mount nearby messages and Markdown chunks. Minimize suspends rendering; restoring preserves the draft, reading anchor, and retained updates.",
+					"Long chats mount nearby messages and Markdown chunks. Minimize suspends rendering; restoring keeps measured rows and preserves the draft, reading anchor, and retained updates.",
 					"Browser snapshots avoid repeated layout and preserve reading position. Hidden documents defer live preview paints.",
 					"PNG, JPEG and WebP attachments now send actual image content through the bridge to Chat Completions and Anthropic Messages models. Reload the client, restart the updated bridge, and choose a model with vision support.",
 					"Image references stay scoped to their conversation. Expired current images request reattachment; duplicate relay submissions cannot dispatch twice.",
 				} },
 				{ category = "improved", label = "UI LIB v1.2.0", items = {
 					"The desktop sidebar shows the local player's avatar, display name, username, and game, with readable loading fallbacks.",
-					"Navigation and actions use text throughout. Legacy tab Icon options are ignored, and the Project UAI | UI LIB. footer stays fixed.",
+					"Navigation and action labels use text; the frame-drawn Project UAI mark and minimize, close, and resize glyphs remain. Legacy tab Icon options are ignored, and the Project UAI | UI LIB. footer stays fixed.",
 					"Owned transitions reverse cleanly and settle on hide or cleanup. Reduced motion follows the host preference when available and can be set per window.",
 					"Dragging moves the window without remeasuring the full control list. Focus and loading states remain readable.",
 				} },
