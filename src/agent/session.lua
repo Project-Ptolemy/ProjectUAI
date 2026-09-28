@@ -50,8 +50,54 @@ return function(env)
 	-- share one number rather than each keeping a copy that drifts.
 	M.PASTE_CAP = PASTE_CAP
 
+	local FILTER_OPTIONS = { "toolFilter", "toolGroups", "toolExclude" }
+	local POLICY_OPTIONS = { "toolFilter", "toolGroups", "toolExclude", "maxTurns", "budgetSeconds", "unlimited", "stream" }
+	local function validateOptions(opts)
+		if opts == nil then opts = {} end
+		if type(opts) ~= "table" then return nil, "session options must be a table" end
+		if opts.id ~= nil and (type(opts.id) ~= "string" or #opts.id > 120 or not opts.id:match("^[%w_-]+$")) then
+			return nil, "session id must contain 1-120 letters, digits, underscores or hyphens"
+		end
+		if opts.title ~= nil and type(opts.title) ~= "string" then return nil, "session title must be a string" end
+		for _, key in ipairs({ "ephemeral", "headless", "stream", "unlimited", "activate" }) do
+			if opts[key] ~= nil and type(opts[key]) ~= "boolean" then return nil, key .. " must be a boolean" end
+		end
+		for _, key in ipairs({ "maxTurns", "budgetSeconds", "depth" }) do
+			local value = opts[key]
+			if value ~= nil then
+				if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+					return nil, key .. " must be a finite number"
+				end
+				if key == "depth" then
+					if value < 0 or value ~= math.floor(value) then return nil, "depth must be a nonnegative integer" end
+				elseif key == "maxTurns" then
+					if value < 1 or value ~= math.floor(value) then return nil, "maxTurns must be a positive integer" end
+				elseif value <= 0 then return nil, "budgetSeconds must be positive" end
+			end
+		end
+		local options = util.copy(opts)
+		for _, key in ipairs(FILTER_OPTIONS) do
+			local filter = opts[key]
+			if filter ~= nil then
+				if type(filter) ~= "table" then return nil, key .. " must be a map of names to booleans" end
+				local copied = {}
+				for name, allowed in pairs(filter) do
+					if type(name) ~= "string" or util.trim(name) == "" or type(allowed) ~= "boolean" then
+						return nil, key .. " must be a map of names to booleans"
+					end
+					copied[name] = allowed
+				end
+				options[key] = copied
+			end
+		end
+		return options
+	end
+
 	function M.create(opts)
-		opts = opts or {}
+		if not alive then return nil, "client is unloaded" end
+		local checked, why = validateOptions(opts)
+		if not checked then return nil, why end
+		opts = checked
 		local place = env.require("runtime/place")
 		local session = {
 			id = opts.id or util.uid("s"),
@@ -76,6 +122,7 @@ return function(env)
 			unlimited = opts.unlimited == true,
 			stream = opts.stream,
 			headless = opts.headless == true,
+			ephemeral = opts.ephemeral == true,
 			-- Which place the conversation happened in. A client is loaded into one game
 			-- at a time and the transcripts outlive the visit, so without this the list
 			-- is a flat pile of titles with no way to tell last week's game from this
@@ -153,6 +200,7 @@ return function(env)
 		-- Two conversations may run at once, though -- that is the point of threads --
 		-- so everything in here that reaches outside the session has to name it.
 		function session.send(text, onDone, files, images)
+			if not alive then return false, "client is unloaded" end
 			text = tostring(text or "")
 			local validated, imageError = env.require("runtime/images").validate(images, session.id)
 			if not validated then return false, imageError end
@@ -224,7 +272,8 @@ return function(env)
 				permissions.denyAll(nil, session)
 				-- Its questions too: a turn that ended still had an ask on screen, which
 				-- the user could then answer for a conversation that had moved on.
-				pcall(function() env.require("ui/panels/ask").sweep(session) end)
+				local asks = env.loadedModules and env.loadedModules["ui/panels/ask"]
+				if asks then pcall(asks.sweep, session) end
 				if not ok then
 					log.error("session", "loop crashed", reply)
 					session.emit("error", { message = "The native agent stopped after an internal error", fatal = true })
@@ -251,7 +300,8 @@ return function(env)
 			session.abortFlag = true
 			session.emit("status", { text = "Stopping" })
 			permissions.denyAll("aborted", session)
-			pcall(function() env.require("ui/panels/ask").sweep(session) end)
+			local asks = env.loadedModules and env.loadedModules["ui/panels/ask"]
+			if asks then pcall(asks.sweep, session) end
 			return true
 		end
 
@@ -346,17 +396,51 @@ return function(env)
 	-- Threads ---------------------------------------------------------------
 
 	function M.current()
+		if not alive then return nil, "client is unloaded" end
 		if M.activeId and M.threads[M.activeId] then return M.threads[M.activeId] end
 		return M.newThread()
 	end
 
 	function M.newThread(opts)
-		local session = M.create(opts)
+		if opts ~= nil and type(opts) ~= "table" then return nil, "session options must be a table" end
+		if opts and opts.id ~= nil and M.threads[opts.id] then return nil, "session id already exists" end
+		local session, why = M.create(opts)
+		if not session then return nil, why end
+		if M.threads[session.id] then return nil, "session id already exists" end
+		if fsx.enabled and fsx.exists(THREAD_DIR .. "/" .. session.id .. ".json") then
+			return nil, "session id already exists on disk but is not loaded; choose a different id"
+		end
 		M.threads[session.id] = session
-		M.activeId = session.id
-		M.trimThreads()
+		if not opts or opts.activate ~= false then M.activeId = session.id end
+		M.trimThreads(session)
 		M.listChanged:fire()
 		return session
+	end
+
+	function M.get(id)
+		if not alive or type(id) ~= "string" then return nil end
+		local session = M.threads[id]
+		return session and not session.removed and session or nil
+	end
+
+	-- Open a stable host identity without replacing a live worker or stealing the
+	-- native view's selection. Options apply only when the conversation is created.
+	function M.open(id, opts)
+		if not alive then return nil, "client is unloaded" end
+		if type(id) ~= "string" or #id > 120 or not id:match("^[%w_-]+$") then
+			return nil, "session id must contain 1-120 letters, digits, underscores or hyphens"
+		end
+		local options, why = validateOptions(opts)
+		if not options then return nil, why end
+		local existing = M.get(id)
+		if existing then
+			if options.activate == true then M.switch(id) end
+			return existing, false
+		end
+		options.id, options.activate = id, options.activate == true
+		local session, createdWhy = M.newThread(options)
+		if not session then return nil, createdWhy end
+		return session, true
 	end
 
 	function M.switch(id)
@@ -497,12 +581,15 @@ return function(env)
 		return true
 	end
 
-	function M.trimThreads()
+	function M.trimThreads(protected)
 		local ordered = M.list()
-		for index = THREAD_LIMIT + 1, #ordered do
+		local excess = #ordered - THREAD_LIMIT
+		for index = #ordered, 1, -1 do
+			if excess <= 0 then break end
 			local victim = ordered[index]
-			if not victim.busy and not victim.preparing and victim.id ~= M.activeId and fsx.enabled and M.persist(victim) then
+			if victim ~= protected and not victim.busy and not victim.preparing and victim.id ~= M.activeId and fsx.enabled and M.persist(victim) then
 				victim.removed = true; victim.abort(); victim.events:clear(); M.threads[victim.id] = nil
+				excess = excess - 1
 				attachments.clearUploads(victim.id)
 				local subagents = env.loadedModules and env.loadedModules["agent/subagent"]
 				if subagents then subagents.stopAll(victim) end
@@ -524,6 +611,11 @@ return function(env)
 		if not fsx.enabled or session.headless or session.removed then return false end
 		if session.depth and session.depth > 0 then return false end
 		if session.ephemeral then return false end
+		local savedPolicy = {}
+		for _, key in ipairs(POLICY_OPTIONS) do savedPolicy[key] = session[key] end
+		local policy, why = validateOptions(savedPolicy)
+		if not policy then return false, "invalid session policy: " .. tostring(why) end
+		policy.version = 1
 		return fsx.writeJson(THREAD_DIR .. "/" .. session.id .. ".json", {
 			id = session.id,
 			title = session.title,
@@ -533,6 +625,7 @@ return function(env)
 			updatedAt = session.updatedAt,
 			createdAt = session.createdAt,
 			turns = session.turns, opencodeSession = session.opencodeSession,
+			policy = policy,
 			context = session.ctx.serialise(),
 			transcript = session.transcript.snapshot(),
 			transcriptState = session.transcript.metadata(),
@@ -552,6 +645,21 @@ return function(env)
 			local data = raw and #raw <= 12 * 1024 * 1024 and util.decode(raw)
 			if type(data) ~= "table" or type(data.id) ~= "string" or #data.id > 120
 				or not data.id:match("^[%w_-]+$") or entry.name ~= data.id .. ".json" then return nil end
+			if data.policy ~= nil then
+				local policy = data.policy
+				if type(policy) ~= "table" or policy.version ~= 1 then
+					log.warn("session", "skipped saved conversation with unsupported policy", data.id)
+					return nil
+				end
+				local options = {}
+				for _, key in ipairs(POLICY_OPTIONS) do options[key] = policy[key] end
+				local validated, why = validateOptions(options)
+				if not validated then
+					log.warn("session", "skipped saved conversation with invalid policy", data.id .. ": " .. tostring(why))
+					return nil
+				end
+				data.policy = validated
+			end
 			return data
 		end
 		-- Keep only candidate metadata while finding the newest files; a host listing
@@ -572,12 +680,12 @@ return function(env)
 			local candidate = candidates[index]
 			local data = readThread(candidate.entry)
 			if data and data.id == candidate.id and not M.threads[data.id] then
-				local session = M.create({
-					id = data.id,
-					title = type(data.title) == "string" and util.ellipsis(data.title, 60) or nil,
-					placeId = tonumber(data.placeId),
-					placeName = type(data.placeName) == "string" and data.placeName or nil,
-				})
+				local options = data.policy or {}
+				options.id = data.id
+				options.title = type(data.title) == "string" and util.ellipsis(data.title, 60) or nil
+				options.placeId = tonumber(data.placeId)
+				options.placeName = type(data.placeName) == "string" and data.placeName or nil
+				local session = M.create(options)
 				session.named = data.named == true
 				session.createdAt = timestamp(data.createdAt)
 				session.updatedAt = timestamp(data.updatedAt)

@@ -10,14 +10,12 @@ local function loadModule(path)
 	return chunk
 end
 
-local globals = type(getgenv) == "function" and getgenv() or nil
-local uai = globals and globals.UAI
-if not (type(uai) == "table" and uai.alive) then
-	uai = loadModule("dist/uai.lua")({
-		prompt = "This host provides workbench_status and workbench_configure for its local example settings. Use those tools for workbench requests.",
-	})
-end
+local uai = loadModule("dist/uai.lua")({
+	reuse = true,
+	prompt = "This host provides workbench_status and workbench_configure for its local example settings. Use those tools for workbench requests.",
+})
 assert(uai and uai.alive, "UAI did not start; read its console error")
+assert(uai.sdk and uai.sdk.features.resourceScopes, "Update the client to a build with embedding SDK support")
 
 local UI = loadModule("dist/uai-ui.lua")()
 local installModel = loadModule("examples/embedding/host_tools.lua")()

@@ -20,7 +20,8 @@ executor it uses the executor's HTTP function; in a plain client it falls back t
 `HttpService` and says which capabilities it lost. Embedded in a host script it
 takes a context table and adds that script's own instructions and hooks.
 
-Running the same bundle again toggles the existing interface. A changed bundle
+Running the same bundle again toggles the existing interface; embedding hosts can
+pass `{ reuse = true }` to reuse it without toggling. A changed bundle
 reloads an idle client after saving its settings and conversations. If work, an
 unsent draft, or an isolated conversation would be lost, the current instance stays
 open with a notice; finish that work before running the updated loader again.
@@ -50,6 +51,16 @@ See the [starter](ui-lib/examples/starter.lua), [component showcase](ui-lib/exam
 [complete assistant workbench](examples/embedding/README.md).
 The [embedding reference](docs/EMBEDDING.md) covers host scripts, custom UIs,
 sessions, tools, hooks, providers, state binding, and cleanup.
+
+**Embedding SDK 1.0.0.** Load the client with `{ ui = false, reuse = true }` to
+use sessions and tools without mounting its application. `uai.sdk` provides
+owned integration scopes and requests with structured results, cancellation,
+completion callbacks, and optional waiting. Open named conversations without
+changing the user's selection, and explicitly mount the app when needed with
+`uai.show(...)` or `uai.openSession(id)`. Start with the
+[UI-free SDK example](examples/embedding/sdk.lua) and
+[SDK quickstart](docs/EMBEDDING.md#sdk-quickstart). Providers and permissions remain
+shared client settings; runtime capabilities still depend on the host.
 
 **A real agent loop.** Streaming, parallel tool calls, retry with backoff that
 honours `Retry-After`, provider fallback, automatic context compaction with a

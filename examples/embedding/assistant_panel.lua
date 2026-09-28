@@ -3,9 +3,10 @@
 return function(uai, UI, options)
 	options = options or {}
 	assert(type(uai) == "table" and uai.alive, "A live UAI handle is required")
+	assert(uai.sdk and uai.sdk.features.resourceScopes, "Embedding SDK resource scopes are required")
 	local session = options.Session or uai.sessions.current()
 	assert(session and not session.removed, "The conversation is unavailable")
-	assert(uai.sessions.threads[session.id] == session, "Use a tracked conversation from current() or newThread()")
+	assert(uai.sessions.get(session.id) == session, "Use a tracked conversation from current(), open(), or newThread()")
 	local window = UI:CreateWindow({
 		Id = options.Id or "embedding-workbench",
 		Title = "My assistant workbench",
@@ -96,7 +97,7 @@ return function(uai, UI, options)
 	stop = taskSection:Button({ Id = "stop", Text = "Stop this conversation", ActionText = "Stop",
 		Callback = function() session.abort(); paint() end })
 	taskSection:Button({ Id = "open-client", Text = "Full history, permissions and tools", ActionText = "Open UAI",
-		Callback = function() uai.app.openSession(session.id); uai.show("chat") end })
+		Callback = function() uai.openSession(session.id) end })
 	taskSection:Button({ Id = "providers", Text = "Configure a provider and model", ActionText = "Providers",
 		Callback = function() uai.show("providers") end })
 
@@ -131,9 +132,12 @@ return function(uai, UI, options)
 		Callback = function(value) window:SetTheme(value) end })
 	appearance:Toggle({ Id = "reduced-motion", Text = "Reduce motion", Default = window.ReducedMotion,
 		Callback = function(value) window:SetReducedMotion(value) end })
-	-- Unloading the supplied runtime closes its dependent view. Closing just this
-	-- view unregisters the runtime cleanup; it never destroys the shared client.
-	window:Give(uai.env.require("runtime/dispose").add(function() window:Destroy() end, "embedding workbench window"))
+	-- The view scope follows client unload. Closing the window also releases that
+	-- scope; both destroy calls are idempotent and preserve the shared client.
+	local viewScope, scopeError = uai.sdk.createScope("embedding-view:" .. (options.Id or "embedding-workbench"))
+	if not viewScope then window:Destroy(); error(tostring(scopeError)) end
+	viewScope.give(function() window:Destroy() end)
+	window:OnDestroy(function() viewScope.destroy() end)
 	window:OnDestroy(function() if cancelPaint then cancelPaint(); cancelPaint = nil end end)
 	paint()
 	return window, session

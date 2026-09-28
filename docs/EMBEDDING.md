@@ -2,8 +2,9 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents the interfaces implemented in **Project UAI 2.0.5** and **UI LIB 1.2.0**.
-The two bundles have separate versions and separate lifetimes.
+documents **embedding SDK 1.0.0** in **Project UAI 2.0.5**, alongside **UI LIB
+1.2.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
+bundle with its own version and lifetime.
 
 Start with [the complete workbench example](../examples/embedding/README.md) for
 working code. Use [the UI library reference](UI_LIBRARY.md) for every control,
@@ -16,7 +17,9 @@ standalone UI library does not provide.
 - [Load and reuse the bundles](#load-and-reuse-the-bundles)
 - [Host context](#host-context)
 - [Client handle](#client-handle)
+- [SDK quickstart](#sdk-quickstart)
 - [Conversations](#conversations)
+- [Requests](#requests)
 - [Events and rendering](#events-and-rendering)
 - [Custom tools](#custom-tools)
 - [Permissions and tool scope](#permissions-and-tool-scope)
@@ -35,6 +38,7 @@ standalone UI library does not provide.
 | --- | --- | --- | --- |
 | A settings panel, player picker, or script workbench | `dist/uai-ui.lua` | Domain state, callbacks, subscriptions | Window, controls, layout, input, motion, cleanup scope |
 | Add the normal assistant to an existing host script | `dist/uai.lua` | Host context and optional custom tools | Standard app, sessions, provider transport, permissions, persistence |
+| Use the agent without mounting its app | `dist/uai.lua` with `{ ui = false, reuse = true }` | Request handling, integration scope, approval presentation when needed | Sessions, tools, provider transport, permissions, persistence |
 | A focused custom assistant panel | Both bundles | Declarative view, draft state, mapping events to controls | Agent turns, tools, retained conversation, standard permission and provider UI |
 | A new reusable control or layout capability | Repository sources | Implementation and its public API | Build, shared conventions, distribution |
 | A browser interface | Existing web bridge and its protocol | Browser view and bridge integration | Connected Roblox runtime and relay contracts |
@@ -42,11 +46,12 @@ standalone UI library does not provide.
 Loading UI LIB alone does not start an agent, create a conversation, contact a
 model provider, or mount a window. `UI:CreateWindow` mounts the window.
 
-Loading the full client always boots and mounts the established UAI application.
-There is currently no `Headless`, `Mount = false`, alternate client `Parent`, or
-client-only SDK option in the loader. `uai.hide()` hides an already mounted app.
-A session's `headless` flag controls that session's transcript retention; it does
-not turn the whole client into an invisible SDK.
+Loading the full client normally mounts the established UAI application. Pass
+`ui = false` to start the runtime without constructing that application. The
+first explicit `uai.show(...)`, `uai.toggle()`, or `uai.openSession(id)` mounts it.
+`uai.hide()` only hides an already mounted app. The loader has no alternate client
+`Parent` option. A session's `headless` flag separately controls transcript
+retention; most SDK integrations should leave it false.
 
 For new script interfaces, use UI LIB's tabs, sections, controls, and lifecycle
 methods. The existing application in `src/ui` is a separate interface. Adding
@@ -122,33 +127,31 @@ compile, and startup checks for a complete example.
 
 ### Reuse without toggling
 
-If a host only needs the running client, use the handle it already saved, or
-look up `getgenv().UAI` when that global API is available:
+Pass `reuse = true` to return a running copy of the same build without toggling
+its app. This also supports a UI-free first boot:
 
 ```lua
-local globals = type(getgenv) == "function" and getgenv() or nil
-local uai = globals and globals.UAI
-if not (type(uai) == "table" and uai.alive) then
-	local source = game:HttpGet(
-		"https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"
-	)
-	local chunk, why = loadstring(source)
-	assert(chunk, why)
-	uai = chunk({ prompt = "Help with this host's workbench." })
-end
+local source = game:HttpGet(
+	"https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"
+)
+local chunk, why = loadstring(source)
+assert(chunk, why)
+local uai = chunk({ ui = false, reuse = true, prompt = "Help with this host's workbench." })
 assert(uai and uai.alive, "A live UAI client is required")
 ```
 
-The global is published only when `getgenv` exists. Keep the returned handle in
-hosts without it. Reusing a client preserves that client's provider settings,
+Keep the returned handle; a host that has it can reuse it without another
+download. The optional global `getgenv().UAI` is available only where `getgenv`
+exists. Reusing a client preserves that client's provider settings,
 permissions, tools, and boot context. Register your integration against the
-returned live handle; do not assume a new context was applied.
+returned live handle; do not assume a new context was applied. In particular,
+`ui = false` does not unmount an existing app.
 
 ### Loader reruns and changed builds
 
 | Situation | Loader behavior |
 | --- | --- |
-| Same live build | Returns the existing handle and toggles the app; does not adopt a new context table |
+| Same live build | Returns the existing handle and toggles the app, unless `reuse = true`; does not adopt a new context table |
 | Different build, safe replacement | Preserves state, unloads the old client, boots the new one |
 | Different build, active or unsaved work | Keeps the old handle and reports what blocks replacement |
 | Previous cleanup did not finish | Keeps the blocked handle and reports that a rejoin is needed |
@@ -210,6 +213,8 @@ Recognized integration fields are:
 | --- | --- | --- |
 | `prompt` | `agent/prompt` | Extra host instructions included when assembling prompts |
 | `hooks` | `agent/hooks` at boot | Map of hook kind to function; adopted once during startup |
+| `ui = false` | Bootstrap | Skip initial application mount; explicit navigation can mount it later |
+| `reuse = true` | Bootstrap | Return a live same-build client without toggling its app |
 | `gravity` | Runtime Gravity adapter | Optional host fallback for the existing Gravity integration |
 | Your own namespaced fields | Your code | Shared host objects or configuration; no automatic interpretation |
 
@@ -224,7 +229,7 @@ UAI feature. Choose a distinct namespace for your own integration. Prompt text
 describes capabilities; it does not enforce access or register a tool.
 
 Changing the `hooks` table after boot does not register new handlers. Use
-`uai.env.require("agent/hooks").register(...)` and keep its unsubscribe function.
+`uai.hooks.register(...)` or an SDK scope's `hook(...)` method.
 
 ## Client handle
 
@@ -235,27 +240,69 @@ self argument. Signals use `signal:connect(...)`, with a lowercase `connect`.
 
 | Handle member | Purpose |
 | --- | --- |
-| `alive`, `version`, `build` | Runtime lifetime and identity |
+| `alive`, `version`, `build`, `uiMounted` | Runtime lifetime, identity, and whether the standard app is mounted |
+| `sdk` | Versioned requests, integration scopes, and feature discovery |
 | `ask(text)` | Calls `sessions.current().send(text)`; returns acceptance, not the response |
 | `show(panel)` | Shows the standard application, optionally selecting a panel |
+| `openSession(id)` | Selects a registered conversation and opens it in the standard application |
 | `hide()`, `toggle()` | Controls standard application visibility |
 | `destroy()`, `unload()` | Full client shutdown; unload is an alias |
 | `sessions` | Session manager described below |
 | `tools` | Agent tool registry and dispatcher |
+| `hooks`, `permissions` | Public hook registration and client-wide permission services |
 | `providers` | Provider records and selection |
 | `config` | Client configuration access and persistence |
 | `caps`, `log`, `bridge` | Detected capabilities, diagnostic logging, bridge runtime |
 | `env` | Factory-module environment and `env.require(id)` |
-| `app` | Established application controller; useful for opening a conversation |
+| `app` | Established application controller, absent before mounting |
 
 Common navigation calls are `uai.show("chat")`, `uai.show("providers")`, and
 `uai.show("logs")`. To align the native chat view with a registered conversation,
-call `uai.app.openSession(session.id)` before `uai.show("chat")`.
+call `uai.openSession(session.id)`. A UI-free host can inspect `uiMounted` before
+offering navigation. Once mounted, hiding the app does not reset that flag.
 
-`env` and `app` expose implementation services rather than a separately versioned
-SDK. Pin your revision when using deeper methods. Do not overwrite `env.require`,
+The SDK version describes the documented `uai.sdk` methods and their lifecycle
+contract. Feature availability is separate from executor capabilities in `caps`
+and from provider/model support. `env` and `app` expose implementation services;
+pin your revision when using deeper methods. Do not overwrite `env.require`,
 `env.loadedModules`, session internals, or provider modules to inject behavior;
 use hooks, tool registration, and the public methods described here.
+
+## SDK quickstart
+
+Load a UI-free client as shown above, then create an owned integration and a
+named conversation. This example assumes a provider and real model have already
+been configured; the SDK does not guess either:
+
+```lua
+assert(uai.sdk and uai.sdk.features.requests and uai.sdk.features.resourceScopes,
+	"This host requires SDK requests and resource scopes")
+local scope, scopeError = uai.sdk.createScope("myhost")
+assert(scope, scopeError)
+local session, sessionError = uai.sessions.open("myhost-assistant", {
+	title = "Host assistant", ephemeral = true,
+	toolFilter = {}, -- No agent tools are needed for this example.
+})
+if not session then scope.destroy(); error(sessionError) end
+
+local request, reason = uai.sdk.request(session, "Explain how this host uses a dedicated conversation.", {
+	onComplete = function(result)
+		if result.ok then print(result.text) else warn(result.error or result.status) end
+	end,
+})
+if request then
+	scope.give(function() request.cancel() end)
+else
+	warn("Request was not accepted: " .. tostring(reason))
+end
+-- Call scope.destroy() when this host integration ends.
+```
+
+Use [sdk.lua](../examples/embedding/sdk.lua) for a complete executable entry
+point with checked downloads, a read-only host tool, events, explicit requests,
+and teardown. [Requests](#requests) documents results and cancellation;
+[Ownership and shutdown](#ownership-and-shutdown) defines scopes. Provider
+settings and permissions are shared by every integration using this client.
 
 ## Conversations
 
@@ -263,8 +310,10 @@ use hooks, tool registration, and the public methods described here.
 
 ```lua
 local current = uai.sessions.current()
-local dedicated = uai.sessions.newThread({ title = "Workbench assistant" })
-uai.app.openSession(dedicated.id)
+local dedicated, created = uai.sessions.open("myhost-workbench", { title = "Workbench assistant" })
+assert(dedicated, created)
+-- Opening a conversation in the manager does not mount or select the app.
+-- uai.openSession(dedicated.id) opens its native view when desired.
 ```
 
 `current()` returns the selected thread, creating one if needed. A custom panel
@@ -273,20 +322,34 @@ view changes the active conversation. This is useful for a dedicated workbench.
 To follow selection instead, subscribe to `sessions.listChanged`, compare IDs,
 detach the previous session listener, and rebuild your retained view.
 
-`newThread(options)` creates, registers, and activates a thread. Let UAI generate
-the ID unless you have a defined identity scheme. Supplying an existing ID can
-replace the manager entry; this is not an open-or-create API.
+`sessions.get(id)` returns the registered conversation or nil. `open(id, options)`
+returns `session, created`, where `created` is true for a new conversation and
+false for an existing one. It preserves current selection by default; pass
+`activate = true` to select it. Existing conversations keep their options except
+for that explicit activation choice. Check the returned session's filters when
+reusing a named conversation; new options do not replace an existing policy.
+
+`newThread(options)` creates, registers, and activates a thread unless
+`activate = false`. Let UAI generate the ID unless you have a defined identity
+scheme. IDs accept 1–120 letters, digits, underscores, or hyphens. Invalid or
+duplicate IDs return `nil, reason`; they never replace an existing conversation.
+An ID already present in saved history is also reserved even when its thread is
+not currently registered. `open` opens registered conversations or creates new
+ones; it does not load arbitrary archived files by ID. Choose a different ID
+when a saved, unregistered conversation already owns it.
 
 `create(options)` only constructs a session. It does not register or activate it.
 Untracked sessions are used by internal orchestration; they are not discoverable
-through `list()` and will not open with `app.openSession`. Use `newThread` for
-ordinary host panels.
+through `list()` and will not open with `uai.openSession`. Use `open` or
+`newThread` for ordinary host panels and SDK requests.
 
 ### Session options
 
 | Option | Meaning |
 | --- | --- |
 | `title`, `id` | Initial title and optional unique identity |
+| `activate` | `newThread` selects by default; `open` selects only when true |
+| `ephemeral = true` | Exclude this conversation's history from ordinary persistence |
 | `toolFilter` | Map of allowed tool names, for example `{ workbench_status = true }` |
 | `toolGroups` | Map of allowed groups, for example `{ workbench = true }` |
 | `toolExclude` | Map of excluded tool names |
@@ -297,15 +360,42 @@ ordinary host panels.
 | `depth` | Orchestration nesting level; normal host sessions leave it at zero |
 | `placeId`, `placeName` | Optional place metadata; defaults come from the current place |
 
-Filters are keyed maps, not arrays such as `{ "workbench_status" }`. A missing
-filter leaves that dimension unrestricted; an empty filter allows nothing.
-Filters combine with capabilities, global groups, and permissions.
+Filters are maps from nonblank string names to booleans, not arrays such as
+`{ "workbench_status" }`. A missing map leaves that dimension unrestricted;
+empty `toolFilter` or `toolGroups` maps allow no tools, while an empty
+`toolExclude` excludes none. Filters combine with capabilities, global groups,
+and permissions. Creation copies the supplied maps so later edits to an options
+table do not change the conversation's policy.
 
-`ephemeral` is not read from constructor options. After creating a thread, call
-`session.setEphemeral(true)` if you want to exclude its conversation JSON from
-persistence. That operation also deletes an existing saved JSON file for the
-thread. It does not suppress diagnostic logs, aggregate statistics, files written
-by tools, or traffic sent to a provider.
+Constructors reject invalid option types with `nil, reason`. Titles must be
+strings; `activate`, `ephemeral`, `headless`, `unlimited`, and `stream` must be
+booleans when supplied. `maxTurns` must be a positive finite integer,
+`budgetSeconds` a positive finite number, and `depth` a nonnegative integer.
+Validate host input before creating a conversation instead of relying on truthy
+strings such as `"false"`.
+
+`ephemeral = true` excludes new conversation JSON from persistence. On an existing
+thread, `session.setEphemeral(true)` also deletes its saved JSON file. Neither
+suppresses diagnostic logs, aggregate statistics, files written by tools, or
+traffic sent to a provider. This is a conversation-storage choice, not a private
+client or separate credentials.
+
+### Persistence and restored policy
+
+Ordinary saved conversations retain `toolFilter`, `toolGroups`, `toolExclude`,
+`maxTurns`, `budgetSeconds`, `unlimited`, and `stream` in a versioned policy.
+Restoring a valid saved policy keeps those restrictions and preferences.
+Conversations with invalid policy data or an unsupported future policy version
+are skipped during restore, with their original files retained.
+Their saved IDs remain reserved, as do IDs for older history outside the active
+restore/retention window, so a new host thread cannot overwrite those files.
+
+Older saves without policy metadata restore with legacy defaults. In particular,
+they do not recover tool restrictions that older clients never saved. Inspect
+the returned session's filters before reusing a named conversation, especially
+when `sessions.open` returns `created = false`; its supplied options do not
+replace existing policy. Use a new dedicated conversation when the restored
+policy does not match the integration's requirements.
 
 ### Send and finish
 
@@ -350,7 +440,9 @@ button enabled too early or disabled indefinitely.
 | `session.stats()` | Context statistics plus busy, turn, and todo information |
 | `session.toolContext()` | Context for manual registry dispatch, including cancellation tied to this turn epoch |
 | `sessions.list()` | Registered threads sorted by activity |
-| `sessions.switch(id)` | Changes active ID; returns false if absent; use `app.openSession` to align the native view |
+| `sessions.get(id)` | Looks up a live registered conversation; nil if absent |
+| `sessions.open(id, options?)` | Returns `session, created` or `nil, reason`; preserves selection unless explicitly activated |
+| `sessions.switch(id)` | Changes active ID; returns false if absent; use `uai.openSession` to align the native view |
 | `sessions.busy()`, `sessions.busyCount()` | Busy registered sessions and their count |
 | `sessions.persist(session)` | Attempts ordinary conversation persistence; not available for headless/ephemeral sessions |
 | `sessions.remove(id)` | Stops/removes the registered conversation and deletes its saved history |
@@ -361,6 +453,75 @@ back effects. Keep the status visible until the worker releases it. Do not set
 
 Closing a panel normally destroys the view only. `sessions.remove` is a
 conversation-deletion action, not a way to unsubscribe from a conversation.
+
+## Requests
+
+Prefer `uai.sdk.request(session, text, options?)` when your host needs a structured
+outcome. It accepts a live registered session and returns a request handle, or
+`nil, reason` when admission fails. A busy/removed session, invalid input, and
+failed attachment preparation are rejection cases. No completion callback runs
+for a rejected request. Provider failures after acceptance settle the request
+with a failure result instead.
+
+```lua
+local request, why = uai.sdk.request(session, "Read the workbench status.", {
+	onEvent = function(event)
+		if event.kind == "status" then print(event.text) end
+	end,
+	onComplete = function(result)
+		print(result.status, result.text)
+	end,
+})
+if not request then warn(why); return end
+
+-- In a yieldable host task; timeout ends this wait, not the request.
+local result, waitError = request.await(30)
+if result then
+	if not result.ok then warn(result.error or result.status) end
+else
+	warn(waitError)
+	-- Keep observing the request, or call request.cancel() to request Stop.
+end
+```
+
+| Request member | Contract |
+| --- | --- |
+| `status` | `running`, `succeeded`, `failed`, or `cancelled` |
+| `result` | Nil until settled, then `{ ok, status, text, error?, sessionId }` |
+| `cancel()` | Requests cooperative Stop for this request; cannot stop a later turn |
+| `onComplete(callback)` | Returns an unsubscribe function or `nil, reason` for an invalid callback; settled requests deliver their result immediately |
+| `await(timeoutSeconds?)` | Waits for a result; returns `nil, reason` on timeout or invalid timeout input |
+
+Options are `onEvent`, `onComplete`, `files`, and `images`. Callbacks are protected
+so host exceptions cannot break runtime settlement. `onEvent` receives this
+request's session events while subscribed; use it for progress and presentation,
+and use `onComplete` for the final outcome.
+Callbacks can run before `sdk.request` returns; use their arguments instead of
+assuming the variable receiving the returned handle has already been assigned.
+`files` and `images` use the same
+validated attachment references as `session.send`; see [Files and bridge
+images](#files-and-bridge-images).
+
+Unknown option keys and non-function callbacks are rejected. `await` must run
+in a yieldable host task while the request is running. A timeout is a finite,
+nonnegative number of seconds; `await(0)` polls without waiting. Omitting it waits
+until settlement. A callback registered after settlement runs synchronously with
+the existing result. Treat result tables as read-only shared values.
+
+Every accepted request settles once. Ordinary completion waits until the session
+releases its worker, so callbacks can begin a subsequent request. Success means
+the agent turn completed without a terminal failure; it does not independently
+verify that the model solved the host's domain task. Provider errors and exhausted
+turn limits produce `failed`; Stop produces `cancelled`. Removing the conversation
+or unloading the client settles outstanding requests as `cancelled` even when
+the legacy `session.send` callback would not run.
+
+`cancel()` does not instantly free a busy session: status remains `running` until
+the worker finishes. Removal/unload can settle immediately while an underlying
+host call still unwinds. Native operations already dispatched can retain effects.
+Timeouts only stop `await`; use `cancel()` explicitly when the host wants to stop
+the turn. Keep using `session.send` for existing integrations that expect its
+boolean acceptance and text callback contract.
 
 ## Events and rendering
 
@@ -472,7 +633,8 @@ the visible window, and reconcile it when displaying a view again.
 Register host tools on the live handle before sending a request that needs them:
 
 ```lua
-local registered = uai.tools.register({
+local scope = assert(uai.sdk.createScope("myhost-tools"))
+local registered, unregister = scope.registerTool({
 	name = "myhost_status",
 	group = "myhost",
 	risk = "read",
@@ -483,25 +645,40 @@ local registered = uai.tools.register({
 		return { text = "Workbench is ready.", data = { ready = true } }
 	end,
 })
-assert(registered, "myhost_status is already registered or invalid")
+assert(registered, unregister)
 ```
 
 | Definition field | Contract |
 | --- | --- |
-| `name` | Unique stable name; prefix it with your integration name |
-| `group` | Tool family for discovery and enable/disable controls; defaults to `misc` |
+| `name` | Unique stable name of 1–64 letters, digits, underscores, or hyphens; prefix with your integration name |
+| `group` | Tool family with the same identifier rules; defaults to `misc` |
 | `risk` | `read`, `write`, or `danger`; defaults to `write` |
 | `description` | Explain what it actually reads/changes and how to use it |
-| `parameters` | JSON-schema-shaped argument definition; use a bounded object schema |
+| `parameters` | Object argument schema; defaults to an empty object schema |
 | `needs` | Optional array of detected capability keys, such as `{ "loadstring" }` |
 | `run(args, ctx, prepared?)` | Handler; may yield; returns a string or a result table |
 | `prepare(args, ctx)` | Optional read-only preflight before approval; returns bound state or `nil, reason` |
-| `timeout` | Optional seconds or function `(args, ctx)` returning seconds; otherwise `agent.toolTimeout` |
+| `timeout` | Optional positive finite seconds or function `(args, ctx)` returning seconds; otherwise `agent.toolTimeout` |
 
-`register` returns false for invalid or duplicate registrations. There is no
-public unregister or replace operation. Install each tool once per client
-lifetime, and have it call a stable host model/controller. Rerunning the UI should
-replace only the view, not try to overwrite its tools.
+`scope.registerTool` returns `true, unregister` or `false, reason` for an invalid
+or duplicate registration. Calling `unregister()` removes this registration;
+destroying its scope removes it automatically. Removal denies that definition's
+pending approval and marks cooperative running calls aborted. It cannot roll
+back completed effects or stop an outstanding native operation. The identity
+check protects any later tool registered with the same name.
+
+Scope registration validates the definition and copies its schema and capability
+list. The input table can be reused without changing the registered tool. Schema
+data must be finite JSON-shaped values without cycles, bounded to 32 levels and
+8,192 entries. Registration checks schema shape; dispatch implements the argument
+validation subset described below. Unsupported JSON Schema keywords do not gain
+runtime enforcement just because they can appear in the schema.
+
+The lower-level `uai.tools.register(definition)` and `unregister(name, expected?)`
+remain available. Prefer a scope for host extensions so teardown releases the
+right definition and callbacks. Do not mutate a registered definition in place.
+Rerunning a UI should reuse the host model/controller and its scope, or explicitly
+destroy the old integration before installing a replacement.
 
 `get(name)` retrieves a definition; `list()` enumerates definitions.
 `definitions({ only = nameMap, groups = groupMap, exclude = nameMap })` produces
@@ -602,10 +779,13 @@ explicit result identity, and idempotency where the domain supports it.
 
 ## Permissions and tool scope
 
-The normal application already owns approval presentation for all sessions.
+Once mounted, the normal application owns approval presentation for all sessions.
 Keep **Open UAI** available in a custom panel so the user can reach full history,
-permissions, and provider configuration. The example does not change permission
-mode to make tool calls succeed.
+permissions, and provider configuration. A UI-free client does not mount an
+approval prompt automatically. A host can limit its session to read tools,
+explicitly open the native app before requesting work that needs approval, or
+implement an approval presenter with UI LIB. Unanswered approvals time out and
+deny the call. Examples do not change permission mode to make tool calls succeed.
 
 The base modes are:
 
@@ -639,7 +819,7 @@ Include `file_read` and other needed tools deliberately when extending the scope
 Filters constrain tool access; they do not create separate provider credentials
 or a separate client configuration.
 
-Advanced hosts can read `uai.env.require("agent/permissions")`:
+Permission methods are exposed through `uai.permissions`:
 
 | Method | Behavior |
 | --- | --- |
@@ -664,19 +844,24 @@ Hooks extend the runtime without patching the agent loop. Supply a map in boot
 context or register a handler on a running client:
 
 ```lua
-local hooks = uai.env.require("agent/hooks")
+local scope = assert(uai.sdk.createScope("workbench-policy"))
 local locked = true -- Your host controls this policy state.
-local disable = hooks.register("preTool", function(payload)
+local disable, why = scope.hook("preTool", function(payload)
 	if locked and payload.tool.name == "workbench_configure" then
 		payload.reason = "The host workbench is locked"
 		return false
 	end
 end, { name = "workbench-lock", order = 10 })
-uai.env.require("runtime/dispose").add(disable, "workbench policy hook")
+assert(disable, why)
+-- scope.destroy() releases this policy and any other resources it owns.
 ```
 
-Lower `order` runs first. Registration returns a function that disables the
-handler. Hook errors are logged and skipped; throwing is not a reliable veto.
+Lower `order` runs first; ties preserve registration order. `scope.hook` returns
+an unsubscribe function, or `nil, reason` for invalid input. The lower-level
+`uai.hooks.register` is also available when the host owns cleanup directly; for
+compatibility, invalid registration returns a no-op function plus a reason.
+Check that second result. Hook errors are logged and skipped; throwing is not a
+reliable veto.
 All registered handlers for a kind run, even after one vetoes. Return values
 other than an explicit `false` in `preTool` are not a data-transformation API.
 
@@ -715,8 +900,8 @@ dedicated, validated domain operation.
 
 Policy hooks belong to the host/client lifetime. A hook registered with
 `window:Give(disable)` ends when the window closes, which is appropriate for a
-view observer but usually wrong for a host policy. Repeated registration leaves
-inactive entries in the hook bus; install durable policies once.
+view observer but usually wrong for a host policy. Use a durable integration
+scope for policies and release it when that host feature ends.
 
 ## Providers and client configuration
 
@@ -953,13 +1138,49 @@ protocol or supply an iframe/widget SDK.
 
 ## Ownership and shutdown
 
+### SDK scopes
+
+`uai.sdk.createScope(id)` returns `scope` or `nil, reason`. Supply a stable,
+nonblank integration name of at most 128 bytes. A duplicate live ID is
+rejected; it never destroys another integration. Destroy the old scope explicitly
+before reusing its ID. Scopes use dot calls and expose `id` and `alive`.
+
+| Scope method | Contract |
+| --- | --- |
+| `give(cleanup)` | Owns a cleanup function and returns an idempotent early-release function, or `nil, reason` |
+| `connect(signal, callback)` | Owns a UAI/Roblox connection; returns unsubscribe or `nil, reason` |
+| `hook(kind, callback, options?)` | Registers and owns a hook; returns unsubscribe or `nil, reason` |
+| `registerTool(definition)` | Returns `true, unregister` or `false, reason`; owns the exact registered definition |
+| `destroy()` | Releases owned resources once and returns the number released |
+
+`give` accepts cleanup functions; it is not UI LIB's broader `window:Give`
+resource API. Wrap a host object in a function when it needs disposal.
+`connect` accepts UAI's lowercase `connect` signals and Roblox's uppercase
+`Connect` signals. Check registration results when inputs are dynamic. Early
+release functions execute cleanup, and repeated release is harmless. Cleanup
+errors are logged without preventing other resources from being released.
+Giving a cleanup function to a closed scope executes it immediately and returns
+`nil, reason`, preventing a resource from leaking during teardown. Other
+registrations on a closed scope fail without installing anything.
+
+The client destroys live scopes on unload. Scope destruction does not remove
+conversations or unload the shared client. To own an active request, register
+`scope.give(function() request.cancel() end)`. To own a view, connect its lifetime
+as shown below. Keep domain policy/tool scopes separate from views that users can
+close while the host keeps working.
+
+Feature discovery uses `uai.sdk.features`: `uiFreeBoot`, `resourceScopes`,
+`requests`, and `sessionLookup` are true in SDK 1.0.0. Unknown or missing keys
+should be treated as unavailable. These keys describe API support, not executor
+permissions, network reachability, or a provider's ability to call tools.
+
 ### Lifetime table
 
 | Resource | Owner | Release point |
 | --- | --- | --- |
 | UI window and its controls | UI LIB | Close, `Destroy`, replacement ID, or library-wide destruction |
 | View subscriptions and scheduled paints | Your window | Register with `window:Give`/`window:OnDestroy` |
-| Host model and registered tool closures | Your integration/client | Client unload or your explicit model shutdown |
+| Host model and registered tool closures | SDK integration scope | Scope destruction or client unload |
 | Conversation and running turn | UAI session | Completion, cooperative Stop, removal, or client shutdown |
 | Host policy hooks | Host/client | Disable on host/client shutdown |
 | Provider/configuration state | UAI client | Normal configuration persistence and explicit changes |
@@ -988,16 +1209,18 @@ library windows; close your own window when you do not own other integrations.
 ### Follow the supplied client lifetime
 
 ```lua
-local dispose = uai.env.require("runtime/dispose")
-window:Give(dispose.add(function()
+-- Create the window first: replacing its stable Id closes the previous scope.
+local viewScope = assert(uai.sdk.createScope("myhost-assistant-view"))
+viewScope.give(function()
 	window:Destroy()
-end, "my host assistant view"))
+end)
+window:OnDestroy(function() viewScope.destroy() end)
 ```
 
-The runtime disposer invokes the cleanup on unload. Closing the window first
-executes/unregisters that runtime cleanup through `Give`; repeated destruction
-is harmless. The runtime disposer release function always executes its cleanup;
-it is not the same API as UI LIB's `release(false)`.
+Client unload destroys the scope and its view. Closing the window first destroys
+only its scope; both destruction operations are idempotent. View subscriptions
+and scheduled paints still belong in `window:Give`. Neither path unloads a client
+shared with another integration.
 
 Use `uai.unload()` only when your application intends to end that client's whole
 lifetime. It stops tracked conversations/delegation, drains runtime cleanup,
@@ -1030,6 +1253,7 @@ Use these source boundaries when a supported host API is insufficient:
 | `init.lua` | Full-client bootstrap, context selection, reload, handle lifetime |
 | `src/runtime/` | Shared non-presentation services, capabilities, storage, signals |
 | `src/agent/session.lua` | Conversation lifecycle and event fan-out |
+| `src/embedding/sdk.lua`, `src/embedding/scope.lua` | Versioned host requests and integration scopes |
 | `src/agent/registry.lua`, `schema.lua`, `permissions.lua`, `hooks.lua` | Tool dispatch and extension stages |
 | `src/provider/` and `src/net/` | Provider records/adapters and transport |
 | `src/tools/` | Built-in tool definitions |
@@ -1073,6 +1297,10 @@ Focused verification for the guide and supplied examples:
 luajit test/ui_library.lua
 luajit test/ui_library_agent.lua
 luajit test/embedding_examples.lua
+luajit test/embedding_boot.lua
+luajit test/embedding_scopes.lua
+luajit test/embedding_sdk.lua
+luajit test/embedding_sessions.lua
 node tools/build_ui_lib.js --check
 luajit tools/bundle.lua --native --check
 node tools/build_site.js --check
@@ -1095,18 +1323,21 @@ verification. Never edit generated bundles or embedded guide output directly.
 
 | Symptom | Check or correction |
 | --- | --- |
-| Loading the integration hides the standard app | Same-build loaders toggle; reuse the live handle instead of rerunning the loader |
+| Loading the integration hides the standard app | Pass `reuse = true` to the loader or reuse the returned live handle |
 | A new context appears to be ignored | A reused client keeps boot context; use runtime registration for new hooks/tools |
 | The downloaded version did not replace the client | Read the returned handle and the reload notice; active/unsaved work can block replacement |
 | UI shows but no agent exists | UI LIB is independent; load the full client for sessions and tools |
 | A Frame passed as Parent does not dock correctly | Parent targets the library-owned ScreenGui, not a custom layout rectangle |
 | Tools disappear from the model's list | Inspect capabilities, read-only discovery, explicit deny rules, disabled groups, and session maps |
-| A tool cannot be registered again | Names are unique and no unregister API exists; reuse a stable model/controller |
+| A tool cannot be registered again | Names are unique; reuse the model or explicitly release the old owned registration |
 | An unexpected argument reached the handler | JSON Schema support is partial; enforce domain constraints and extra-key checks yourself |
 | A custom policy did not block a tool | `preTool` must explicitly return false; hook exceptions are logged and skipped |
 | Request hook changes do nothing | Use `payload.request` fields; replacing `payload.record` does not switch the captured provider |
 | An `onError` handler never fires | Observe `error` events or `onEvent`; automatic `onError` invocation is not implemented |
-| A request callback is treated as a success after failure | Acceptance and completion text are not success flags; inspect failure events |
+| A request callback is treated as a success after failure | Prefer `sdk.request` and inspect `result.ok`/`result.status`; legacy send callbacks contain text only |
+| A UI-free request stalls on a write | Approval needs a presenter; open UAI or provide a UI LIB approval view, and preserve permission policy |
+| A named conversation ignored new options | `sessions.open` preserves existing options; check `created` and the returned session |
+| Await timed out but the agent keeps working | Timeout stops waiting; call the request's `cancel()` to request cooperative Stop |
 | Send stays disabled after Ready | Refresh on `sessions.listChanged`/`onDone`, after the busy state is released |
 | Changing tabs stops the reply view | Keep session state outside tab visibility; own the correct session listener |
 | Replies duplicate on reopening | Replay retained IDs once; live previews replace rather than append |

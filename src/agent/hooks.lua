@@ -18,17 +18,35 @@ return function(env)
 	}
 
 	local M = { handlers = {} }
+	local sequence = 0
 
 	function M.register(kind, fn, opts)
-		if not KINDS[kind] then
-			log.warn("hooks", "unknown hook kind: " .. tostring(kind))
-			return function() end
+		local reason
+		if not KINDS[kind] then reason = "unknown hook kind: " .. tostring(kind)
+		elseif type(fn) ~= "function" then reason = "hook callback must be a function"
+		elseif opts ~= nil and type(opts) ~= "table" then reason = "hook options must be a table"
+		elseif opts and opts.order ~= nil and (type(opts.order) ~= "number" or opts.order ~= opts.order or math.abs(opts.order) == math.huge) then reason = "hook order must be a finite number"
+		elseif opts and opts.name ~= nil and type(opts.name) ~= "string" then reason = "hook name must be a string" end
+		if reason then
+			log.warn("hooks", reason)
+			return function() return false end, reason
 		end
 		M.handlers[kind] = M.handlers[kind] or {}
-		local entry = { fn = fn, alive = true, order = (opts and opts.order) or 0, name = (opts and opts.name) or "hook" }
+		sequence = sequence + 1
+		local entry = { fn = fn, alive = true, order = (opts and opts.order) or 0, name = (opts and opts.name) or "hook", sequence = sequence }
 		table.insert(M.handlers[kind], entry)
-		table.sort(M.handlers[kind], function(a, b) return a.order < b.order end)
-		return function() entry.alive = false end
+		table.sort(M.handlers[kind], function(a, b)
+			if a.order == b.order then return a.sequence < b.sequence end
+			return a.order < b.order
+		end)
+		return function()
+			if not entry.alive then return false end
+			entry.alive, entry.fn = false, nil
+			for index, candidate in ipairs(M.handlers[kind] or {}) do
+				if candidate == entry then table.remove(M.handlers[kind], index); break end
+			end
+			return true
+		end
 	end
 
 	-- Runs every handler for a kind. A handler that errors is logged and skipped:
@@ -36,7 +54,11 @@ return function(env)
 	-- any handler vetoed, which only preTool acts on.
 	function M.run(kind, payload)
 		local allowed = true
-		for _, entry in ipairs(M.handlers[kind] or {}) do
+		-- Snapshot membership before callbacks: removals take effect immediately;
+		-- new registrations start on the next run without reshaping this walk.
+		local snapshot = {}
+		for index, entry in ipairs(M.handlers[kind] or {}) do snapshot[index] = entry end
+		for _, entry in ipairs(snapshot) do
 			if entry.alive then
 				local ok, result = pcall(entry.fn, payload)
 				if not ok then

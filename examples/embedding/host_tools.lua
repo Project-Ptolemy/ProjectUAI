@@ -2,10 +2,12 @@
 -- Return an installer so the same module works in a downloaded script or ModuleScript.
 return function(uai)
 	assert(type(uai) == "table" and uai.alive, "Load a live UAI client first")
+	assert(uai.sdk and uai.sdk.features.resourceScopes, "Embedding SDK resource scopes are required")
 	local existing = uai.env.context.workbenchExample
 	if existing then return existing end
 	assert(not uai.tools.get("workbench_status") and not uai.tools.get("workbench_configure"),
 		"The workbench tool names are already registered by another integration")
+	local scope = assert(uai.sdk.createScope("embedding-workbench-model"))
 
 	local changed = uai.env.require("runtime/signal").new("workbench:changed")
 	local state = { title = "My workbench", enabled = true, batchSize = 5 }
@@ -39,8 +41,18 @@ return function(uai)
 		return true, model.read()
 	end
 	function model.subscribe(callback) return changed:connect(callback) end
+	function model.destroy() return scope.destroy() end
+	scope.give(function()
+		alive = false
+		changed:clear()
+		if uai.env.context.workbenchExample == model then uai.env.context.workbenchExample = nil end
+	end)
+	local function register(definition)
+		local ok, why = scope.registerTool(definition)
+		if not ok then scope.destroy(); error(tostring(why), 2) end
+	end
 
-	assert(uai.tools.register({
+	register({
 		name = "workbench_status", group = "workbench", risk = "read",
 		description = "Read this host script's example workbench title, enabled state and batch size. This is local example state, not a game inventory.",
 		parameters = { type = "object", properties = {}, required = {} },
@@ -50,8 +62,8 @@ return function(uai)
 			return { text = string.format("%s: %s; batch size %d", value.title,
 				value.enabled and "enabled" or "disabled", value.batchSize), data = value }
 		end,
-	}))
-	assert(uai.tools.register({
+	})
+	register({
 		name = "workbench_configure", group = "workbench", risk = "write",
 		description = "Update the host's example workbench settings. Only changes local example state. Read workbench_status to inspect the current values.",
 		parameters = {
@@ -68,14 +80,9 @@ return function(uai)
 			if not ok then return { ok = false, text = value } end
 			return { text = "Workbench settings updated.", data = value }
 		end,
-	}))
+	})
 
 	-- This is our own namespace in the context table, not a built-in UAI option.
 	uai.env.context.workbenchExample = model
-	uai.env.require("runtime/dispose").add(function()
-		alive = false
-		changed:clear()
-		if uai.env.context.workbenchExample == model then uai.env.context.workbenchExample = nil end
-	end, "embedding workbench model")
 	return model
 end

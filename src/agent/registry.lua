@@ -19,9 +19,10 @@ return function(env)
 		order = {},
 		loaded = false,
 	}
+	local registrations, sequence = {}, 0
 
 	function M.register(tool)
-		if type(tool) ~= "table" or util.trim(tool.name) == "" or type(tool.run) ~= "function" then
+		if type(tool) ~= "table" or type(tool.name) ~= "string" or util.trim(tool.name) == "" or type(tool.run) ~= "function" then
 			log.warn("tools", "ignored a malformed tool definition")
 			return false
 		end
@@ -33,7 +34,28 @@ return function(env)
 		tool.group = tool.group or "misc"
 		tool.parameters = tool.parameters or { type = "object", properties = util.emptyObject(), required = {} }
 		M.tools[tool.name] = tool
+		sequence = sequence + 1
+		registrations[tool.name] = sequence
 		M.order[#M.order + 1] = tool.name
+		return true
+	end
+
+	-- The optional identity protects an owner's cleanup from removing a later
+	-- replacement. Revocation also settles prompts for this exact definition.
+	function M.unregister(name, expectedDefinition)
+		if type(name) ~= "string" then return false end
+		M.load()
+		local tool = M.tools[name]
+		if not tool or (expectedDefinition ~= nil and tool ~= expectedDefinition) then return false end
+		M.tools[name], registrations[name] = nil, nil
+		for index, candidate in ipairs(M.order) do
+			if candidate == name then table.remove(M.order, index); break end
+		end
+		local pending = {}
+		for _, entry in pairs(permissions.pending) do
+			if entry.tool == tool then pending[#pending + 1] = entry end
+		end
+		for _, entry in ipairs(pending) do entry.resolve(false, false) end
 		return true
 	end
 
@@ -236,6 +258,7 @@ return function(env)
 		local result = { id = call.id, name = name, ok = false, text = "", ms = 0 }
 
 		local tool = M.tools[name]
+		local registration = registrations[name]
 		if not tool then
 			local names = util.slice(M.order, 1, 12)
 			result.text = string.format("No tool named '%s'. Available tools include: %s.",
@@ -252,7 +275,10 @@ return function(env)
 		local function blocked()
 			local owner = ctx and ctx.session
 			local reason
-			if ctx and ctx.aborted and ctx.aborted() then
+			if M.tools[name] ~= tool or registrations[name] ~= registration then
+				result.error = "tool unregistered"
+				result.text = name .. " was unregistered before it ran. Do not retry this call."
+			elseif ctx and ctx.aborted and ctx.aborted() then
 				result.error = "aborted"
 				result.text = "Stopped before " .. name .. " ran."
 			elseif not M.groupEnabled(tool.group) then
@@ -319,9 +345,11 @@ return function(env)
 			end
 			prepared = value
 		end
+		if blocked() then return result end
 
 		local payload = { tool = tool, args = coerced, ctx = ctx, reason = nil }
 		local allowedByHooks = hooks.run("preTool", payload)
+		if blocked() then return result end
 		if not allowedByHooks then
 			result.text = string.format("%s was blocked by a host hook%s.", name,
 				payload.reason and (": " .. tostring(payload.reason)) or "")
@@ -354,6 +382,7 @@ return function(env)
 			timeout = okTimeout and tonumber(value) or nil
 		end
 		timeout = tonumber(timeout) or config.get("agent.toolTimeout", 25)
+		if blocked() then return result end
 
 		-- The call's id travels with the context so a tool that emits events of its own
 		-- can address the row it belongs to. dispatch_agent needs it: its subagent's
@@ -366,7 +395,8 @@ return function(env)
 		scoped.aborted = function()
 			local owner = ctx and ctx.session
 			local outside = owner and ((owner.toolFilter and not owner.toolFilter[name]) or (owner.toolGroups and not owner.toolGroups[tool.group]) or (owner.toolExclude and owner.toolExclude[name]))
-			return expired or (ctx and ctx.aborted and ctx.aborted()) or not M.groupEnabled(tool.group)
+			return expired or M.tools[name] ~= tool or registrations[name] ~= registration
+				or (ctx and ctx.aborted and ctx.aborted()) or not M.groupEnabled(tool.group)
 				or outside or permissions.check(tool) == "deny" or false
 		end
 		if ctx and ctx.emit then
@@ -383,6 +413,7 @@ return function(env)
 			scoped.progress = function(text) scoped.emit("tool:progress", { text = tostring(text) }) end
 		end
 		local finished, ok, value = clock.timeout(timeout, function()
+			if scoped.aborted() then return { ok = false, text = "Stopped before " .. name .. " ran." } end
 			return tool.run(coerced, scoped, prepared)
 		end)
 		settled = true

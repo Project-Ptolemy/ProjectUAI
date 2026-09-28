@@ -50,10 +50,62 @@ end
 | `env.caps.fn` | resolved executor functions (`request`, `writefile`, `loadstring`, ...) or nil |
 | `env.context` | table the host passed in; `{}` when standalone |
 | `env.info` | `{ name, version, folder, uaVersion }` |
-| `env.root` | the `ScreenGui` every surface parents into |
+| `env.root` | the mounted app's `ScreenGui`; absent during UI-free runtime use |
 
 Cycles are a load error, not a hang. `runtime/*` must not require anything above
 it; `ui/*` must not require `agent/*` except through `agent/session`.
+
+### Embedding SDK
+
+The full client accepts `context.ui = false` to skip application construction.
+Runtime boot still owns capabilities, configuration, providers, sessions, tools,
+hooks, and cleanup. Explicit `show`, `toggle`, or `openSession(id)` can mount the
+standard app later; `hide` does not mount it. `handle.uiMounted` reports mounting,
+not visibility. `context.reuse = true` returns a live copy of the same build
+without toggling or replacing its boot context. Changed-build replacement keeps
+the existing guarded save/reload contract.
+
+`handle.sdk.version` independently identifies the embedding API, beginning at
+`1.0.0`. `features` advertises `uiFreeBoot`, `resourceScopes`, `requests`, and
+`sessionLookup`. SDK APIs use dot calls. Public `hooks`, `permissions`, and
+`openSession` remove the need to import presentation or lifecycle internals for
+ordinary host integrations. `env` and `app` remain implementation escape hatches,
+not a promise that all their internals are covered by the SDK version.
+
+`sdk.createScope(id)` owns cleanup functions, UAI/Roblox signal subscriptions,
+hooks, and tool registrations. Duplicate live scope IDs are rejected. Scope or
+client destruction releases resources once, contains cleanup errors, and removes
+only the tool definition it registered. Tool removal denies its pending approval
+and invalidates cooperative running calls; it does not undo applied effects or
+kill a native call. Scope destruction does not delete conversations or unload a
+shared client.
+
+`sdk.request(session, text, options?)` returns a request or `nil, reason` on
+admission rejection. Options provide `onEvent`, `onComplete`, and the established
+`files`/`images` references. Accepted requests settle exactly once as `succeeded`,
+`failed`, or `cancelled`, with `{ ok, status, text, error?, sessionId }`. Host
+callbacks are protected. Ordinary settlement follows busy release; removal and
+unload settle cancellation even when legacy send callbacks cannot run. Cancelling
+targets only that request and stays cooperative. `await(timeoutSeconds?)` returns
+the result or `nil, reason`; timeout stops waiting, not the request.
+
+`sessions.get(id)` looks up a registered conversation. `open(id, options?)`
+returns `session, created` and selects only with `activate = true`; existing
+conversation options otherwise remain unchanged. `newThread` keeps default
+activation and accepts `activate = false` and `ephemeral = true`. IDs are bounded
+to 120 alphanumeric/underscore/hyphen characters; duplicates cannot replace live
+entries. UI-free boot leaves permission policy unchanged, so hosts must provide
+an approval presenter or explicitly open the app for work requiring approval.
+Creation validates option types and copies string-to-boolean tool maps. Ordinary
+session persistence stores a versioned policy containing tool filters/groups/
+exclusions, turn/time budgets, unlimited mode, and streaming preference. Valid
+policies survive restore. Invalid or future policy versions skip the conversation
+without deleting its file; older saves without policy restore legacy defaults.
+Saved IDs remain reserved even when their conversations are not registered;
+`open` does not load arbitrary archived history or replace a skipped saved file.
+Hosts must inspect existing conversation policy before reuse because `open`
+does not replace it with newly supplied options.
+See [docs/EMBEDDING.md](docs/EMBEDDING.md) for the public contract and examples.
 
 ### Standalone script UI library
 

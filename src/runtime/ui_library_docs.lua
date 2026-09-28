@@ -72,8 +72,11 @@ and loaded with `require` from a LocalScript.
 
 Loading UI LIB returns the API without mounting a window. `CreateWindow` mounts
 one. It does not depend on `getgenv().UAI`, configure providers, change tool
-permissions, or create agent sessions. The full client always mounts its standard
-application; there is no client-loader `Headless` or alternate `Parent` option.
+permissions, or create agent sessions. The full client mounts its standard
+application by default. Pass `{ ui = false, reuse = true }` to its loader for a
+runtime without a mounted app, then use `uai.sdk` for owned integrations and
+request handles. `uai.show(...)` mounts the standard app on demand. There is no
+alternate client `Parent` option. See [the embedding SDK guide](EMBEDDING.md).
 
 ### Keep downloads at the entry point
 
@@ -658,9 +661,9 @@ one bounded Paragraph.
 Register a client-lifetime cleanup that closes the dependent view:
 
 ```lua
-window:Give(uai.env.require("runtime/dispose").add(function()
-	window:Destroy()
-end, "my assistant panel"))
+local scope = assert(uai.sdk.createScope("my-assistant-view"))
+scope.give(function() window:Destroy() end)
+window:OnDestroy(function() scope.destroy() end)
 ```
 
 Closing the panel then unregisters that runtime cleanup. It does not call
@@ -668,13 +671,13 @@ Closing the panel then unregisters that runtime cleanup. It does not call
 behind explicit application commands if the host owns them.
 
 Custom agent tools should call a stable host model, not a control or a captured
-window. `uai.tools.register(definition)` refuses duplicate names and offers no
-public unregister method. Install tools once per live client. Both those tools
+window. `scope.registerTool(definition)` refuses duplicate names and unregisters
+owned tools when the scope closes. Both those tools
 and manual UI actions can call the same validated domain operations.
 
 Keep access to the standard app for provider setup and approvals:
-`uai.show("providers")` opens setup; `uai.app.openSession(session.id)` followed by
-`uai.show("chat")` opens the conversation. A custom window does not grant new
+`uai.show("providers")` opens setup; `uai.openSession(session.id)` opens the
+conversation. A custom window does not grant new
 capabilities or bypass existing permission rules.
 ]=],
 			["recipes"] = [=[

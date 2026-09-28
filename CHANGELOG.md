@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- Add embedding SDK 1.0.0 with UI-free boot (`ui = false`), reuse without toggling
+  (`reuse = true`), public hooks/permissions, and explicit native conversation
+  navigation. Existing standalone loading still mounts the application.
+- Add owned integration scopes for cleanup, UAI/Roblox subscriptions, hooks, and
+  custom tools. Unregistering an owned tool releases its pending approvals and
+  invalidates cooperative calls without removing a later replacement.
+- Add structured requests with exactly one success, failure, or cancellation
+  outcome, protected progress/completion callbacks, cooperative Stop, and waiting
+  with optional timeout. Session removal and client unload settle pending requests.
+- Add named conversation lookup/open without implicit selection, duplicate-ID
+  rejection, and creation options for activation and ephemeral history.
+- Validate session options, copy tool filter maps, and preserve conversation tool
+  policy and budgets across persistence. Skip unsupported or invalid saved policy
+  while retaining its file; older histories keep their legacy defaults.
+- Expand the [embedding guide](docs/EMBEDDING.md), add a
+  [UI-free SDK example](examples/embedding/sdk.lua), and migrate workbench lifetime
+  handling to owned scopes. Add focused offline SDK and example coverage.
+
 ## 2.0.5 — September 27, 2026
 
 Responsive long chats, real image input, and UI LIB v1.2.0.

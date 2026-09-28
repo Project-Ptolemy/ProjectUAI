@@ -30,17 +30,20 @@ if globalTable and type(globalTable.UAI) == "table" then
 	local existing = globalTable.UAI
 	if existing.alive or existing.reloadBlocked then
 		local function notice(message)
-			local shown = pcall(function()
-				existing.env.require("ui/overlay").toast(message, "warn", 7)
+			local shown, toast = pcall(function()
+				local overlay = existing.env.loadedModules and existing.env.loadedModules["ui/overlay"]
+				if overlay and existing.app and existing.app.screen then return overlay.toast(message, "warn", 7) end
 			end)
-			if not shown or not existing.alive then warn("[uai] " .. message) end
+			if not shown or not toast or not existing.alive then warn("[uai] " .. message) end
 		end
 		if existing.reloadBlocked then
 			notice("The previous client did not finish unloading. Rejoin before loading the update.")
 			return existing
 		end
 		if existing.build == BUILD then
-			if type(existing.toggle) == "function" then pcall(existing.toggle) end
+			local options = type(hostContext) == "table" and hostContext
+				or (type(globalTable.UAI_CONTEXT) == "table" and globalTable.UAI_CONTEXT) or {}
+			if options.reuse ~= true and type(existing.toggle) == "function" then pcall(existing.toggle) end
 			return existing
 		end
 		existing.pendingBuild = BUILD
@@ -74,7 +77,7 @@ if globalTable and type(globalTable.UAI) == "table" then
 					return "Update ready. Save or remove your isolated conversations before running the loader again."
 				end
 			end
-			local composer = existing.app.chatPanel and existing.app.chatPanel.composer
+			local composer = existing.app and existing.app.chatPanel and existing.app.chatPanel.composer
 			local chatLoops = existing.env.loadedModules and existing.env.loadedModules["runtime/chatloops"]
 			if chatLoops and #chatLoops.running() > 0 then
 				return "Update ready. Stop your chat loops before running the loader again."
@@ -116,7 +119,7 @@ if globalTable and type(globalTable.UAI) == "table" then
 		end
 		local unloaded, result = pcall(function() return existing.destroy() end)
 		local checked, detached = pcall(function()
-			return not existing.app.screen or existing.app.screen.Parent == nil
+			return not existing.app or not existing.app.screen or existing.app.screen.Parent == nil
 		end)
 		if not unloaded or result == false or existing.alive or existing.cleanupFailed or not checked or not detached then
 			existing.reloadBlocked = true
@@ -202,6 +205,7 @@ end
 env.loadedModules = loaded
 
 local function start()
+	local mountAtBoot = env.context.ui ~= false
 	-- The boot indicator first, before a single other module loads.
 	--
 	-- It is dependency free on purpose, so it can paint within a frame of execution
@@ -211,7 +215,7 @@ local function start()
 	-- that cannot draw it must still boot: a progress bar is not worth failing a
 	-- start over.
 	local boot
-	pcall(function() boot = env.require("ui/boot").show() end)
+	if mountAtBoot then pcall(function() boot = env.require("ui/boot").show() end) end
 
 	-- The loader reports real work finishing -- the only honest progress there is
 	-- before the interface is up -- and yields on a budget while it does, so the
@@ -236,9 +240,11 @@ local function start()
 	-- freeze. app.mount calls this at those construction boundaries, so the indicator
 	-- yields across them and keeps animating. Set only for the first mount and cleared
 	-- with the loader below, so a later rebuild never pays for it.
-	env.onMountPhase = function(text)
-		if boot then pcall(boot.phase, text) end
-		task.wait()
+	if mountAtBoot then
+		env.onMountPhase = function(text)
+			if boot then pcall(boot.phase, text) end
+			task.wait()
+		end
 	end
 
 	-- Force the first paint before the heavy loading begins, so the indicator is on
@@ -308,9 +314,36 @@ local function start()
 	-- the home card reads it as soon as it builds.
 	env.require("agent/stats").init()
 
-	local app = env.require("ui/app")
-	app.mount()
-	app.show(config.get("ui.panel", "chat"))
+	local app, handle
+	local mounting, mountFailure = false, nil
+	local function mountApp()
+		if handle and not handle.alive then return nil, "client is unloaded" end
+		if mounting then return nil, "interface is already mounting" end
+		if mountFailure then return nil, mountFailure end
+		mounting = true
+		local ok, why = pcall(function()
+			app = env.require("ui/app")
+			if handle then handle.app = app end
+			app.mount()
+			if not app.screen or not app.screen.Parent then error("nowhere to parent the interface", 0) end
+		end)
+		mounting = false
+		if not ok then
+			mountFailure = tostring(why)
+			log.error("app", "could not mount interface", mountFailure)
+			return nil, mountFailure
+		end
+		if handle then handle.uiMounted = true end
+		return app
+	end
+	if mountAtBoot then
+		local mounted, why = mountApp()
+		if not mounted then error(why, 0) end
+		app.show(config.get("ui.panel", "chat"))
+	else
+		-- A UI-free client still has a selected conversation for the bridge and ask().
+		sessions.current()
+	end
 
 	-- The interface is up, so the indicator has nothing left to report. The count is
 	-- what it closes on: the rest of the artifact is the panels nobody has opened yet.
@@ -333,9 +366,9 @@ local function start()
 	-- in scope inside its own initialiser, so every closure below that reaches for
 	-- `handle` would have captured a nil global instead. `destroy` did exactly that,
 	-- which is why unloading raised rather than unloading.
-	local handle
 	handle = {
 		alive = true,
+		uiMounted = app ~= nil and app.screen ~= nil and app.screen.Parent ~= nil,
 		version = VERSION,
 		build = BUILD,
 		env = env,
@@ -345,12 +378,36 @@ local function start()
 		log = log,
 		caps = caps,
 		bridge = bridge,
+		hooks = env.require("agent/hooks"),
+		permissions = env.require("agent/permissions"),
 		providers = env.require("provider/registry"),
 		tools = env.require("agent/registry"),
-		toggle = function() app.toggle() end,
-		show = function(panel) app.show(panel) end,
-		hide = function() app.hide() end,
+		toggle = function()
+			local mounted, why = mountApp()
+			if not mounted then return false, why end
+			mounted.toggle()
+			return true
+		end,
+		show = function(panel)
+			local mounted, why = mountApp()
+			if not mounted then return false, why end
+			mounted.show(panel)
+			return true
+		end,
+		hide = function()
+			if not handle.alive then return false, "client is unloaded" end
+			if app then app.hide() end
+			return true
+		end,
+		openSession = function(id)
+			if not handle.alive then return false, "client is unloaded" end
+			if id ~= nil and not sessions.threads[id] then return false, "conversation no longer exists" end
+			local mounted, why = mountApp()
+			if not mounted then return false, why end
+			return mounted.openSession(id)
+		end,
 		ask = function(text)
+			if not handle.alive then return false, "client is unloaded" end
 			local session = sessions.current()
 			return session.send(text)
 		end,
@@ -375,10 +432,11 @@ local function start()
 			-- dispatched it by design, and its budget is measured in minutes.
 			pcall(function() env.require("agent/subagent").stopAll() end)
 			local ran, failed = env.require("runtime/dispose").drain()
-			local screenOk = pcall(function() app.screen:Destroy() end)
+			local screenOk = pcall(function() if app and app.screen then app.screen:Destroy() end end)
+			handle.uiMounted = false
 			handle.cleanupFailed = not screenOk or #(failed or {}) > 0
 			pcall(function() config.saveNow() end)
-			if globalTable then globalTable.UAI = nil end
+			if globalTable and globalTable.UAI == handle then globalTable.UAI = nil end
 			log.info("boot", string.format("unloaded -- %d cleanups run", ran or 0))
 			for _, problem in ipairs(failed or {}) do
 				log.warn("boot", "cleanup failed", problem)
@@ -387,6 +445,7 @@ local function start()
 		end,
 		unload = function() return handle.destroy() end,
 	}
+	handle.sdk = env.require("embedding/sdk").attach(handle)
 
 	if globalTable then globalTable.UAI = handle end
 	log.info("boot", "ready")
@@ -404,7 +463,13 @@ if not ok then
 	-- never having drawn one. Both the flag and the notice are cleared here, so a
 	-- half-loaded client leaves nothing of itself behind.
 	env.onModuleLoaded = nil
-	pcall(function() env.require("ui/boot").fail(result) end)
+	env.onMountPhase = nil
+	local disposer = loaded["runtime/dispose"]
+	if disposer then pcall(disposer.drain) end
+	local app = loaded["ui/app"]
+	pcall(function() if app and app.screen then app.screen:Destroy() end end)
+	local boot = loaded["ui/boot"]
+	if boot then pcall(boot.fail, result) end
 	return nil
 end
 return result
