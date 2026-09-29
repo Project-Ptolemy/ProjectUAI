@@ -275,7 +275,13 @@ return function(env)
 				return send(url, method, headers, spec.body, math.max(0.001, (deadline - clock.ms()) / 1000))
 			end)
 			workers = math.max(0, workers - 1)
-			if pending.accepting then pending.res, pending.err, pending.done = ok and response or nil, ok and problem or "Native HTTP transport failed", true end
+			if pending.accepting then
+				-- A successful call normally returns nil for its error. An and/or
+				-- fallback would turn that nil into a failure beside every HTTP 200.
+				if ok then pending.res, pending.err = response, problem
+				else pending.err = "Native HTTP transport failed" end
+				pending.done = true
+			end
 		end)
 		while not pending.done and not aborted(spec) and clock.ms() < deadline do clock.wait(0.05) end
 		pending.accepting = false

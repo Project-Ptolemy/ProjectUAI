@@ -30,6 +30,24 @@ Chromium previews are approximate. Neither proves IME, native selection/touch/
 gamepad, executor forwarding, server effects or client performance. Record native
 outcomes with actual capabilities and host details, not just an executor brand.
 
+## Conversation reading
+
+For the Roblox chat revamp, also exercise a conversation with at least 100 turns
+and long Markdown replies. Scroll up and down over the same few screens, reverse
+direction quickly, and drag the scrollbar to distant history. Check that visible
+text takes priority and repeated backtracking does not repeatedly reconstruct it.
+While reading, receive new replies, resize the window, and rotate a touch device;
+the visible paragraph should stay in place. Even a small upward scroll should
+release follow, and Latest should resume it explicitly.
+
+Open an Activity summary during a parallel tool batch, then inspect one tool's
+inputs and output. Finish successful and failed calls while that section is open
+and closed; neither outcome should change the chosen disclosure. Inspect multiple
+delegated tasks, including their reports and folded tool activity. Navigate away,
+return, minimize, restore, and switch conversations; completed outcomes must stay
+in their original cards without duplicate reports. Confirm wheel, touch and
+gamepad focus behavior in Roblox; offline fixtures do not measure native frames.
+
 ## Editor, history and actions
 
 1. Open Code; create, type, rename, switch, close and reopen scripts from Library.

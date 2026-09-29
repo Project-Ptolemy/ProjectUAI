@@ -589,9 +589,21 @@ replay queue in order; current preview/progress is reconciled afterward. Generat
 cancel work on switch, clear and destruction. Completed replay buffers and expired
 GUI rows are released; dialogue uses measured spacers and mounts only nearby
 message/Markdown chunks in batches of up to four, yielding between batches.
-Hidden/minimized views release their renderers and reconcile only the events that
-arrived while released on restore, keeping measured spacers and the previous
-reading anchor. Retained nested agents survive removal of a dispatch row.
+Visible chunks take priority over prefetch. A bounded warm set keeps nearby
+renderers for backtracking; scroll-only passes reuse the sibling geometry index.
+An upward scroll releases follow immediately, and reflow preserves the visible
+Markdown chunk inside a long reply when that chunk remains mounted. New replies
+below the reader appear in the Latest control without taking their position.
+Tool activity starts as a compact summary with running, completed and failed
+counts. Opening details is a reading action: the header stays anchored and results
+never change the reader's chosen disclosure state. Tool inputs and outputs render
+on demand. Delegated tasks keep their goal, status and report separate from their
+folded activity, with stable row identities for retention and incremental replay.
+Hidden/minimized views suspend drawing and retain their bounded renderer cache,
+live preview, expanded sections and reading anchor. Returning from native tabs or
+minimize queues only unseen events; unchanged history takes no replay slices and
+does not rebuild its text. Session switches, clear and destruction release the
+appropriate content. Retained nested agents survive removal of a dispatch row.
 History notices disclose retention/recovery. Reading position and follow preference
 are session-local, with a measured message anchor when available. **Refresh
 conversation** redraws the view without changing the session or composer draft.

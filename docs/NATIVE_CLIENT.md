@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.0.5**, September 27, 2026.
+Current native feature contract for **2.0.5**, September 29, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -23,13 +23,39 @@ The agent client remains its own application.
 ## Chat viewport
 
 Conversation history stays in the session while the view uses measured spacers
-for offscreen messages and mounts nearby Markdown chunks. Long lists split into
-small drawing batches; code and tables retain their existing bounded previews.
+for offscreen messages and mounts nearby Markdown chunks. Recently read chunks
+stay warm within a bounded nearby cache, so short backtracking reuses the same
+renderers. Visible text is built before prefetch, and ordinary scrolling reuses
+the layout index. Long lists split into small drawing batches; code and tables
+retain their existing bounded previews.
 At most four chunks are built in a scheduled slice, with an approximately 6 ms
 cooperative budget between builds. This is not a hard limit on a single engine
-layout or Markdown operation. Minimize and navigation release the view, timers,
-and pending replay; restoring replays the retained events at the saved reading
-anchor or latest output. Retention limits and the composer draft are unchanged.
+layout or Markdown operation. Small upward scrolls immediately stop following.
+Reflow anchors the visible chunk within a long reply; the Latest control reports
+new replies received below the reader. Minimize and native tab navigation suspend
+drawing while keeping the bounded text cache, live preview and expanded sections
+ready. Returning immediately reveals the same renderers and queues only unseen
+events; unchanged history takes no replay slices. Clear, conversation switches and
+destruction still release old content. Retention limits and the composer draft
+are unchanged.
+
+Tool work appears in compact Activity summaries with counts and status. Open a
+summary to inspect its calls, then open a call for its inputs and output. Hidden
+details are built on demand. Opening an activity keeps its header in view, and
+new results leave chosen sections open or closed. Delegated tasks have a distinct
+goal, status and report with a separate folded activity feed. Completed outcomes
+retain their original rows when returning from another panel.
+
+The desktop sidebar rounds its own outer left corners to match the window;
+its inner divider stays straight. The window remains a plain Frame.
+
+## Request and application diagnostics
+
+Successful HTTP responses keep an empty transport-error field. HTTP refusals and
+actual transport failures remain distinct. Select a request or application log
+entry to inspect its recorded details in a popup and copy the redacted evidence.
+Request details include status, timing, transport and available server/trace
+metadata. Opening a log never repeats its request.
 
 The browser batches snapshot layout, preserves reading position, and defers
 live preview painting while its document is hidden. Native

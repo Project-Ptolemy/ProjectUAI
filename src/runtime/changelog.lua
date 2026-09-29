@@ -20,11 +20,20 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.0.5",
-			revision = "2026-09-27",
-			date = "September 27, 2026",
-			title = "Lighter chats, images, and UI LIB",
-			highlights = "Chat draws nearby text in chunks, bridge attachments reach vision models, and UI LIB adds a player profile, text controls, and smoother motion.",
+			revision = "2026-09-29",
+			date = "September 29, 2026",
+			title = "Smoother reading and organized activity",
+			highlights = "Roblox chat keeps nearby text ready for backtracking and organizes tools and delegated tasks into compact summaries with details on demand.",
 			sections = {
+				{ category = "improved", label = "Roblox conversations", items = {
+					"Nearby message renderers stay warm for backtracking. Visible chunks take priority, and long replies preserve the reading position during reflow.",
+					"Small upward scrolls stop following immediately. New replies appear in the Latest control while you read earlier messages.",
+					"Minimize and native tabs keep the visible text, live preview and expanded activity ready. Returning processes only new events instead of rereading and redrawing the whole conversation.",
+					"Activity summaries show running, completed and failed work. Inputs and results render when opened, and completion leaves your chosen sections open or closed.",
+					"Delegated tasks separate their goal, status and report from their tool activity. Returning to the conversation keeps completed work in its original card.",
+					"The sidebar follows the window's rounded left corners while keeping its inner divider straight.",
+					"Successful requests no longer show an invented transport failure. Select a request or application log to inspect and copy its recorded diagnostics.",
+				} },
 				{ category = "fixed", label = "Chat and images", items = {
 					"Long chats mount nearby messages and Markdown chunks. Minimize suspends rendering; restoring keeps measured rows and preserves the draft, reading anchor, and retained updates.",
 					"Browser snapshots avoid repeated layout and preserve reading position. Hidden documents defer live preview paints.",

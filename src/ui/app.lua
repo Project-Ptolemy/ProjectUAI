@@ -805,6 +805,16 @@ return function(env)
 				size = UDim2.new(0, sidebarWidth, 1, 0),
 				position = UDim2.new(0, 0, 0, 0),
 				bg = theme.color.sidebar,
+				radius = theme.radius.xl,
+			})
+			-- UICorner rounds a Frame's own fill, not its descendants. The full-height
+			-- sidebar therefore needs the shell's radius too. Fill only its internal
+			-- right edge so the divider stays square and the outer left corners stay clear.
+			P.frame(sideHolder, {
+				name = "SidebarEdgeFill",
+				size = UDim2.new(0, theme.radius.xl, 1, 0),
+				position = UDim2.new(1, -theme.radius.xl, 0, 0),
+				bg = theme.color.sidebar,
 			})
 			M.sidebar = sidebarModule.new(sideHolder, M)
 

@@ -1637,10 +1637,15 @@ scenario("a subagent reports back without filling the parent context", function(
 	contains("the card is labelled with the task", start and start.label or "", "count the players")
 	check("and addressed to the call that started it", start and start.call, "s1")
 
-	truthy("a card was rendered for it", harness.byName("Subagent") ~= nil)
+	local child = harness.byName("Subagent")
+	truthy("a card was rendered for it", child ~= nil)
 	truthy("nested inside the dispatch row rather than floating beside it",
 		harness.byName("Subagent", harness.byName("Tool")) ~= nil)
-	local shown = harness.textOf()
+	harness.click(harness.byName("RunHeader"))
+	check("child execution stays folded beside its report", harness.byName("Feed", child).Visible, false)
+	contains("the report is readable before opening child execution", harness.byName("ReportText", child).Text, "one player")
+	harness.click(harness.byName("SubagentHeader", child))
+	local shown = harness.textOf(child)
 	contains("showing which tool the child ran", shown, "players_list")
 	contains("and the task it was given", shown, "count the players")
 	check("no thread errors", #harness.errors(), 0,
@@ -4285,10 +4290,9 @@ end)
 
 -- 36. Code in the transcript ------------------------------------------------
 
--- What the model wrote is the most useful thing in a transcript of an agent that
--- writes and runs code, and it was reachable only by opening a pane that defaulted
--- shut. What showed instead was ninety characters of the JSON envelope.
-scenario("a tool call shows the code it was given", function()
+-- Exact source stays available without making every hidden activity row construct
+-- and measure a code listing during replay.
+scenario("a tool call builds its exact code only when inspected", function()
 	local step = 0
 	local source = "local part = Instance.new(\"Part\")\npart.Anchored = true\nreturn part.Name"
 	local harness, handle = bootWith({
@@ -4308,10 +4312,13 @@ scenario("a tool call shows the code it was given", function()
 
 	local row = harness.byName("Tool")
 	truthy("the tool row is there", row ~= nil)
+	check("the unopened row has no source renderer", harness.byName("Source", row), nil)
+	harness.click(harness.byName("RunHeader"))
+	harness.click(harness.byName("ToolHeader", row))
 	local shown = harness.textOf(row)
 	local code = harness.byName("Source", row)
 	local rendered = renderedText(code and code.Text)
-	contains("the code is on screen without opening anything", rendered, "part.Anchored = true")
+	contains("opening details renders exact code", rendered, "part.Anchored = true")
 	contains("and the last line too", rendered, "return part.Name")
 	check("highlighting keeps every source character", rendered, source)
 	contains("under its language", shown, "lua")
@@ -4764,7 +4771,7 @@ scenario("a turn's tool calls arrive as one foldable block", function()
 	contains("counting the run", harness.textOf(header), "5 tools")
 
 	local calls = harness.byName("Calls", runs[1])
-	check("a finished run of this size folds itself away", calls.Visible, false)
+	check("activity stays compact until explicitly opened", calls.Visible, false)
 	harness.click(header)
 	check("and the header opens it again", calls.Visible, true)
 
@@ -4773,9 +4780,13 @@ scenario("a turn's tool calls arrive as one foldable block", function()
 	failed.opened()
 	failed.closed(true)
 	failed.closed(false)
-	check("a failed run keeps its details visible", failed.rows.Visible, true)
+	check("failure does not move an unopened transcript", failed.rows.Visible, false)
+	contains("the collapsed header exposes failure", harness.textOf(failed.root), "1 failed")
 	harness.click(harness.byName("RunHeader", failed.root))
-	check("failed details can still be folded deliberately", failed.rows.Visible, false)
+	check("failed details can be opened deliberately", failed.rows.Visible, true)
+	failed.opened()
+	failed.closed(true)
+	check("completion never folds details being inspected", failed.rows.Visible, true)
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
@@ -6578,8 +6589,8 @@ scenario("stopping a turn closes its question", function()
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
 
--- An ask's answer is the user's own words, and the finished row says so at a glance
--- rather than styling them as tool output.
+-- An ask's answer is the user's own words. Opening activity shows that attribution
+-- in its compact row without needing to expand the raw tool details.
 scenario("an answered question reads as answered", function()
 	local step = 0
 	local harness, handle = bootWith({
@@ -6604,7 +6615,10 @@ scenario("an answered question reads as answered", function()
 	harness.click(harness.byName("AskOption1"))
 	harness.settle(8)
 
-	local shown = harness.textOf()
+	local row = harness.byName("Tool")
+	harness.click(harness.byName("RunHeader"))
+	check("the answer needs no raw tool details", harness.byName("Detail", row).Visible, false)
+	local shown = harness.byName("ToolSummary", row).Text
 	contains("the row says who answered", shown, "You answered")
 	contains("with the answer itself", shown, "The skybase")
 

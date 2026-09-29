@@ -44,10 +44,13 @@ return function(env)
 			rows = {},
 			runs = {},
 			generation = 0,
+			lastRenderedId = 0,
 		}
 		local destroyed, adjusting, layoutQueued = false, false, false
 		local visible = props.visible ~= false
-		local reading
+		local reading, chunkReading, disclosureReading
+		local previousY = 0
+		local unread = 0
 		local viewport = env.require("ui/chat/viewport").new(scroll, { defer = function() return view.replaying end })
 		props = util.copy(props); props.viewport = viewport
 		view.viewport = viewport
@@ -100,8 +103,10 @@ return function(env)
 
 		local function remember()
 			local state = { pinned = view.pinned, y = scroll.instance.CanvasPosition.Y }
+			disclosureReading = nil
+			chunkReading = not view.pinned and viewport.anchor() or nil
 			if not view.pinned then
-				local best, distance, firstTop, varied
+				local best, bestRoot, distance, firstTop, varied
 				for id, handle in pairs(view.rows) do
 					local root = handle.root
 					local top = root.AbsolutePosition.Y - scroll.instance.AbsolutePosition.Y
@@ -113,8 +118,10 @@ return function(env)
 					if visible and ancestor == scroll.instance and root.AbsoluteSize.Y > 0 then
 						if firstTop ~= nil and firstTop ~= top then varied = true end
 						firstTop = firstTop or top
-						if top + root.AbsoluteSize.Y > 0 and (not distance or math.abs(top) < distance) then
-							best, distance = { id = id, offset = top }, math.abs(top)
+						local gap = math.max(0, top)
+						if top + root.AbsoluteSize.Y > 0 and (not distance or gap < distance
+							or (gap == distance and bestRoot and root:IsDescendantOf(bestRoot))) then
+							best, bestRoot, distance = { id = id, offset = top }, root, gap
 						end
 					end
 				end
@@ -129,9 +136,23 @@ return function(env)
 		local function move(y)
 			local previous = adjusting
 			adjusting = true
-			scroll.instance.CanvasPosition = Vector2.new(0, math.max(0, y))
+			y = math.max(0, y)
+			if math.abs(scroll.instance.CanvasPosition.Y - y) >= 0.5 then
+				scroll.instance.CanvasPosition = Vector2.new(0, y)
+			end
+			previousY = scroll.instance.CanvasPosition.Y
 			adjusting = previous
 		end
+
+		-- Opening details is an explicit decision to read here. Keep the clicked
+		-- header in place even when the conversation had been following live output.
+		local activityOptions = { beforeToggle = function(header)
+			view.pinned = false
+			remember()
+			chunkReading = nil
+			disclosureReading = { root = header, offset = header.AbsolutePosition.Y - scroll.instance.AbsolutePosition.Y }
+			view.repin()
+		end }
 
 		local latest = P.button(parent, {
 			name = "Latest",
@@ -146,12 +167,17 @@ return function(env)
 			zIndex = theme.z.raised,
 			onClick = function()
 				view.pinned = true
-				reading = nil
-				adjusting = true; scroll.toBottom(); adjusting = false
+				reading, chunkReading, disclosureReading = nil, nil, nil
+				unread = 0
+				move(math.max(scroll.instance.AbsoluteCanvasSize.Y - scroll.instance.AbsoluteWindowSize.Y, 0))
 				view.repin()
 			end,
 		})
 		latest.instance.Visible = false
+		local function updateLatest()
+			latest.instance.Visible = not view.pinned and not view.welcomeCard
+			latest.setText(unread > 0 and (util.pluralise(unread, "new message") .. " - Jump to latest") or "Jump to latest")
+		end
 
 		-- Use the layout's measured height rather than a circular automatic canvas
 		-- calculation through deeply nested automatic-height activity cards.
@@ -168,24 +194,30 @@ return function(env)
 				if scroll.instance.CanvasSize.Y.Offset ~= wanted then scroll.instance.CanvasSize = UDim2.fromOffset(0, wanted) end
 			end
 			if view.welcomeCard then move(0)
-			elseif view.pinned then adjusting = true; scroll.toBottom(); adjusting = false
+			elseif view.pinned then
+				move(math.max(scroll.instance.AbsoluteCanvasSize.Y - scroll.instance.AbsoluteWindowSize.Y, 0))
 			elseif reading then
 				local y = reading.y or 0
 				local handle = reading.anchor and view.rows[reading.anchor]
-				if handle and handle.root.Parent then
+				local chunkY = chunkReading and viewport.restoreAnchor(chunkReading)
+				if disclosureReading and disclosureReading.root:IsDescendantOf(scroll.instance) then
+					y = scroll.instance.CanvasPosition.Y + disclosureReading.root.AbsolutePosition.Y
+						- scroll.instance.AbsolutePosition.Y - disclosureReading.offset
+				elseif chunkY then y = chunkY
+				elseif handle and handle.root.Parent then
 					y = scroll.instance.CanvasPosition.Y + handle.root.AbsolutePosition.Y
 						- scroll.instance.AbsolutePosition.Y - (reading.offset or 0)
 				end
 				move(y)
 			end
-			latest.instance.Visible = not view.pinned and not view.welcomeCard
+			updateLatest()
 			adjusting = previous
 			viewport.wake()
 		end
 
 		local function follow(force)
 			if destroyed or not visible then return end
-			if force then view.pinned = true; reading = nil end
+			if force then view.pinned = true; reading, chunkReading, disclosureReading = nil, nil, nil; unread = 0 end
 			if layoutQueued then return end
 			layoutQueued = true
 			clock.delay(0, function()
@@ -200,14 +232,20 @@ return function(env)
 
 		-- Restoring a window preserves whether the reader was following new output.
 		function view.repin()
-			latest.instance.Visible = not view.pinned and not view.welcomeCard
+			updateLatest()
 			follow()
 		end
 
 		scroll.instance:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+			local y = scroll.instance.CanvasPosition.Y
+			local upward = y < previousY - 0.5
+			previousY = y
 			if destroyed or adjusting or view.replaying then return end
-			view.pinned = view.welcomeCard ~= nil or scroll.atBottom(theme.space.huge)
-			latest.instance.Visible = not view.pinned
+			-- Even a small upward scroll means read here. A generous bottom threshold
+			-- otherwise grabs the wheel back and snaps the reader down on the next row.
+			view.pinned = view.welcomeCard ~= nil or (not upward and scroll.atBottom(theme.space.hair))
+			if view.pinned then unread = 0 end
+			updateLatest()
 			remember()
 		end)
 
@@ -223,7 +261,7 @@ return function(env)
 		-- paragraph's worth of air between top-level rows. Eight calls therefore read as
 		-- eight separate events with the reply lost at the bottom, which is the "too much
 		-- tool call" this fixes: one block, one paragraph gap around it, tight lines
-		-- inside, and a header that folds the whole run once it has finished.
+		-- inside, and a stable summary that opens only when the reader chooses.
 		--
 		-- Only prose closes it, because prose is what a run is between. Closing on
 		-- reasoning instead would give a step-per-call turn one block per call and change
@@ -232,7 +270,7 @@ return function(env)
 		-- the rows already in it has to go in it.
 		local function openRun(name)
 			if not view.run then
-				view.run = message.toolRun(scroll.instance, nextOrder(), view.renderingEvent and view.renderingEvent.at)
+				view.run = message.toolRun(scroll.instance, nextOrder(), view.renderingEvent and view.renderingEvent.at, activityOptions)
 			end
 			-- The run's header names the tools it holds, so the name of the call
 			-- about to be added travels with the opening of its row.
@@ -265,7 +303,7 @@ return function(env)
 			if not event.id then return nil end
 			if not view.agents[event.id] then
 				local into, order = target()
-				view.agents[event.id] = message.subagent(into, event, order, {})
+				view.agents[event.id] = message.subagent(into, event, order, activityOptions)
 			end
 			return view.agents[event.id]
 		end
@@ -342,6 +380,7 @@ return function(env)
 			end
 			scroll.clear()
 			view.order = 0
+			view.lastRenderedId = 0
 			view.tools = {}
 			view.agents = {}
 			view.working = nil
@@ -351,7 +390,8 @@ return function(env)
 			view.pinned = true
 			view.rows, view.runs = {}, {}
 			view.historyNotice, view.issue, view.retentionRevision = nil, nil, nil
-			reading = nil
+			reading, chunkReading, disclosureReading = nil, nil, nil
+			unread = 0
 			adjusting = true
 			scroll.instance.CanvasSize = UDim2.fromOffset(0, 0)
 			move(0)
@@ -515,6 +555,7 @@ return function(env)
 					if preview and preview.id == event.streamId and preview.textHandle then
 						preview.textHandle.finish(event.text, view.model); view.agentHandle = track(preview.textHandle, event); preview.textHandle = nil
 					else view.agentHandle = message.agent(scroll.instance, event.text, nextOrder(), view.model, props) end
+					if not view.replaying and not view.pinned then unread = unread + 1 end
 					follow()
 				end
 			elseif event.kind == "tool:call" then
@@ -525,7 +566,7 @@ return function(env)
 				-- indicator at all.
 				local run = openRun(event.name)
 				run.thought = nil
-				local handle = message.toolCall(run.rows, event, run.slot())
+				local handle = message.toolCall(run.rows, event, run.slot(), activityOptions)
 				handle.run = run
 				run.opened()
 				view.tools[event.id or util.uid("tool")] = handle
@@ -544,6 +585,7 @@ return function(env)
 				local handle = view.tools[event.id]
 				if handle then
 					handle.finish(event)
+					track(handle, event)
 					if handle.run then handle.run.closed(event.kind ~= "tool:error" and event.ok ~= false, event.at) end
 					view.tools[event.id] = nil
 				else
@@ -561,10 +603,10 @@ return function(env)
 				-- when the log has been trimmed past it.
 				local host = event.call and view.tools[event.call] or nil
 				if host and host.nest then
-					view.agents[event.id] = message.subagent(host.nest(), event, 1, { nested = true })
+					view.agents[event.id] = message.subagent(host.nest(), event, 1, { nested = true, beforeToggle = activityOptions.beforeToggle })
 				else
 					local into, order = target()
-					view.agents[event.id] = message.subagent(into, event, order, {})
+					view.agents[event.id] = message.subagent(into, event, order, activityOptions)
 				end
 				follow()
 			elseif event.kind == "subagent:status" then
@@ -584,7 +626,7 @@ return function(env)
 				end
 			elseif event.kind == "subagent:tool:done" then
 				local handle = agentFor(event)
-				if handle then handle.toolDone(event) end
+				if handle then track(handle.toolDone(event), event) end
 			elseif event.kind == "subagent:done" then
 				local handle = agentFor(event)
 				if handle then
@@ -642,6 +684,7 @@ return function(env)
 
 		local function render(event)
 			local ok, err = pcall(view.render, event)
+			if event.transcriptId then view.lastRenderedId = math.max(view.lastRenderedId, event.transcriptId) end
 			view.renderingEvent = nil
 			if not ok then
 				env.require("runtime/log").warn("ui", "transcript row failed: " .. tostring(event.kind), err)
@@ -659,6 +702,7 @@ return function(env)
 
 		local function saveReading()
 			if not view.session then return end
+			if disclosureReading then remember() end
 			if reading then
 				view.session.viewState = util.copy(reading); view.session.viewState.pinned = view.pinned
 			else remember() end
@@ -667,11 +711,14 @@ return function(env)
 		local function settleLive(session)
 			if session.busy then
 				ensureWorking().set(session.status or "Working")
-				if session.liveRequest then render(session.liveRequest) end
-				if session.livePreview then render(session.livePreview) end
+				if session.livePreview then render(session.livePreview)
+				else
+					clearPreview()
+					if session.liveRequest then render(session.liveRequest) end
+				end
 				if session.transcript then for _, event in ipairs(session.transcript.live()) do render(event) end end
 			else
-				clearWorking(); closeRun()
+				clearPreview(); clearWorking(); closeRun()
 				for id, handle in pairs(view.tools) do
 					if handle.stale then pcall(handle.stale) end
 					if handle.run then pcall(handle.run.closed) end
@@ -685,9 +732,9 @@ return function(env)
 		end
 
 		-- Subscribe before the snapshot so no event can fall between the two. A full
-		-- replay rebuilds every retained row; an incremental one keeps the measured
-		-- rows and renders only events that are not already tracked, which is what a
-		-- hidden window or another panel needs on the way back.
+		-- replay rebuilds every retained row. Returning to a suspended view copies
+		-- only unseen events into the queue, so unchanged history takes no replay
+		-- slices and the existing text remains ready immediately.
 		local function startReplay(session, incremental)
 			view.replaying = true
 			local mine = view.generation
@@ -701,7 +748,7 @@ return function(env)
 					render(event); follow(); return
 				end
 				if view.replaying then
-					if event.kind == "user" then view.pinned = true; reading = nil end
+					if event.kind == "user" then view.pinned = true; reading, chunkReading, disclosureReading = nil, nil, nil; unread = 0 end
 					if event.transcriptId then
 						local saved = session.transcript and session.transcript.get(event.transcriptId) or event
 						if saved then replay.pending[#replay.pending + 1] = saved end
@@ -713,8 +760,14 @@ return function(env)
 					end
 				else render(event); prune() end
 			end)
-			replay.events = session.transcript and session.transcript.snapshot() or util.slice(session.log or {}, 1)
-			if #replay.events == 0 then view.greeting() end
+			if incremental then
+				for _, event in ipairs(session.log or {}) do
+					if not event.transcriptId or event.transcriptId > view.lastRenderedId then
+						replay.events[#replay.events + 1] = util.copy(event)
+					end
+				end
+			else replay.events = session.transcript and session.transcript.snapshot() or util.slice(session.log or {}, 1) end
+			if #(session.log or {}) == 0 and not view.welcomeCard then view.greeting() end
 			local function batch()
 				if destroyed or not visible or view.generation ~= mine or view.session ~= session then return end
 				local started, processed = clock.ms(), 0
@@ -723,7 +776,7 @@ return function(env)
 						if #replay.pending == 0 then
 							replay.events, replay.pending = {}, {}
 							view.replaying, view.replay = false, nil
-							settleLive(session); view.retentionRevision = nil; prune(); follow(); return
+							settleLive(session); prune(); follow(); return
 						end
 						replay.events, replay.pending, replay.cursor = replay.pending, {}, 1
 						replay.incremental = false
@@ -779,7 +832,13 @@ return function(env)
 		local function resume()
 			local session = view.session
 			if not session then view.attach(nil, true); return end
-			if view.order > 0 and #(session.log or {}) == 0 then view.attach(session, true); return end
+			if view.lastRenderedId > 0 and session.transcript then
+				local retained = false
+				for id in pairs(view.rows) do if session.transcript.get(id) then retained = true; break end end
+				-- Clear may have been followed by new messages while hidden. No old row
+				-- survives that reset; never display the old conversation beside the new.
+				if not retained then view.attach(session, true); return end
+			elseif view.order > 0 and #(session.log or {}) == 0 then view.attach(session, true); return end
 			startReplay(session, true)
 		end
 
@@ -788,16 +847,19 @@ return function(env)
 			if destroyed or visible == value then return end
 			saveReading()
 			visible = value
+			local visited = {}
+			for _, handle in pairs(view.rows) do
+				if handle.setVisible and not visited[handle] then
+					visited[handle] = true
+					handle.setVisible(value)
+				end
+			end
 			viewport.setVisible(value)
-			-- The session keeps receiving events while minimized. Releasing the view
-			-- stops layout, replay, timers and preview work without losing its anchor.
-			-- The measured rows stay, so restoring reconciles updates instead of
-			-- replaying and rebuilding the whole transcript.
+			-- Keep the bounded rendered reading window, expanded sections and live
+			-- preview intact. Pause subscriptions and drawing until this view returns.
 			if not value then
 				if view.unsubscribe then view.unsubscribe(); view.unsubscribe = nil end
-				clearPreview()
 				clearWorking()
-				closeRun()
 				view.generation = view.generation + 1
 				view.replaying, view.replay = false, nil
 			else resume() end

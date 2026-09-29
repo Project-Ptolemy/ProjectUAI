@@ -17,6 +17,69 @@ return function(env)
 	local M = {}
 
 	local LEVEL_TONE = { debug = "info", info = "info", warn = "warn", error = "bad" }
+	local DETAIL_LIMIT = 65536
+
+	local function safe(value, limit)
+		if value == nil then return "Not recorded" end
+		local kind = type(value)
+		if kind ~= "string" and kind ~= "number" and kind ~= "boolean" then return "Not recorded" end
+		local text = log.redact(tostring(value))
+		limit = limit or 2048
+		if #text > limit then return util.truncate(text, limit) .. "\n[Remaining text omitted from this detail view.]" end
+		return text
+	end
+
+	local function safeUrl(value)
+		local text = tostring(value or "")
+		text = text:gsub("(https?://)[^/@]+@", "%1[redacted]@")
+		text = text:gsub("([?&])([^=&#]+)=([^&#]*)", function(prefix, key, content)
+			local decoded = key:lower():gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end)
+			if decoded:find("key", 1, true) or decoded:find("token", 1, true) or decoded:find("secret", 1, true)
+				or decoded:find("password", 1, true) or decoded:find("credential", 1, true)
+				or decoded:find("signature", 1, true) or decoded == "auth" or decoded == "authorization" or decoded == "sig" then
+				content = "[redacted]"
+			end
+			return prefix .. key .. "=" .. content
+		end)
+		return safe(text, 8192)
+	end
+
+	-- A dialog owns only selected, sanitized fields. Transport response snippets,
+	-- headers and request bodies never enter its snapshot or clipboard export.
+	local function requestDetails(entry)
+		local status = tonumber(entry.status) or 0
+		local ms, bytes = tonumber(entry.ms), tonumber(entry.bytes)
+		local fields = {
+			{ "Time", safe(entry.stamp) }, { "Method", safe(entry.method) }, { "URL", safeUrl(entry.url) },
+			{ "HTTP status", status > 0 and tostring(status) or "No HTTP response" },
+			{ "Duration", ms and (util.formatDuration(ms) .. " (" .. tostring(ms) .. " ms)") or "Not recorded" },
+			{ "Response size", bytes and (util.formatNumber(bytes) .. " bytes") or "Not recorded" },
+			{ "Transport", safe(entry.via) }, { "Tag", safe(entry.tag) }, { "Identity", safe(entry.identity) },
+		}
+		local agent = "Not recorded"
+		if entry.uaSent == true then agent = "Sent"
+		elseif entry.uaSent == false then agent = entry.identity == "none" and "Not requested" or "Not sent" end
+		fields[#fields + 1] = { "User-Agent", agent }
+		local dropped = {}
+		if type(entry.droppedHeaders) == "table" then
+			for index = 1, math.min(32, #entry.droppedHeaders) do dropped[#dropped + 1] = safe(entry.droppedHeaders[index], 128) end
+			if #entry.droppedHeaders > 32 then dropped[#dropped + 1] = "Additional names omitted" end
+		end
+		fields[#fields + 1] = { "Dropped headers", #dropped > 0 and table.concat(dropped, ", ") or "Not recorded" }
+		for _, field in ipairs({ { "Attempt", "attempt" }, { "Server", "server" }, { "Trace ID", "trace" }, { "Mitigation", "mitigated" } }) do
+			fields[#fields + 1] = { field[1], safe(entry[field[2]]) }
+		end
+		fields[#fields + 1] = { "Transport error", entry.error and safe(entry.error, DETAIL_LIMIT) or "No transport error recorded" }
+		return fields
+	end
+
+	local function logDetails(entry)
+		return {
+			{ "Time", safe(entry.stamp) }, { "Level", safe(entry.level) }, { "Source", safe(entry.source) },
+			{ "Message", safe(entry.message, DETAIL_LIMIT) },
+			{ "Detail", entry.detail ~= nil and safe(entry.detail, DETAIL_LIMIT) or "No additional detail recorded" },
+		}
+	end
 
 	-- Copy the same request evidence this panel shows, without including bodies or
 	-- credentials from transport records. The application log has a separate export.
@@ -25,7 +88,7 @@ return function(env)
 		for index = #http.history, 1, -1 do
 			local entry = http.history[index]
 			lines[#lines + 1] = string.format("%s %s %s -> %s (%s)",
-				tostring(entry.stamp or ""), tostring(entry.method or "GET"), tostring(entry.url or ""),
+				tostring(entry.stamp or ""), tostring(entry.method or "GET"), safeUrl(entry.url),
 				tostring(entry.status or 0), util.formatDuration(entry.ms or 0))
 			local details = { tostring(entry.tag or "http"), tostring(entry.via or "unknown"),
 				util.formatNumber(entry.bytes or 0) .. " bytes",
@@ -45,6 +108,40 @@ return function(env)
 
 	function M.new(parent)
 		local panel = { view = "requests" }
+		local function inspect(entry, kind)
+			if panel.detail and not panel.detail.closed then panel.detail.close() end
+			local fields = kind == "requests" and requestDetails(entry) or logDetails(entry)
+			local title = kind == "requests" and "Request details" or "Log details"
+			local dialog
+			dialog = overlay.modal({ title = title, width = theme.size.modalWide, height = 580, scroll = true,
+				onClose = function() if panel.detail == dialog then panel.detail = nil end end })
+			if not dialog then return end
+			panel.detail = dialog
+			dialog.card.Name = kind == "requests" and "RequestDetails" or "LogDetails"
+			local lines = { title }
+			for index, field in ipairs(fields) do
+				lines[#lines + 1] = field[1] .. ": " .. field[2]
+				local row = P.column(dialog.content, { name = "DetailField" .. tostring(index), size = UDim2.new(1, 0, 0, 0),
+					auto = "Y", gap = theme.space.xxs, layoutOrder = index })
+				P.text(row, { name = "FieldName", text = field[1], role = "label", color = theme.color.textTertiary,
+					size = UDim2.new(1, 0, 0, 0), auto = "Y", layoutOrder = 1 })
+				P.text(row, { name = "FieldValue", text = field[2], role = "monoSmall", wrap = true,
+					size = UDim2.new(1, 0, 0, 0), auto = "Y", layoutOrder = 2 })
+			end
+			local exported = table.concat(lines, "\n\n")
+			if caps.clipboard then
+				P.button(dialog.footer, { name = "CopyDetail", text = "Copy details", variant = "secondary", size = "sm", layoutOrder = 1,
+					onClick = function(button)
+						local ok, copied = pcall(caps.fn.clipboard, exported)
+						ok = ok and copied ~= false
+						button.setText(ok and "Copied" or "Retry")
+						if not ok then overlay.toast("Could not copy details", "bad", 3) end
+						clock.delay(2, function() if not dialog.closed then button.setText("Copy details") end end)
+					end })
+			end
+			P.button(dialog.footer, { name = "CloseDetails", text = "Close", variant = "ghost", size = "sm", layoutOrder = 2,
+				onClick = function() dialog.close() end })
+		end
 
 		local column = P.column(parent, {
 			name = "LogsPanel",
@@ -63,7 +160,7 @@ return function(env)
 		local scroll
 		local function render() end
 
-		P.sectionHeader(head, { title = "Logs & traces", description = "Request activity and application diagnostics.", layoutOrder = 1 })
+		P.sectionHeader(head, { title = "Logs & traces", description = "Select a request or log entry to inspect its details.", layoutOrder = 1 })
 		C.segmented(head, {
 			layoutOrder = 2,
 			options = {
@@ -146,11 +243,15 @@ return function(env)
 				tone = "warn"
 			end
 
-			local card = P.card(scroll.instance, {
+			local item = P.rowButton(scroll.instance, {
+				name = "RequestEntry", vertical = true, auto = "Y", size = UDim2.new(1, 0, 0, 0),
+				bg = theme.color.surfaceRaised, stroke = true,
 				layoutOrder = order,
 				gap = theme.space.xxs,
 				padding = theme.space.sm,
+				onClick = function() inspect(entry, "requests") end,
 			})
+			local card = item.row
 			local top = P.row(card, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs })
 			P.statusDot(top, { color = theme.toneColor(tone), diameter = theme.size.dot, layoutOrder = 1 })
 			local title = P.text(top, {
@@ -174,7 +275,7 @@ return function(env)
 			meta.Size = UDim2.fromOffset(theme.size.metaColumnWide + theme.space.sm, theme.text.caption.height)
 
 			local url = P.text(card, {
-				text = entry.url,
+				text = safeUrl(entry.url),
 				role = "caption",
 				color = theme.color.textSecondary,
 				wrap = true,
@@ -217,7 +318,7 @@ return function(env)
 
 			if entry.error then
 				local err = P.text(card, {
-					text = tostring(entry.error),
+					text = safe(entry.error, DETAIL_LIMIT),
 					role = "caption",
 					color = theme.color.danger,
 					wrap = true,
@@ -225,17 +326,20 @@ return function(env)
 				})
 				err.Size = UDim2.new(1, 0, 0, 0)
 			end
-			return card
+			return item.instance
 		end
 
 		local function logRow(entry, order)
 			local tone = LEVEL_TONE[entry.level] or "info"
-			local row = P.card(scroll.instance, {
-				name = "LogEntry",
+			local item = P.rowButton(scroll.instance, {
+				name = "LogEntry", vertical = true, auto = "Y", size = UDim2.new(1, 0, 0, 0),
+				bg = theme.color.surfaceRaised, stroke = true,
 				gap = theme.space.xs,
 				padding = theme.space.sm,
 				layoutOrder = order,
+				onClick = function() inspect(entry, "log") end,
 			})
+			local row = item.row
 			local metadata = P.row(row, {
 				name = "Metadata",
 				size = UDim2.new(1, 0, 0, 0),
@@ -245,7 +349,7 @@ return function(env)
 			})
 			P.badge(metadata, { text = entry.level or "info", tone = tone, layoutOrder = 1 })
 			P.text(metadata, {
-				name = "Source", text = entry.source, role = "caption",
+				name = "Source", text = safe(entry.source), role = "caption",
 				color = theme.color.textSecondary, truncate = true,
 				size = UDim2.new(0, 0, 0, theme.text.caption.height),
 				flex = "Fill", layoutOrder = 2,
@@ -255,17 +359,17 @@ return function(env)
 				color = theme.color.textTertiary, auto = "X", layoutOrder = 3,
 			})
 			P.text(row, {
-				name = "Message", text = entry.message, role = "monoSmall",
+				name = "Message", text = safe(entry.message, DETAIL_LIMIT), role = "monoSmall",
 				color = entry.level == "error" and theme.color.danger or theme.color.textSecondary,
 				wrap = true, auto = "Y", layoutOrder = 2,
 			})
 			if entry.detail then
 				P.text(row, {
-					name = "Detail", text = tostring(entry.detail), role = "monoSmall",
+					name = "Detail", text = safe(entry.detail, DETAIL_LIMIT), role = "monoSmall",
 					color = theme.color.textTertiary, wrap = true, auto = "Y", layoutOrder = 3,
 				})
 			end
-			return row
+			return item.instance
 		end
 
 		render = function()
@@ -309,6 +413,7 @@ return function(env)
 			if panel.view == "requests" then refreshLater() end
 		end)
 		column.Destroying:Connect(function()
+			if panel.detail and not panel.detail.closed then panel.detail.close() end
 			cancelRefresh()
 			pcall(panel.unsubscribeLog)
 			pcall(panel.unsubscribeHttp)
