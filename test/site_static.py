@@ -99,8 +99,9 @@ def validate_html(base):
         if node.tag == "img":
             check("alt" in attrs, "Image is missing alt text")
         if node.tag == "video":
-            check("autoplay" not in attrs and "controls" in attrs and attrs.get("preload") == "none",
-                  "Video must load and play on request")
+            # Product demos autoplay silently; sound stays off unless the viewer opts in.
+            check("autoplay" in attrs and "muted" in attrs,
+                  "Video must autoplay muted")
         if node.tag == "a":
             check(attrs.get("href"), "Link is missing its destination")
         if attrs.get("target") == "_blank":
