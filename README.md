@@ -4,12 +4,13 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.1.0 — September 30, 2026.** Native mobile forms and navigation keep
-their actions reachable above the keyboard. Organize conversations in Universal
-or custom folders, choose a destination when creating a chat, and move existing
-chats without changing their game context. UI LIB v1.2.1 improves touch gestures,
-compact layouts, and picker reflow. Embedding SDK 1.0.0 adds UI-free boot, owned
-integration scopes, and structured requests.
+**Version 2.1.1 — September 30, 2026.** Long streamed replies finish instead of
+being discarded as an over-budget stream, and the Remote Spy view keeps refreshing
+when an executor drops the client's thread identity on scheduled threads. The
+2.1.0 release brought native mobile forms and navigation that keep their actions
+reachable above the keyboard, Universal or custom conversation folders, UI LIB
+v1.2.1 touch and layout improvements, and embedding SDK 1.0.0 with UI-free boot,
+owned integration scopes, and structured requests.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua

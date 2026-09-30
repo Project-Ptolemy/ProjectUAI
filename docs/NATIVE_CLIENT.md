@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.1.0**, September 30, 2026.
+Current native feature contract for **2.1.1**, September 30, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -247,7 +247,7 @@ and fresh replay review.
 | Export part / replay and review lifetime | 2 MiB / 5 minutes |
 | Native HTTP workers / body / request wall | 8 / 8 MiB / at most 300 seconds including retries |
 | Native socket workers and connections | 4 each |
-| Stream frame / chunks / tool calls / arguments | 1 MiB / 10,000 / 64 / 256,000 bytes per call |
+| Stream frame / chunks / tool calls / arguments | 1 MiB / 200,000 / 64 / 256,000 bytes per call |
 | Restored conversations / idle persisted retention target / running workers | 64 / 64 / 8 |
 | Subagent running workers / queue ceiling | Configurable 1–12 / 45 seconds |
 | Transcript dialogue / worker summaries / detailed activity | 512 within 1 MiB / 128 within 256 KiB / 256 within 256 KiB |

@@ -6,6 +6,7 @@
 -- costs us sub-second resolution, which only ever affects display.
 return function(env)
 	local util = env.require("runtime/util")
+	local caps = env.require("runtime/caps")
 
 	local M = {}
 
@@ -176,16 +177,35 @@ return function(env)
 		return string.format("%d %s", display, suffix)
 	end
 
+	-- Thread identity ----------------------------------------------------------
+	-- Deferred work is still the client's own work, but a callback rescheduled by
+	-- the host can lose the identity the client was injected with, and its writes
+	-- into the interface are then refused ("lacking capability Plugin"): the
+	-- ScreenGui sits under gethui/CoreGui. A signal fired from a remote hook runs
+	-- on a game-context thread, so anything that thread defers lands there too.
+	-- The identity captured at boot is re-applied before a scheduled callback
+	-- runs. A host without the identity functions keeps its previous behaviour.
+	local function reclaimIdentity()
+		if caps.identity and caps.fn.setidentity then pcall(caps.fn.setidentity, caps.identity) end
+	end
+	local function scheduled(fn)
+		if not (caps.identity and caps.fn.setidentity) then return fn end
+		return function(...)
+			reclaimIdentity()
+			return fn(...)
+		end
+	end
+
 	function M.wait(seconds)
 		return task.wait(seconds)
 	end
 
 	function M.spawn(fn, ...)
-		return task.spawn(fn, ...)
+		return task.spawn(scheduled(fn), ...)
 	end
 
 	function M.delay(seconds, fn, ...)
-		return task.delay(seconds, fn, ...)
+		return task.delay(seconds, scheduled(fn), ...)
 	end
 
 	-- Injectable so a test can pin the jitter. Nothing else should reach for
@@ -203,9 +223,9 @@ return function(env)
 			generation = generation + 1
 			local mine = generation
 			local args = { ... }
-			task.delay(seconds, function()
+			task.delay(seconds, scheduled(function()
 				if mine == generation then fn(unpack(args)) end
-			end)
+			end))
 		end
 		return wrapped, function() generation = generation + 1 end
 	end
@@ -228,6 +248,7 @@ return function(env)
 			while alive do
 				task.wait(seconds)
 				if not alive then return end
+				reclaimIdentity()
 				local ok, err = pcall(fn)
 				if not ok then env.require("runtime/log").warn("clock", "interval handler failed", err) end
 			end
@@ -264,10 +285,10 @@ return function(env)
 	-- a scheduler tick.
 	function M.timeout(seconds, fn)
 		local done, ok, result = false, false, nil
-		task.spawn(function()
+		task.spawn(scheduled(function()
 			ok, result = pcall(fn)
 			done = true
-		end)
+		end))
 		if not done then
 			local elapsed = 0
 			repeat

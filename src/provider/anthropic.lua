@@ -295,8 +295,7 @@ return function(env)
 		local content, reasoning = {}, {}
 		local slots, order = {}, {}
 		local model, id, usage, stop, streamError
-		local frames, frameError = sse.frames(body)
-		streamError = frameError
+		local frameCount = 0
 		local done = false
 		local function validIndex(index)
 			if index ~= nil and (type(index) ~= "number" or index < 0 or index > 1024 or index ~= math.floor(index)) then error("invalid block index", 0) end
@@ -331,7 +330,8 @@ return function(env)
 			return thinking[key]
 		end
 
-		for _, frame in ipairs(frames) do
+		local decoder = sse.decoder(function(frame)
+			frameCount = frameCount + 1
 			local payload = util.trim(frame.data)
 			if payload ~= "" and payload ~= "[DONE]" then
 				local event = util.decode(payload)
@@ -393,7 +393,11 @@ return function(env)
 					end
 				else streamError = "malformed_stream: invalid JSON frame" end
 			end
-		end
+			return true
+		end)
+		local pushed, why = decoder.push(body)
+		if pushed then pushed, why = decoder.finish() end
+		streamError = streamError or why
 
 		local text = table.concat(content)
 		local calls, raw = {}, {}
@@ -446,8 +450,8 @@ return function(env)
 			id = id,
 			usage = normaliseUsage(usage),
 			raw = raw,
-			chunks = #frames,
-			frames = #frames,
+			chunks = frameCount,
+			frames = frameCount,
 			streamError = streamError or (not done and not stop and "malformed_stream: stream ended before completion" or nil),
 		}
 	end

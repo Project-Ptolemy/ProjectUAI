@@ -10,7 +10,12 @@
 return function(env)
 	local util = env.require("runtime/util")
 
-	local M = { limits = { body = 8 * 1024 * 1024, frame = 1024 * 1024, chunks = 10000, calls = 64, arguments = 256000 } }
+	-- The byte caps are the real bounds. The frame count guards against a body
+	-- made of millions of tiny frames, not against a legitimate answer: a
+	-- token-per-event gateway sends one frame per token, so a long reply runs to
+	-- tens of thousands of frames, and 10,000 cut it off -- discarding a whole
+	-- answer as "frame count exceeded".
+	local M = { limits = { body = 8 * 1024 * 1024, frame = 1024 * 1024, chunks = 200000, calls = 64, arguments = 256000 } }
 
 	-- Incremental SSE framing. A socket message may contain several events or a
 	-- fraction of one, including a CRLF split between messages. HTTP reuses it for
@@ -29,7 +34,8 @@ return function(env)
 				chunks = chunks + 1
 				if chunks > M.limits.chunks then return fail("frame count exceeded") end
 				local ok, accepted, why = pcall(onFrame, { event = eventName, data = table.concat(data, "\n") })
-				if not ok or accepted == false then return fail(why or "frame callback failed") end
+				if not ok then return fail(tostring(accepted)) end
+				if accepted == false then return fail(why or "frame callback failed") end
 			end
 			data, eventName, blockBytes = {}, nil, 0
 			return true
@@ -262,26 +268,35 @@ return function(env)
 	-- carries an error object is surfaced rather than silently dropped, because
 	-- several gateways report mid-stream failures that way and a client that
 	-- ignores them reports "empty reply" instead of the real reason.
+	--
+	-- Frames go to the assembler as they are decoded instead of being collected
+	-- first: a long answer is thousands of small frames, and it is the assembled
+	-- text that has to be kept, not a second copy of every frame on the way in.
 	function M.parse(body)
 		local assembler = M.assembler()
-		local frames, streamError = M.frames(body)
-		local done = false
-		for _, frame in ipairs(frames) do
+		local streamError, done, frames = nil, false, 0
+		local decoder = M.decoder(function(frame)
+			frames = frames + 1
+			if done then return true end
 			local payload = util.trim(frame.data)
-			if payload == "[DONE]" then done = true; break end
+			if payload == "[DONE]" then done = true; return true end
 			if payload ~= "" then
 				local decoded = util.decode(payload)
 				if type(decoded) == "table" then
 					if decoded.error then
-						streamError = "malformed_stream: provider reported a stream error"
+						streamError = streamError or "malformed_stream: provider reported a stream error"
 					else
 						assembler.feedChunk(decoded)
 					end
-				else streamError = "malformed_stream: invalid JSON frame" end
+				else streamError = streamError or "malformed_stream: invalid JSON frame" end
 			end
-		end
+			return true
+		end)
+		local ok, why = decoder.push(body)
+		if ok then ok, why = decoder.finish() end
+		streamError = streamError or why
 		local result = assembler.result()
-		result.frames = #frames
+		result.frames = frames
 		result.streamError = streamError or result.streamError or (not done and not result.finish and "malformed_stream: stream ended before completion" or nil)
 		return result
 	end

@@ -19,6 +19,23 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.1.1",
+			revision = "2026-09-30",
+			date = "September 30, 2026",
+			title = "Long replies and capture-view reliability",
+			highlights = "A long streamed reply is no longer discarded as an over-budget stream, and the Remote Spy view keeps refreshing when an executor drops the client's thread identity on scheduled threads.",
+			sections = {
+				{ category = "fixed", label = "Streaming", items = {
+					"The frame budget no longer cuts off a long but valid reply. A token-per-event gateway can send tens of thousands of frames, and the old ceiling discarded the whole answer and benched the provider after three attempts.",
+					"Frames are assembled as they decode rather than collected first, so a long answer no longer keeps a second copy of every frame in memory.",
+				} },
+				{ category = "fixed", label = "Remote Spy", items = {
+					"Deferred client work restores the identity captured at boot, so a capture-view refresh scheduled from a remote hook is not refused when an executor drops the injected identity on scheduled threads.",
+					"A failed capture-view refresh is reported once and can no longer abort the rest of the view or repeat several times a second.",
+				} },
+			},
+		},
+		{
 			version = "2.1.0",
 			revision = "2026-09-30",
 			date = "September 30, 2026",

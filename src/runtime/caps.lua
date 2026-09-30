@@ -63,6 +63,8 @@ return function(env)
 		hookfunction = callable(hookfunction),
 		newcclosure = callable(newcclosure),
 		checkcaller = callable(checkcaller),
+		getidentity = callable(getidentity) or callable(getthreadidentity),
+		setidentity = callable(setidentity) or callable(setthreadidentity),
 		getcallingscript = callable(getcallingscript),
 		firesignal = callable(firesignal),
 		fireclickdetector = callable(fireclickdetector),
@@ -108,6 +110,20 @@ return function(env)
 		invokeOutcomes = { state = "available_unverified", reason = "Requires a yielding native backend fixture" },
 	}
 	M.sourceRead = M.fn.decompile ~= nil or M.fn.getscripts ~= nil
+
+	-- Thread identity ----------------------------------------------------------
+	-- The identity of the thread that boots the client. Some executors resume a
+	-- thread scheduled by task.delay/task.spawn without it, and a write from such
+	-- a thread into the interface -- which lives under gethui/CoreGui -- is then
+	-- refused with "lacking capability Plugin". A signal fired from inside a
+	-- remote hook arrives on a game-context thread, so anything it defers lands
+	-- there; runtime/clock re-applies this identity before a scheduled callback
+	-- runs so deferred client work keeps the context the client started with.
+	M.identity = nil
+	if M.fn.getidentity then
+		local ok, value = pcall(M.fn.getidentity)
+		if ok and type(value) == "number" then M.identity = value end
+	end
 
 	M.executor = "unknown"
 	if M.fn.identify then

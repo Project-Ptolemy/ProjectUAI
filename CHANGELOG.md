@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.1 — September 30, 2026
+
+Long streaming and Remote Spy reliability.
+
+- Keep long streamed replies: the frame budget no longer discards a valid answer,
+  frames are assembled as they decode, and a long response no longer benches the
+  provider after three attempts.
+- Restore the client's thread identity for deferred work, so a capture-view refresh
+  scheduled from a Remote Spy hook is not refused when an executor drops the
+  injected identity on scheduled threads.
+- Report a failed capture-view refresh once instead of aborting the view and
+  repeating several times a second.
+
 ## 2.1.0 — September 30, 2026
 
 Native mobile improvements, conversation folders, UI LIB v1.2.1, and embedding SDK 1.0.0.

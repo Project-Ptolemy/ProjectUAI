@@ -1,6 +1,6 @@
 # Provider compatibility and WebSockets
 
-Applies to **2.1.0**, September 30, 2026.
+Applies to **2.1.1**, September 30, 2026.
 
 UAI implements two inference protocols: **Chat Completions** and **Anthropic
 Messages**. A provider works through one of these APIs, including when it is a
@@ -192,7 +192,7 @@ sequenceDiagram
 
 Limits are four connection/send workers and four reserved active connections,
 1–300 seconds per attempt (120 seconds when called directly without a timeout),
-8 MiB of received data, 1 MiB per SSE/JSON event, 10,000 socket messages/events,
+8 MiB of received data, 1 MiB per SSE/JSON event, 200,000 socket messages/events,
 64 tool calls and 256,000 argument bytes per tool call. A completion creates and
 closes its own socket; chats do not share a permanent connection.
 

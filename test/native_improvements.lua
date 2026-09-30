@@ -703,4 +703,29 @@ case("signals and disposer continue cleanup after errors and suppress recursion"
 	f.healthy()
 end)
 
+case("deferred callbacks keep the executor identity captured at boot", function()
+	-- A signal fired from inside a remote hook arrives on a game-context thread.
+	-- Work that thread schedules with task.delay loses the injected identity on
+	-- some executors, and its writes into the gethui/CoreGui-hosted interface are
+	-- then refused ("lacking capability Plugin"). runtime/clock re-applies it.
+	local f = F.new(); local applied = {}
+	f.h.sandbox.getidentity = function() return 7 end
+	f.h.sandbox.setidentity = function(value) applied[#applied + 1] = value end
+	local caps, clock = f.env.require("runtime/caps"), f.env.require("runtime/clock")
+	check("identity is captured on the boot thread", caps.identity == 7)
+	local delayed = false
+	clock.delay(0, function() delayed = true end)
+	f.h.sched.advance(0.1)
+	check("a delayed callback reclaims the identity before running", delayed and applied[1] == 7)
+	local spawned = false
+	clock.spawn(function() spawned = true end)
+	check("a spawned callback runs reclaimed", spawned and applied[#applied] == 7)
+	local ran, seen = false, nil
+	local cancel = clock.interval(0.05, function() ran = true; seen = applied[#applied] end)
+	f.h.sched.advance(0.1)
+	cancel()
+	check("an interval handler reclaims before each run", ran and seen == 7)
+	f.healthy(); f.close()
+end)
+
 suite.finish()

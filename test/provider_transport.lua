@@ -281,6 +281,26 @@ case("socket worker limit permits HTTP while blocked connectors finish safely", 
 	f.cleaned(); f.close()
 end)
 
+case("a long token-per-event stream is not cut off by the frame budget", function()
+	-- A token-per-event gateway sends one frame per token, so a long answer runs
+	-- well past 10,000 frames. The old ceiling discarded the whole reply.
+	local f = F.new(); local sse = f.env.require("net/sse")
+	check("frame budget sits above the old 10,000 ceiling", sse.limits.chunks > 10000)
+	local long = {}
+	for i = 1, 10050 do long[i] = "data: " .. chunk(f, "x") end
+	long[#long + 1] = "data: [DONE]"
+	local parsed = sse.parse(table.concat(long, "\n\n") .. "\n\n")
+	check("the whole completion is assembled", #parsed.content == 10050 and not parsed.streamError)
+	check("every frame is counted", parsed.frames >= 10050)
+
+	local anthropic = f.env.require("provider/anthropic"); local events = {}
+	for i = 1, 10050 do events[i] = "data: " .. f.h.json.encode({ type = "content_block_delta", index = 0, delta = { type = "text_delta", text = "y" } }) end
+	events[#events + 1] = "data: " .. f.h.json.encode({ type = "message_stop" })
+	local streamed = anthropic.parseStream(table.concat(events, "\n\n") .. "\n\n")
+	check("Messages streams past the old ceiling too", #streamed.content == 10050 and not streamed.streamError)
+	f.healthy(); f.close()
+end)
+
 case("executor WebSocket connector aliases are detected", function()
 	for _, alias in ipairs({ "WebSocket", "websocket", "syn.websocket" }) do
 		local f = F.new(); local connect = function() end

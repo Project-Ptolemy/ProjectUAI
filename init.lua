@@ -19,7 +19,7 @@ end
 
 local hostContext = ...
 
-local VERSION = "2.1.0"
+local VERSION = "2.1.1"
 local FOLDER = "UAI"
 local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 

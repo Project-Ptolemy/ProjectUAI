@@ -35,6 +35,7 @@ return function(env)
 		local handle = { root = root, alive = true, visible = true }
 		local header = common.toolbar(root)
 		local statusButton, startButton, stopButton, menuButton, refresh, refreshDetail, layout, perform
+		local guardedRefresh
 		local info = P.text(root, { name = "CaptureCoverage", text = "Capture is stopped", role = "caption", wrap = true })
 		local body = P.frame(root, { name = "CaptureBody" })
 		local listHost, detailHost = P.frame(body, { name = "Calls", clip = true }), P.frame(body, { name = "CallDetail", clip = true })
@@ -272,7 +273,7 @@ return function(env)
 			clock.delay(0.15, function()
 				if not handle.alive or not handle.visible or generation ~= searchGeneration then return end
 				view.follow, view.before = true, nil
-				if view.listMode == "remotes" then cataloguePage() else refresh() end
+				if view.listMode == "remotes" then cataloguePage() else guardedRefresh() end
 			end)
 		end })
 		local filterSize, searchInset = common.controlHeight(), common.inset()
@@ -440,10 +441,26 @@ return function(env)
 			backButton.instance.Visible, divider.root.Visible = not wide, wide and handle.visible
 			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
 		end
+		-- A refresh that throws must not take the capture view down with it. It is
+		-- driven from the engine's own scheduled threads, where a host that drops
+		-- the client's thread identity refuses interface writes; left unguarded,
+		-- the first refused write aborts the whole refresh and repeats several
+		-- times a second for as long as capture traffic continues. Report each
+		-- distinct failure once and keep the rest of the panel usable.
+		local lastRefreshError
+		guardedRefresh = function()
+			local ok, err = pcall(refresh)
+			if ok then return end
+			local message = tostring(err)
+			if message ~= lastRefreshError then
+				lastRefreshError = message
+				env.require("runtime/log").warn("remotes", "capture view refresh failed", message)
+			end
+		end
 		local queued = false
 		local function queue()
 			if queued or not handle.visible then return end; queued = true
-			clock.delay(0.1, function() queued = false; if handle.alive and handle.visible then refresh() end end)
+			clock.delay(0.1, function() queued = false; if handle.alive and handle.visible then guardedRefresh() end end)
 		end
 		local offRecords, offCapture = records.changed:connect(queue), capture.changed:connect(queue)
 		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
