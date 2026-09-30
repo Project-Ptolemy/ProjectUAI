@@ -4,7 +4,7 @@
 -- project names with eleven invented titles under them, copied from a screenshot --
 -- which looked exactly right and told you nothing, and whose rows typed their own
 -- label into the composer instead of opening anything. What is here now is the
--- threads the client actually has, grouped by the place they happened in, and
+-- threads the client actually has, grouped by their game or chosen folder, and
 -- clicking one switches to it.
 return function(env)
 	local util = env.require("runtime/util")
@@ -167,7 +167,7 @@ return function(env)
 			fill = true,
 			layoutOrder = 3,
 			onClick = function()
-				host.openSession(sessions.newThread().id)
+				host.newConversation()
 			end,
 		})
 		newButton.instance.LayoutOrder = 3
@@ -213,6 +213,9 @@ return function(env)
 			gap = theme.space.hair,
 			layoutOrder = 3,
 		})
+		local foldersButton = P.rowButton(actions, { name = "ConversationFolders", padding = { x = ROW_INSET },
+			layoutOrder = 4, onClick = function() host.manageFolders() end })
+		foldersButton.label("Conversation folders", 1, theme.color.textSecondary)
 
 		function handle.renderMore()
 			for _, child in ipairs(moreList:GetChildren()) do
@@ -299,16 +302,17 @@ return function(env)
 		-- unfold everything several times a minute. Quiet writes, because this is a
 		-- record of what the user folded and not a token anything derives from -- a noisy
 		-- one would reach the theme's subscription and rebuild the whole interface.
-		local function collapsedKey(placeId)
-			return "ui.placeCollapsed." .. tostring(placeId)
+		local function collapsedKey(group)
+			return group.kind == "game" and ("ui.placeCollapsed." .. tostring(group.placeId))
+				or ("ui.folderCollapsed." .. group.id)
 		end
 
-		local function isCollapsed(placeId)
-			return config.get(collapsedKey(placeId), false) == true
+		local function isCollapsed(group)
+			return config.get(collapsedKey(group), false) == true
 		end
 
-		local function setCollapsed(placeId, value)
-			config.set(collapsedKey(placeId), value == true, { quiet = true })
+		local function setCollapsed(group, value)
+			config.set(collapsedKey(group), value == true, { quiet = true })
 		end
 
 		local function sessionMenu(session, target)
@@ -316,9 +320,10 @@ return function(env)
 				target = target,
 				width = theme.size.menu,
 				options = {
-					{ isHeader = true, title = session.title, subtitle = session.placeName },
+					{ isHeader = true, title = session.title, subtitle = sessions.folderLabel(session) },
 					{ label = "Open", value = "open", icon = "arrowRight" },
 					{ label = "Rename", value = "rename", icon = "document" },
+					{ label = "Move to folder", value = "move" },
 					{ label = "Delete", value = "delete", icon = "trash", tone = "bad" },
 				},
 				onSelect = function(value)
@@ -336,6 +341,8 @@ return function(env)
 								if not ok then overlay.toast(tostring(why), "warn", 2) end
 							end,
 						})
+					elseif value == "move" then
+						host.moveConversation(session)
 					elseif value == "delete" then
 						overlay.confirm({
 							title = "Delete this conversation?",
@@ -363,7 +370,7 @@ return function(env)
 			for _, group in ipairs(groups) do
 				order = order + 1
 				local column = P.column(historyList, {
-					name = "Place_" .. tostring(group.placeId),
+					name = group.kind == "game" and ("Place_" .. tostring(group.placeId)) or ("Folder_" .. group.id),
 					size = UDim2.new(1, 0, 0, 0),
 					auto = "Y",
 					gap = theme.space.hair,
@@ -374,7 +381,7 @@ return function(env)
 				-- rather than a chevron nobody can hit. The count rides on it because a
 				-- folded group has to say how much it is hiding -- otherwise folding one
 				-- loses the only sign those conversations exist.
-				local collapsed = isCollapsed(group.placeId)
+				local collapsed = isCollapsed(group)
 				local head = P.rowButton(column, {
 					name = "PlaceHead",
 					height = theme.size.rowTight,
@@ -384,7 +391,7 @@ return function(env)
 					gap = theme.space.xxs,
 					layoutOrder = 1,
 					onClick = function()
-						setCollapsed(group.placeId, not isCollapsed(group.placeId))
+						setCollapsed(group, not isCollapsed(group))
 						-- Through the signature, so the fold state it just wrote becomes the
 						-- baseline the next change is compared against.
 						handle.syncHistory()
@@ -437,16 +444,15 @@ return function(env)
 					layoutOrder = 4,
 				})
 				countLabel.Size = UDim2.fromOffset(0, theme.text.caption.height)
-				-- The place the client is in now is the only one a new conversation can
-				-- be started in, so it is the only one that offers.
-				if group.current then
+				-- Custom folders and Universal are available in every game.
+				if group.current or group.kind ~= "game" then
 					local plus = P.iconButton(head.row, {
-						name = "NewInPlace",
+						name = group.kind == "game" and "NewInPlace" or "NewInFolder",
 						icon = "plus",
 						diameter = theme.size.rowTight,
 						layoutOrder = 5,
 						onClick = function()
-							host.openSession(sessions.newThread().id)
+							host.newConversation(group.id)
 						end,
 					})
 					plus.instance.LayoutOrder = 5
@@ -524,7 +530,7 @@ return function(env)
 			if order == 0 then
 				local empty = P.text(historyList, {
 					name = "NoHistory",
-					text = "Your conversations will appear here, organized by place.",
+					text = "Your conversations will appear here, organized by folder.",
 					role = "caption",
 					color = theme.color.textTertiary,
 					wrap = true,
@@ -621,8 +627,8 @@ return function(env)
 			local parts = { tostring(sessions.activeId) }
 			for _, group in ipairs(sessions.groups()) do
 				parts[#parts + 1] = string.format("%s|%s|%s",
-					tostring(group.placeId), tostring(group.label),
-					isCollapsed(group.placeId) and "-" or "+")
+					tostring(group.id), tostring(group.label),
+					isCollapsed(group) and "-" or "+")
 				for _, session in ipairs(group.sessions) do
 					parts[#parts + 1] = string.format("%s\1%s\1%s\1%s",
 						tostring(session.id), tostring(session.title),

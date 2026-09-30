@@ -1105,6 +1105,18 @@ return function(env)
 
 	-- Menus and dialogs -------------------------------------------------------
 
+	function M.newConversation(folderId)
+		return env.require("ui/conversations").choose(M, nil, folderId)
+	end
+
+	function M.moveConversation(session)
+		return env.require("ui/conversations").choose(M, session)
+	end
+
+	function M.manageFolders()
+		return env.require("ui/conversations").manage(M)
+	end
+
 	function M.showSettingsDialog(category)
 		return env.require("ui/panels/settingsdialog").open(category)
 	end
@@ -1127,6 +1139,7 @@ return function(env)
 		options[#options + 1] = { divider = true }
 		options[#options + 1] = { label = "New conversation", value = "new", icon = "plus" }
 		options[#options + 1] = { label = "Search conversations", value = "search", icon = "search" }
+		options[#options + 1] = { label = "Conversation folders", value = "folders" }
 		-- The one thing a phone has no other road to: with no sidebar there is no
 		-- profile row, and Settings is several taps deeper. Unload is offered here
 		-- so every layout mode can reach the same exit.
@@ -1146,7 +1159,7 @@ return function(env)
 				options[#options + 1] = {
 					label = session.title,
 					value = "session:" .. session.id,
-					detail = session.placeName,
+					detail = sessions.folderLabel(session),
 					selected = session.id == sessions.activeId,
 					icon = "circleHollow",
 					chevron = true,
@@ -1163,9 +1176,10 @@ return function(env)
 				target = target,
 				width = theme.size.menu,
 				options = {
-					{ isHeader = true, title = session.title, subtitle = session.placeName },
+					{ isHeader = true, title = session.title, subtitle = sessions.folderLabel(session) },
 					{ label = "Open", value = "open", icon = "arrowRight" },
 					{ label = "Rename", value = "rename", icon = "document" },
+					{ label = "Move to folder", value = "move" },
 					{ label = "Delete", value = "delete", icon = "trash", tone = "bad" },
 				},
 				onSelect = function(value)
@@ -1183,6 +1197,8 @@ return function(env)
 								if not ok then overlay.toast(tostring(why), "warn", 2) end
 							end,
 						})
+					elseif value == "move" then
+						M.moveConversation(session)
 					elseif value == "delete" then
 						overlay.confirm({
 							title = "Delete this conversation?",
@@ -1205,9 +1221,11 @@ return function(env)
 			options = options,
 			onSelect = function(value, option)
 				if value == "new" then
-					M.openSession(sessions.newThread().id)
+					M.newConversation()
 				elseif value == "search" then
 					M.showSearch()
+				elseif value == "folders" then
+					M.manageFolders()
 				elseif value == "unload" then
 					overlay.confirm({
 						title = "Unload UAI?",
@@ -1447,7 +1465,7 @@ return function(env)
 					layoutOrder = 1,
 				})
 				P.text(row.row, {
-					text = string.format("%s  \194\183  %s%s", match.session.placeName or "",
+					text = string.format("%s  \194\183  %s%s", sessions.folderLabel(match.session),
 						match.where, match.snippet and ("  \194\183  " .. match.snippet) or ""),
 					role = "caption",
 					color = theme.color.textTertiary,

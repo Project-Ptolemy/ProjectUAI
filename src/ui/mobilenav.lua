@@ -23,8 +23,8 @@ return function(env)
 			size = UDim2.new(1, 0, 1, -chrome * 2) })
 		local scroll = P.scroll(body, { name = "NavigationScroll", size = UDim2.fromScale(1, 1), gap = theme.space.sm,
 			padding = { left = pad, right = pad, bottom = pad } })
-		local filter, limit, renderHistory = "", 40, nil
-		local search = P.field(dialog.card, { name = "ConversationFilter", placeholder = "Search conversations or places",
+		local filter, limit, renderHistory, folderFilter = "", 40, nil, nil
+		local search = P.field(dialog.card, { name = "ConversationFilter", placeholder = "Search conversations or folders",
 			size = UDim2.new(1, -dialog.closeInset - pad * 2, 0, target),
 			onChange = function(text)
 				filter, limit = util.trim(text):lower(), 40
@@ -49,11 +49,16 @@ return function(env)
 		local lastWide, count, footer
 		local function reflow()
 			if dialog.closed then return end
-			-- Keep search pinned above the results. A landscape keyboard leaves
-			-- too little height for both footer actions and a useful history list.
+			-- Keep search pinned above the results. Short keyboards return the
+			-- footer band to history while keeping its actions reachable by scroll.
 			local compact = dialog.card.AbsoluteSize.Y < chrome * 2 + target * 3
 			body.Size = UDim2.new(1, 0, 1, -chrome * (compact and 1 or 2))
-			if footer then footer.Visible = not compact end
+			if footer then
+				footer.Parent = compact and scroll.instance or dialog.card
+				footer.AnchorPoint = Vector2.new(0, compact and 0 or 1)
+				footer.Position = compact and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1)
+				footer.LayoutOrder = 6
+			end
 			if count then count.Visible = not compact end
 			local wide = responsive.orientation == "landscape" and dialog.card.AbsoluteSize.X >= theme.size.dialogNav * 3
 			if wide == lastWide then return end
@@ -79,15 +84,33 @@ return function(env)
 		local unbindLayout = responsive.changed:connect(reflow)
 		dialog.scrim.Destroying:Connect(unbindLayout)
 		reflow()
+		local folderLabel
+		local folderPicker = P.rowButton(scroll.instance, { name = "HistoryFolder", height = target, layoutOrder = 3,
+			onClick = function(button)
+				local options = { { label = "All folders", value = "all", selected = folderFilter == nil } }
+				for _, folder in ipairs(sessions.folders()) do
+					options[#options + 1] = { label = folder.label, value = folder.id, selected = folderFilter == folder.id }
+				end
+				options[#options + 1] = { divider = true }
+				options[#options + 1] = { label = "Manage folders", value = "manage" }
+				overlay.menu({ target = button.instance, title = "Conversation folders", options = options,
+					onSelect = function(value)
+						if value == "manage" then dialog.close(); app.manageFolders(); return end
+						folderFilter, limit = value ~= "all" and value or nil, 40
+						renderHistory()
+					end })
+			end })
+		folderLabel = folderPicker.label("All folders", 1)
 		count = P.text(scroll.instance, { name = "HistoryCount", text = "Conversations", role = "caption",
-			color = theme.color.textTertiary, size = UDim2.new(1, 0, 0, theme.text.caption.height + pad), layoutOrder = 3 })
+			color = theme.color.textTertiary, size = UDim2.new(1, 0, 0, theme.text.caption.height + pad), layoutOrder = 4 })
 		local history = P.column(scroll.instance, { name = "MobileHistory", auto = "Y",
-			size = UDim2.new(1, 0, 0, 0), gap = theme.space.xxs, layoutOrder = 4 })
+			size = UDim2.new(1, 0, 0, 0), gap = theme.space.xxs, layoutOrder = 5 })
 
 		local function sessionMenu(session, anchor)
 			overlay.menu({ target = anchor, title = "Conversation", options = {
-				{ isHeader = true, title = session.title, subtitle = session.placeName },
+				{ isHeader = true, title = session.title, subtitle = sessions.folderLabel(session) },
 				{ label = "Rename", value = "rename", icon = "document" },
+				{ label = "Move to folder", value = "move" },
 				{ label = "Delete", value = "delete", icon = "trash", tone = "bad" },
 			}, onSelect = function(value)
 				dialog.close()
@@ -97,6 +120,8 @@ return function(env)
 							local ok, why = session.rename(text)
 							if not ok then overlay.toast(tostring(why), "warn", 2) end
 						end })
+				elseif value == "move" then
+					app.moveConversation(session)
 				elseif value == "delete" then
 					overlay.confirm({ title = "Delete this conversation?",
 						description = "The transcript and its file are both removed. This cannot be undone.",
@@ -111,10 +136,18 @@ return function(env)
 		renderHistory = function()
 			if dialog.closed then return end
 			for _, child in ipairs(history:GetChildren()) do if child:IsA("GuiObject") then child:Destroy() end end
+			local folderBySession, selectedLabel = {}, nil
+			for _, group in ipairs(sessions.groups()) do
+				if group.id == folderFilter then selectedLabel = group.label end
+				for _, session in ipairs(group.sessions) do folderBySession[session.id] = group.id end
+			end
+			if folderFilter and not selectedLabel then folderFilter = nil end
+			folderLabel.Text = selectedLabel or "All folders"
 			local matches, shown = 0, 0
 			for _, session in ipairs(sessions.list()) do
-				local searchable = (tostring(session.title) .. " " .. tostring(session.placeName or "")):lower()
-				if filter == "" or searchable:find(filter, 1, true) then
+				local searchable = (tostring(session.title) .. " " .. sessions.folderLabel(session) .. " " .. tostring(session.placeName or "")):lower()
+				if (not folderFilter or folderBySession[session.id] == folderFilter)
+					and (filter == "" or searchable:find(filter, 1, true)) then
 					matches = matches + 1
 					if shown < limit then
 						shown = shown + 1
@@ -131,7 +164,7 @@ return function(env)
 							flex = "Fill", gap = 0, alignY = "Center", layoutOrder = 2 })
 						P.text(label, { name = "ConversationTitle", text = session.title, role = "small",
 							size = UDim2.new(1, 0, 0, theme.text.small.height), truncate = true, layoutOrder = 1 })
-						P.text(label, { text = session.ephemeral and "Not saved" or session.placeName or "This game",
+						P.text(label, { text = sessions.folderLabel(session) .. (session.ephemeral and " (not saved)" or ""),
 							role = "caption", color = theme.color.textTertiary, truncate = true,
 							size = UDim2.new(1, 0, 0, theme.text.caption.height), layoutOrder = 2 })
 						P.iconButton(row, { name = "HistoryActions_" .. session.id, icon = "ellipsis",
@@ -142,8 +175,8 @@ return function(env)
 			end
 			count.Text = util.pluralise(matches, "conversation")
 			if matches == 0 then
-				P.text(history, { name = "NoConversations", text = filter == "" and "Start a conversation below."
-					or "No matches. Try a title or place name.", role = "small", wrap = true, auto = "Y",
+				P.text(history, { name = "NoConversations", text = filter == "" and "No conversations in this folder yet."
+					or "No matches. Try a title, folder, or game name.", role = "small", wrap = true, auto = "Y",
 					color = theme.color.textSecondary })
 			elseif matches > shown then
 				P.button(history, { name = "MoreConversations", text = "Show more conversations", variant = "ghost",
@@ -157,14 +190,14 @@ return function(env)
 		P.button(footer, { name = "MobileNewChat", text = "New conversation", icon = "plus", variant = "primary",
 			width = 0, height = target, position = UDim2.fromOffset(pad, pad),
 			onClick = function()
-				dialog.close(); app.openSession(sessions.newThread().id)
-				if app.chatPanel then app.chatPanel.composer.focus() end
+				dialog.close(); app.newConversation(folderFilter)
 			end }).instance.Size =
 			UDim2.new(1, -target - pad * 3, 0, target)
 		P.iconButton(footer, { name = "MobileMore", icon = "ellipsis", diameter = target,
 			anchor = Vector2.new(1, 0), position = UDim2.new(1, -pad, 0, pad), onClick = function(button)
 				overlay.menu({ target = button.instance, title = "Workspace", options = {
 					{ label = "Search message history", value = "search", icon = "search" },
+					{ label = "Conversation folders", value = "folders" },
 					{ label = "Settings", value = "settings", icon = "gear" },
 					{ label = "About UAI", value = "about", icon = "document" },
 					{ label = "Join Discord", value = "discord", icon = "globe" },
@@ -172,6 +205,7 @@ return function(env)
 				}, onSelect = function(value)
 					dialog.close()
 					if value == "search" then app.showSearch()
+					elseif value == "folders" then app.manageFolders()
 					elseif value == "settings" then app.showSettingsDialog()
 					elseif value == "about" then app.showAbout()
 					elseif value == "discord" then app.joinDiscord()

@@ -1,7 +1,20 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — September 30, 2026
 
+Native mobile improvements, conversation folders, UI LIB v1.2.1, and embedding SDK 1.0.0.
+
+- Add conversation folders: choose a game, Universal, or a custom folder when
+  creating a chat; optionally name the chat, move existing chats, rename folders,
+  and remove folders while keeping their conversations in Universal.
+- Improve the native mobile client in short keyboard layouts: keep form actions
+  scrollable at full touch size, reveal focused fields through clipping and nested
+  scrolling, and filter/search mobile conversation history by folder. Keep New
+  conversation and workspace actions reachable by scroll above a keyboard.
+- Polish UI LIB on mobile with slimmer content padding, wrapped section titles
+  and dialog actions, pinned dropdown search when space permits, and picker
+  targets that reflow while open. Vertical swipes no longer change horizontal
+  sliders or color bars; hide, rotation, and cancellation release scroll ownership.
 - Add embedding SDK 1.0.0 with UI-free boot (`ui = false`), reuse without toggling
   (`reuse = true`), public hooks/permissions, and explicit native conversation
   navigation. Existing standalone loading still mounts the application.

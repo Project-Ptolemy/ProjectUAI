@@ -17,6 +17,7 @@ return function(env)
 	local hooks = env.require("agent/hooks")
 	local permissions = env.require("agent/permissions")
 	local state = env.require("agent/state")
+	local folderStore = env.require("runtime/conversation_folders")
 
 	local THREAD_DIR = "sessions"
 	-- Disk history survives eviction. Unsaved/ephemeral threads stay in memory.
@@ -50,6 +51,52 @@ return function(env)
 	-- share one number rather than each keeping a copy that drifts.
 	M.PASTE_CAP = PASTE_CAP
 
+	local function placeNumber(value)
+		local number = tonumber(value)
+		return number and number == number and number >= 0 and number < 9007199254740991 and number == math.floor(number) and number or 0
+	end
+
+	local function gameFolderId(id) return "game:" .. string.format("%.0f", placeNumber(id)) end
+	local function folderPlace(id)
+		if type(id) ~= "string" then return nil end
+		local raw = id:match("^game:(%d+)$")
+		local number = raw and tonumber(raw)
+		if number and gameFolderId(number) == id then return number end
+		return nil
+	end
+
+	local function validDestination(id)
+		return type(id) == "string" and (id == "universal" or folderPlace(id) ~= nil or folderStore.get(id) ~= nil)
+	end
+
+	local function folderFor(session)
+		local place = env.require("runtime/place")
+		local id = session.folderId or gameFolderId(session.placeId)
+		local placeId = folderPlace(id)
+		if placeId ~= nil then
+			local current = placeId == place.id
+			local label = current and place.label() or nil
+			if not label then
+				local newest = -1
+				for _, candidate in pairs(M.threads) do
+					if placeNumber(candidate.placeId) == placeId and type(candidate.placeName) == "string"
+						and util.trim(candidate.placeName) ~= "" and (candidate.updatedAt or 0) > newest then
+						label, newest = candidate.placeName, candidate.updatedAt or 0
+					end
+				end
+				if not label and placeNumber(session.placeId) == placeId then label = session.placeName end
+			end
+			if type(label) ~= "string" or util.trim(label) == "" then label = placeId > 0 and ("Place " .. string.format("%.0f", placeId)) or "Unknown place" end
+			return { id = id, kind = "game", placeId = placeId, label = label, current = current }
+		end
+		local folder = folderStore.get(id)
+		if folder then folder.current = false; return folder end
+		-- Deleted folders also cover archived conversations outside the 64 loaded
+		-- threads. Their files need no rewrite, and an unreadable catalog cannot
+		-- erase the original association merely because a conversation was saved.
+		return { id = "universal", kind = "universal", label = "Universal", current = false }
+	end
+
 	local FILTER_OPTIONS = { "toolFilter", "toolGroups", "toolExclude" }
 	local POLICY_OPTIONS = { "toolFilter", "toolGroups", "toolExclude", "maxTurns", "budgetSeconds", "unlimited", "stream" }
 	local function validateOptions(opts)
@@ -59,6 +106,7 @@ return function(env)
 			return nil, "session id must contain 1-120 letters, digits, underscores or hyphens"
 		end
 		if opts.title ~= nil and type(opts.title) ~= "string" then return nil, "session title must be a string" end
+		if opts.folderId ~= nil and not validDestination(opts.folderId) then return nil, "conversation folder does not exist" end
 		for _, key in ipairs({ "ephemeral", "headless", "stream", "unlimited", "activate" }) do
 			if opts[key] ~= nil and type(opts[key]) ~= "boolean" then return nil, key .. " must be a boolean" end
 		end
@@ -128,8 +176,9 @@ return function(env)
 			-- is a flat pile of titles with no way to tell last week's game from this
 			-- one. Recorded at creation rather than read at display time, because by the
 			-- time anyone reads it they are somewhere else.
-			placeId = opts.placeId or place.id,
-			placeName = opts.placeName or place.label(),
+			placeId = placeNumber(opts.placeId or place.id),
+			placeName = opts.placeName or (placeNumber(opts.placeId or place.id) == place.id and place.label() or nil),
+			folderId = opts.folderId or gameFolderId(opts.placeId or place.id),
 			createdAt = clock.ms(),
 			updatedAt = clock.ms(),
 			turns = 0,
@@ -478,46 +527,87 @@ return function(env)
 		return #M.busy()
 	end
 
-	-- Conversations grouped by the place they happened in, most recently used group
-	-- first, with the place the client is in now always at the top -- that is the one
-	-- a new conversation would join.
+	-- Folder organization never changes a conversation's recorded game or the
+	-- runtime environment sent to the model. Empty destinations remain reachable.
 	function M.groups()
 		local place = env.require("runtime/place")
-		local byPlace, order = {}, {}
+		local byId, order = {}, {}
+		local function add(folder)
+			if byId[folder.id] then return byId[folder.id] end
+			folder.current = folder.current == true
+			folder.sessions, folder.updatedAt = {}, 0
+			byId[folder.id], order[#order + 1] = folder, folder
+			return folder
+		end
+		add(folderFor({ folderId = gameFolderId(place.id) }))
+		add(folderFor({ folderId = "universal" }))
+		for _, folder in ipairs(folderStore.list()) do add(folder) end
 		for _, session in ipairs(M.list()) do
-			local key = tostring(session.placeId or 0)
-			local group = byPlace[key]
-			if not group then
-				local label = session.placeName
-				if label == nil or util.trim(tostring(label)) == "" then
-					-- A transcript from before the place was recorded, or from a host that
-					-- could not read it. "Place 0" would read as a place.
-					label = (session.placeId and session.placeId > 0)
-						and ("Place " .. key) or "Unknown place"
-				end
-				group = {
-					placeId = session.placeId or 0,
-					-- The name recorded when the conversation started, except for the
-					-- current place, where the live label is better: it may have resolved
-					-- since, and a place can be renamed.
-					label = label,
-					sessions = {},
-					updatedAt = 0,
-					current = (session.placeId or 0) == place.id,
-				}
-				if group.current then group.label = place.label() end
-				byPlace[key] = group
-				order[#order + 1] = group
-			end
+			local group = add(folderFor(session))
 			group.sessions[#group.sessions + 1] = session
 			if (session.updatedAt or 0) > group.updatedAt then group.updatedAt = session.updatedAt or 0 end
 		end
 		table.sort(order, function(a, b)
 			if a.current ~= b.current then return a.current end
 			if a.updatedAt ~= b.updatedAt then return a.updatedAt > b.updatedAt end
-			return tostring(a.label) < tostring(b.label)
+			if tostring(a.label) ~= tostring(b.label) then return tostring(a.label) < tostring(b.label) end
+			return a.id < b.id
 		end)
 		return order
+	end
+
+	function M.folders()
+		local out = {}
+		for _, group in ipairs(M.groups()) do
+			out[#out + 1] = { id = group.id, label = group.label, kind = group.kind, current = group.current, placeId = group.placeId }
+		end
+		return out
+	end
+
+	function M.folderLabel(sessionOrId)
+		local session = type(sessionOrId) == "table" and sessionOrId or M.get(sessionOrId)
+		return session and folderFor(session).label or nil
+	end
+
+	function M.createFolder(name)
+		if not alive then return nil, "client is unloaded" end
+		local folder, why = folderStore.create(name)
+		if folder then M.listChanged:fire() end
+		return folder, why
+	end
+
+	function M.renameFolder(id, name)
+		if not alive then return false, "client is unloaded" end
+		local ok, why = folderStore.rename(id, name)
+		if ok then M.listChanged:fire() end
+		return ok, why
+	end
+
+	function M.removeFolder(id)
+		if not alive then return false, "client is unloaded" end
+		local ok, why = folderStore.remove(id)
+		if not ok then return false, why end
+		for _, session in pairs(M.threads) do
+			if session.folderId == id then session.folderId = "universal" end
+		end
+		M.listChanged:fire()
+		return true
+	end
+
+	function M.moveToFolder(sessionOrId, folderId)
+		if not alive then return false, "client is unloaded" end
+		local session = type(sessionOrId) == "table" and sessionOrId or M.get(sessionOrId)
+		if not session or M.get(session.id) ~= session then return false, "conversation no longer exists" end
+		if not validDestination(folderId) then return false, "conversation folder does not exist" end
+		if session.folderId == folderId then return true end
+		local previous = session.folderId
+		session.folderId = folderId
+		if fsx.enabled and not session.ephemeral and not session.headless and session.depth == 0 then
+			local ok, why = M.persist(session)
+			if not ok then session.folderId = previous; return false, why or "conversation could not be saved" end
+		end
+		M.listChanged:fire()
+		return true
 	end
 
 	-- Title, then the transcript. A search that only matched titles would miss the
@@ -531,6 +621,7 @@ return function(env)
 			if tostring(session.title):lower():find(needle, 1, true) then
 				where = "title"
 			end
+			if not where and M.folderLabel(session):lower():find(needle, 1, true) then where = "folder" end
 			if not where then
 				for _, event in ipairs(session.log) do
 					if event.kind == "user" or event.kind == "assistant:text" then
@@ -622,6 +713,7 @@ return function(env)
 			named = session.named == true,
 			placeId = session.placeId,
 			placeName = session.placeName,
+			folderId = session.folderId,
 			updatedAt = session.updatedAt,
 			createdAt = session.createdAt,
 			turns = session.turns, opencodeSession = session.opencodeSession,
@@ -683,9 +775,12 @@ return function(env)
 				local options = data.policy or {}
 				options.id = data.id
 				options.title = type(data.title) == "string" and util.ellipsis(data.title, 60) or nil
-				options.placeId = tonumber(data.placeId)
+				options.placeId = placeNumber(data.placeId)
 				options.placeName = type(data.placeName) == "string" and data.placeName or nil
 				local session = M.create(options)
+				if type(data.folderId) == "string" and #data.folderId <= 120 then
+					session.folderId = data.folderId
+				end
 				session.named = data.named == true
 				session.createdAt = timestamp(data.createdAt)
 				session.updatedAt = timestamp(data.updatedAt)
@@ -705,7 +800,7 @@ return function(env)
 		return restored
 	end
 
-	M.limits = { threads = THREAD_LIMIT, workers = 8, events = transcript.limits.events,
+	M.limits = { threads = THREAD_LIMIT, folders = folderStore.limit, folderNameBytes = folderStore.nameBytes, workers = 8, events = transcript.limits.events,
 		transcriptBytes = transcript.limits.bytes, transcriptBudgets = transcript.limits.budgets }
 	env.require("runtime/dispose").add(function()
 		alive = false

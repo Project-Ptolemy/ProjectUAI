@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.0.5**, September 29, 2026.
+Current native feature contract for **2.1.0**, September 30, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -11,7 +11,7 @@ Revised notes restore the unread marker even when the client version stays the s
 
 ## Script UI library
 
-The independent [UI LIB](UI_LIBRARY.md) is now v1.2.0. Agents declare script
+The independent [UI LIB](UI_LIBRARY.md) is now v1.2.1. Agents declare script
 controls and callbacks through its bundled reference. The library owns layout,
 input, configuration, cleanup, and the fixed `Project UAI | UI LIB.` footer.
 Navigation, action labels, and disclosure/selection states use text; the
@@ -21,6 +21,22 @@ are owned and reversible, respect reduced motion, and settle during cleanup.
 The agent client remains its own application.
 
 ## Chat viewport
+
+**New conversation** lets you choose the current game, **Universal**, or a custom
+folder and optionally name the chat. **Move to folder** is in each conversation's
+actions. **Conversation folders** creates and renames custom folders; removing a
+folder moves its chats to Universal and keeps their messages. Folders organize
+history without changing game context or conversation tool permissions. Older
+conversations retain their original game grouping.
+
+On mobile, the app menu filters history by folder and searches folder names as
+well as titles and game names. Search stays above the results. Forms keep their
+existing fields during rotation; when a landscape keyboard leaves too little
+space, footer actions move into the scrollable body at full touch size. Dismissing
+the keyboard restores the pinned actions. Focused fields account for the keyboard
+edge and clipping ancestors, without repeatedly scrolling nested panels. Short
+navigation layouts put New conversation and workspace actions after the history
+in its scroll region, keeping them available while the keyboard is open.
 
 Conversation history stays in the session while the view uses measured spacers
 for offscreen messages and mounts nearby Markdown chunks. Recently read chunks

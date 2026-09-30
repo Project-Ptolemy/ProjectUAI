@@ -2,7 +2,7 @@
 
 This is the historical review of UI LIB v1.0.0 in Project UAI 2.0.0.
 For the current API and behavior, see [UI_LIBRARY.md](UI_LIBRARY.md) and the
-[2.0.5 release notes](../CHANGELOG.md). The verification counts below describe
+[2.1.0 release notes](../CHANGELOG.md). The verification counts below describe
 that earlier implementation.
 
 Manual review preceded automated tests for this implementation. The same order

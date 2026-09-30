@@ -405,19 +405,51 @@ return function(env)
 		if not M.isMobile() then return end
 		local ok, field = pcall(function() return env.uis:GetFocusedTextBox() end)
 		if not ok or not field or not field.Parent or not M.screen or not field:IsDescendantOf(M.screen) then return end
+		local ancestor = field
+		while ancestor and ancestor ~= M.screen do
+			if ancestor:IsA("GuiObject") and not ancestor.Visible then return end
+			ancestor = ancestor.Parent
+		end
+		local bounds = M.usableRect(M.screen, 0, false)
+		local origin = M.parentGeometry(M.screen)
+		local safeTop, safeBottom = origin.Y + bounds.y, origin.Y + bounds.y + bounds.height
+		-- Track the requested movement ourselves: AbsolutePosition can be updated
+		-- one layout pass later, causing an outer scroller to repeat the inner move.
+		local y, height = field.AbsolutePosition.Y, field.AbsoluteSize.Y
 		local node = field.Parent
 		while node and node ~= M.screen do
-			if node:IsA("ScrollingFrame") and node.ScrollingEnabled and node.Visible then
+			if node:IsA("ScrollingFrame") and node.ScrollingEnabled
+				and node.ScrollingDirection ~= Enum.ScrollingDirection.X then
 				local visible = node.AbsoluteWindowSize.Y
 				if visible <= 0 then visible = node.AbsoluteSize.Y end
-				local margin = M.minTarget() / 4
-				local top = node.AbsolutePosition.Y + margin
-				local bottom = node.AbsolutePosition.Y + visible - margin
-				local y, height = field.AbsolutePosition.Y, field.AbsoluteSize.Y
-				local delta = y < top and y - top or (y + height > bottom and math.min(y - top, y + height - bottom) or 0)
-				local maximum = math.max(0, node.AbsoluteCanvasSize.Y - visible)
-				if visible > 0 and delta ~= 0 then
-					node.CanvasPosition = Vector2.new(node.CanvasPosition.X, util.clamp(node.CanvasPosition.Y + delta, 0, maximum))
+				local top, bottom = node.AbsolutePosition.Y, node.AbsolutePosition.Y + visible
+				if math.min(safeBottom, bottom) > math.max(safeTop, top) then
+					top, bottom = math.max(safeTop, top), math.min(safeBottom, bottom)
+				end
+				ancestor = node.Parent
+				while ancestor and ancestor ~= M.screen do
+					if ancestor:IsA("GuiObject") and ancestor.ClipsDescendants then
+						local clipHeight = ancestor:IsA("ScrollingFrame") and ancestor.AbsoluteWindowSize.Y or 0
+						if clipHeight <= 0 then clipHeight = ancestor.AbsoluteSize.Y end
+						local clipTop = math.max(top, ancestor.AbsolutePosition.Y)
+						local clipBottom = math.min(bottom, ancestor.AbsolutePosition.Y + clipHeight)
+						-- An entirely offscreen inner scroller first reveals its own field;
+						-- the outer scroller can then bring that region into view.
+						if clipBottom > clipTop then top, bottom = clipTop, clipBottom end
+					end
+					ancestor = ancestor.Parent
+				end
+				if visible > 0 and bottom > top then
+					local margin = math.min(M.minTarget() / 4, math.max(0, (bottom - top - math.min(height, M.minTarget())) / 2))
+					top, bottom = top + margin, bottom - margin
+					local delta = y < top and y - top or (y + height > bottom and math.min(y - top, y + height - bottom) or 0)
+					local maximum = math.max(0, node.AbsoluteCanvasSize.Y - visible)
+					local previous = node.CanvasPosition.Y
+					local nextY = util.clamp(previous + delta, 0, maximum)
+					if nextY ~= previous then
+						node.CanvasPosition = Vector2.new(node.CanvasPosition.X, nextY)
+						y = y - (nextY - previous)
+					end
 				end
 			end
 			node = node.Parent

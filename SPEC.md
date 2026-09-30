@@ -637,10 +637,21 @@ Persisted files, all under one folder (`env.info.folder`, default `UAI/`):
 | --- | --- | --- |
 | `config.json` | `runtime/config` | every setting, the provider list, permission rules, memory |
 | `sessions/<id>.json` | `agent/session` | one conversation: context, transcript, title, place and timestamps; newest 64 restored, older disk history retained |
+| `sessions/.folders.1.json`, `.folders.2.json` | `runtime/conversation_folders` | alternating verified custom-folder catalogs; names, stable IDs and revision |
 | `stats.json` | `agent/stats` | per-day and per-model counters; days capped at 400 |
 | `export/*.json` | the Import & export pane | a shareable copy of the settings, with keys reduced to four characters |
 
 ## 7. Design tokens
+
+Conversation organization is independent from execution context. Sessions retain
+their recorded place and policy when moved into Universal or a custom folder.
+`agent/session` exposes `folders`, `groups`, `folderLabel`, `createFolder`,
+`renameFolder`, `removeFolder`, and `moveToFolder`; creation accepts `folderId`.
+Legacy saves use their recorded game. Removing a custom folder preserves chats,
+including archived memberships, which resolve to Universal without rewriting
+archived or unsupported-policy files. Up to 64 custom folders have unique names
+of at most 120 UTF-8 bytes. Unreadable or future-format catalogs block edits;
+an intact older snapshot can recover a damaged newer snapshot.
 
 No use site writes a raw colour or number. `ui/theme` exposes `theme.color.*`,
 `theme.text.*` (role -> size/font/lineHeight/height), `theme.space.*`,
@@ -744,6 +755,13 @@ landscape modes are both `panel`. A forced mobile `window` layout still uses mob
 geometry. Keyboard positioning uses the reported top edge when available, and
 focused mobile fields are revealed through their scrolling ancestors. Desktop
 geometry and pointer layouts retain their existing behavior.
+
+When a mobile keyboard leaves too little height for a form, its footer actions
+join the body scroll region at their full touch size. Dismissal remains available;
+keyboard dismissal restores the pinned footer and preserves the fields. Focus
+reveal accounts for clipping ancestors and the keyboard edge without repeating
+the displacement of an inner scroller. Mobile history searches folder names and
+offers a folder filter with the same create, move, and manage flows as desktop.
 
 Profile avatars start with a readable initial behind a renderable image. A deferred
 worker resolves a ready headshot through `Players:GetUserThumbnailAsync` and calls

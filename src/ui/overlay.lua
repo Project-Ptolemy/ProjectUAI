@@ -362,7 +362,8 @@ return function(env)
 	--
 	-- `scroll = true` reserves a stable preferred height for forms. Short prompts
 	-- fit their contents up to the same usable-room ceiling. Both have a scrolling
-	-- body, so opening a keyboard never makes a field or action unreachable.
+	-- body. In short mobile keyboard space the footer joins that scroll region,
+	-- keeping both editable fields and complete action targets reachable.
 	function M.modal(props)
 		props = props or {}
 		if not ensure() then return nil end
@@ -584,20 +585,40 @@ return function(env)
 				local cardHeight = math.max(1, math.floor(math.min(preferred, roomNow)))
 				local measured = math.min(cardHeight, wantedHeader, math.max(closeDiameter + chromePad * 2,
 					cardHeight - footerTotal - closeDiameter))
-				footerTotal = math.min(footerTotal, math.max(0, cardHeight - measured - 1))
+				local minimumBody = theme.space.xxs + theme.space.sm
+				for _, child in ipairs(handle.content:GetChildren()) do
+					if child:IsA("GuiObject") and child.Visible then minimumBody = minimumBody + closeDiameter; break end
+				end
+				local inlineFooter = responsive.isMobile() and hasFooter
+					and cardHeight - measured - footerTotal < minimumBody
+				if inlineFooter then
+					chromePad = math.min(chromePad, math.max(0, math.floor((cardHeight - closeDiameter - minimumBody) / 2)))
+					wantedHeader = math.max(closeDiameter, titleHeight) + chromePad * 2
+					measured = math.min(cardHeight, wantedHeader, math.max(closeDiameter + chromePad * 2,
+						cardHeight - minimumBody))
+				end
+				local pinnedFooter = inlineFooter and 0 or math.min(footerTotal, math.max(0, cardHeight - measured - 1))
 				card.Size = UDim2.fromOffset(card.Size.X.Offset, cardHeight)
 				local padding = header:FindFirstChildOfClass("UIPadding")
 				padding.PaddingTop = UDim.new(0, chromePad)
 				padding.PaddingBottom = UDim.new(0, chromePad)
 				header.Size = UDim2.new(1, 0, 0, measured)
 				handle.scroll.instance.Position = UDim2.fromOffset(0, measured)
-				handle.scroll.instance.Size = UDim2.new(1, 0, 0, math.max(0, cardHeight - measured - footerTotal))
-				handle.footer.Size = UDim2.new(1, 0, 0, footerTotal)
+				handle.scroll.instance.Size = UDim2.new(1, 0, 0, math.max(0, cardHeight - measured - pinnedFooter))
+				local footerParent = inlineFooter and handle.scroll.instance or card
+				if handle.footer.Parent ~= footerParent then handle.footer.Parent = footerParent end
+				handle.footer.AnchorPoint = Vector2.new(0, inlineFooter and 0 or 1)
+				handle.footer.Position = inlineFooter and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1)
+				handle.footer.LayoutOrder = 2
+				handle.footer.Size = UDim2.new(1, 0, 0, inlineFooter and footerTotal or pinnedFooter)
+				local footerPadding = handle.footer:FindFirstChildOfClass("UIPadding")
+				footerPadding.PaddingLeft = UDim.new(0, inlineFooter and 0 or pad)
+				footerPadding.PaddingRight = UDim.new(0, inlineFooter and 0 or pad)
 				footerShown = hasFooter
 				handle.footer.Visible = footerShown
 				if divider then
-					divider.Visible = hasFooter
-					divider.Position = UDim2.new(0, 0, 1, -footerTotal)
+					divider.Visible = hasFooter and not inlineFooter
+					divider.Position = UDim2.new(0, 0, 1, -pinnedFooter)
 				end
 				fitting = false
 			end

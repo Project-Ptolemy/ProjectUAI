@@ -291,18 +291,76 @@ return function(env)
 		end)
 		return refresh
 	end
-	function M.pointer(owner, target, began, moved, ended)
+	function M.releaseFocus(window, root)
+		local focused = env.services.UserInputService:GetFocusedTextBox()
+		if focused and focused:IsDescendantOf(root or window.ScreenGui) then
+			pcall(function() focused:ReleaseFocus() end)
+		end
+	end
+	function M.cancelGesture(window, owner)
+		local gesture = window._gesture
+		if not gesture or (owner and gesture.owner ~= owner) then return end
+		window._gesture = nil
+		if gesture.release then gesture.release() end
+	end
+	function M.pointer(owner, target, began, moved, ended, options)
 		-- One window-level router; an initiating touch owns the whole gesture.
 		local window = owner._window
 		owner._scope:Connect(target.InputBegan, function(input)
 			local kind = input.UserInputType
 			if window._gesture or not window.Alive then return end
 			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
-			if began(input) == false or not owner._scope.alive or not window.Alive then return end
-			window._gesture = { input = input, owner = owner, move = moved, finish = ended }
+			if options and options.CanStart and not options.CanStart() then return end
+			local touch = kind == Enum.UserInputType.Touch
+			local pending = touch and options and options.TouchAxis == "X"
+			local origin, scrolls = input.Position, {}
+			local gesture = { input = input, owner = owner }
+			function gesture.release()
+				for scroll, enabled in pairs(scrolls) do
+					if scroll.Parent then scroll.ScrollingEnabled = enabled end
+				end
+				scrolls = {}
+			end
+			local function start(current)
+				if began(current) == false or not owner._scope.alive or not window.Alive or window._gesture ~= gesture then
+					if window._gesture == gesture then M.cancelGesture(window) end
+					return false
+				end
+				pending = false
+				if touch and options and (options.TouchAxis or options.LockScroll) then
+					local ancestor = target.Parent
+					while ancestor and ancestor ~= window.ScreenGui do
+						if ancestor:IsA("ScrollingFrame") then
+							scrolls[ancestor] = ancestor.ScrollingEnabled
+							ancestor.ScrollingEnabled = false
+						end
+						ancestor = ancestor.Parent
+					end
+				end
+				return true
+			end
+			function gesture.move(current)
+				if pending then
+					local delta = current.Position - origin
+					if math.max(math.abs(delta.X), math.abs(delta.Y)) < tokens.Size.TouchSlop then return end
+					-- A vertical swipe belongs to the native scroll container. Only
+					-- a tap or a horizontal drag may change a horizontal value.
+					if math.abs(delta.Y) >= math.abs(delta.X) then M.cancelGesture(window); return end
+					if not start(current) then return end
+				end
+				if moved then moved(current) end
+			end
+			function gesture.finish(current)
+				if pending then gesture.move(current) end
+				if window._gesture ~= gesture then return end
+				if pending and not start(current) then return end
+				if ended then ended(current) end
+			end
+			window._gesture = gesture
+			if not pending then start(input) end
 		end)
 		owner._scope:Add(function()
-			if window._gesture and window._gesture.owner == owner then window._gesture = nil end
+			M.cancelGesture(window, owner)
 		end)
 	end
 	function M.isInside(node, x, y)

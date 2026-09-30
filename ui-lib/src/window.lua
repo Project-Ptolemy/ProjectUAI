@@ -105,10 +105,11 @@ return function(env)
 	end
 	function Window:Hide()
 		if not self.Alive then return self end
+		C.releaseFocus(self)
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
-		self._gesture = nil
+		C.cancelGesture(self)
 		for release in pairs(self._presses) do release() end
 		motion.stopAll(self, true)
 		self.Visible = false
@@ -146,12 +147,14 @@ return function(env)
 	end
 	function Window:Destroy()
 		if not self.Alive then return end
+		C.releaseFocus(self)
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
 		motion.stopAll(self, true)
 		self.Alive, self.Visible = false, false
-		self._gesture, self._capture = nil, nil
+		C.cancelGesture(self)
+		self._capture = nil
 		if env.windows[self.Id] == self then env.windows[self.Id] = nil end
 		self._scope:Destroy()
 		self.ScreenGui:Destroy()
@@ -168,10 +171,11 @@ return function(env)
 		assert(tab and tab._window == self and tab.Alive, "Unknown tab")
 		if not tab.Visible then return self end
 		if self._activeTab == tab then return self end
+		if self._activeTab then C.releaseFocus(self, self._activeTab.Frame) end
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
-		self._gesture = nil
+		C.cancelGesture(self)
 		self._activeTab = tab
 		for _, candidate in ipairs(self.Tabs) do candidate.Frame.Visible = candidate == tab and candidate.Visible end
 		self:_Refresh(true)
@@ -208,7 +212,19 @@ return function(env)
 				local bottom = top + focused.AbsoluteSize.Y
 				local height = ancestor.AbsoluteSize.Y
 				local y = ancestor.CanvasPosition.Y
-				if top < 8 then y = y + top - 8
+				if focused.AbsoluteSize.Y > height - 16 then
+					-- A multiline field may be taller than the keyboard-safe view.
+					-- Reveal its editing line rather than alternately jumping to
+					-- opposite ends of an impossible-to-fit field.
+					local lineTop = 0
+					if focused.MultiLine and focused.CursorPosition > 0 then
+						local before = focused.Text:sub(1, focused.CursorPosition - 1)
+						lineTop = math.max(0, C.measure(before, focused.TextSize, focused.AbsoluteSize.X - 24) - focused.TextSize) + 10
+					end
+					local lineBottom = top + lineTop + focused.TextSize + 8
+					if top + lineTop < 8 then y = y + top + lineTop - 8
+					elseif lineBottom > height - 8 then y = y + lineBottom - height + 8 end
+				elseif top < 8 then y = y + top - 8
 				elseif bottom > height - 8 then y = y + bottom - height + 8 end
 				ancestor.CanvasPosition = Vector2.new(ancestor.CanvasPosition.X, math.max(0, y))
 			end
@@ -225,9 +241,10 @@ return function(env)
 			local camera = env.services.Workspace.CurrentCamera
 			size = camera and camera.ViewportSize or Vector2.new(800, 600)
 		end
-		local availableHeight = size.Y
+		local availableHeight, keyboardVisible = size.Y, false
 		pcall(function()
 			if uis.OnScreenKeyboardVisible then
+				keyboardVisible = true
 				local keyboard = uis.OnScreenKeyboardSize
 				local top = uis.OnScreenKeyboardPosition.Y
 				availableHeight = top > 0 and math.min(size.Y, top - origin.Y) or size.Y - keyboard.Y
@@ -243,15 +260,18 @@ return function(env)
 		x = C.clamp(x, margin, math.max(margin, size.X - width - margin))
 		y = C.clamp(y, margin, math.max(margin, availableHeight - height - margin))
 		self._rect = { x = margin, y = margin, width = math.max(1, size.X - margin * 2), height = math.max(1, availableHeight - margin * 2) }
+		if self.Touch and (self._width ~= width or self._height ~= height) then C.cancelGesture(self) end
 		self._width, self._height = width, height
-		self._compact = width < T.Size.Compact or height < 380
-		local short = height < 380
+		local short = height < (self.Touch and 440 or 380)
+		self._compact = width < T.Size.Compact or short
+		self._contentPad = self.Touch and self._compact and T.Size.MobilePad or T.Size.Pad
 		local titleHeight = math.ceil(26 * self.TextScale)
 		local subtitleHeight = math.ceil(18 * self.TextScale)
 		local header = short and math.max(52, self.Target + 8) or math.max(T.Size.Header, 14 + titleHeight + 3 + subtitleHeight + 12)
 		local nav = self._compact and math.max(T.Size.Tabs, self.Target + 8) or 0
 		local sidebar = self._compact and 0 or math.floor(T.Size.Sidebar * math.min(1.28, self.TextScale))
-		local searchVisible = self._search and (height >= 300 or uis:GetFocusedTextBox() == self._search)
+		local searchFocused = self._search and uis:GetFocusedTextBox() == self._search
+		local searchVisible = self._search and (searchFocused or (height >= 300 and not (self.Touch and keyboardVisible)))
 		local search = searchVisible and self.Target + 12 or 0
 		local footer = T.Size.Footer
 		if self._compact and height < 240 then nav = 0 end
@@ -301,8 +321,8 @@ return function(env)
 		self._content.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - search - footer))
 		if self._search then
 			self._search.Visible = searchVisible == true
-			self._search.Position = UDim2.fromOffset(sidebar + 20, top + 6)
-			self._search.Size = UDim2.new(1, -sidebar - 40, 0, self.Target)
+			self._search.Position = UDim2.fromOffset(sidebar + self._contentPad, top + 6)
+			self._search.Size = UDim2.new(1, -sidebar - self._contentPad * 2, 0, self.Target)
 		end
 		self._resize.Visible = not self.Touch
 		-- The restore pill: title and a status line over the permanent
@@ -529,8 +549,8 @@ return function(env)
 			if gesture then
 				local touch = gesture.input.UserInputType == Enum.UserInputType.Touch
 				if (touch and input == gesture.input) or (not touch and input.UserInputType == Enum.UserInputType.MouseButton1) then
-					self._gesture = nil
-					if gesture.owner._scope.alive and gesture.finish then gesture.finish(input) end
+					if input.UserInputState ~= Enum.UserInputState.Cancel and gesture.owner._scope.alive and gesture.finish then gesture.finish(input) end
+					if self._gesture == gesture then C.cancelGesture(self) end
 				end
 			end
 			for binding in pairs(self._keys) do if binding.ended then binding.ended(input) end end
@@ -547,7 +567,7 @@ return function(env)
 			for binding in pairs(self._keys) do if binding.began then binding.began(input) end end
 		end)
 		self._scope:Connect(uis.WindowFocusReleased, function()
-			self._gesture = nil; self:_CancelCapture(); self:_ReleaseKeys()
+			C.cancelGesture(self); self:_CancelCapture(); self:_ReleaseKeys()
 			for release in pairs(self._presses) do release() end
 			motion.stopAll(self, true)
 		end)
@@ -559,6 +579,7 @@ return function(env)
 			self._scope:Connect(env.services.GuiService:GetPropertyChangedSignal("ReducedMotionEnabled"), preference)
 		end)
 		self._scope:Connect(self._viewport:GetPropertyChangedSignal("AbsoluteSize"), function() self:_Layout() end)
+		self._scope:Connect(self._viewport:GetPropertyChangedSignal("AbsolutePosition"), function() self:_Layout() end)
 		local cameraRelease
 		local function cameraChanged()
 			if cameraRelease then cameraRelease(); cameraRelease = nil end
@@ -576,7 +597,11 @@ return function(env)
 				end)
 			end)
 		end
-		self._scope:Connect(uis.TextBoxFocused, function() self._scope:Delay(0.05, function() self:_RevealFocused() end) end)
+		self._scope:Connect(uis.TextBoxFocused, function()
+			self:_Layout()
+			self._scope:Delay(0.05, function() self:_RevealFocused() end)
+		end)
+		self._scope:Connect(uis.TextBoxFocusReleased, function() self:_Layout() end)
 		self._scope:Connect(self.ScreenGui.Destroying, function() self:Destroy() end)
 		self._scope:Connect(self.Frame.Destroying, function() self:Destroy() end)
 		env.windows[id] = self

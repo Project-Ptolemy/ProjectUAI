@@ -180,13 +180,13 @@ return function(env)
 					setAvatar(option.Image, option.Label)
 					labelLeft = 8 + rowAvatar + 10
 				end
-				C.text(panel, row, option.Label, "Body", option.Disabled and "Muted" or "Text", {
+				local rowLabel = C.text(panel, row, option.Label, "Body", option.Disabled and "Muted" or "Text", {
 					Name = "OptionLabel", Position = UDim2.fromOffset(labelLeft, 0), Size = UDim2.new(1, -(labelLeft + 84), 1, 0),
 					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 				})
 				local check = C.text(panel, row, "Selected", "Small", "Accent", { Size = UDim2.fromOffset(72, 24), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 				check.Position, check.AnchorPoint = UDim2.new(1, -12, 0.5, 0), Vector2.new(1, 0.5)
-				rows[#rows + 1] = { row = row, check = check, option = option }
+				rows[#rows + 1] = { row = row, check = check, option = option, label = rowLabel, labelLeft = labelLeft }
 				panel._scope:Connect(row.Activated, function()
 					if option.Disabled or not self.Alive then return end
 					if self.Multi then
@@ -199,6 +199,19 @@ return function(env)
 				end)
 			end
 			local empty = C.text(panel, panel.Body, "No matching options", "Body", "Muted", { Name = "EmptyOptions", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = #rows + 1, Visible = #rows == 0 })
+			local function layoutRows()
+				for _, item in ipairs(rows) do
+					local reserve = self._window.Touch and (item.check.Visible and math.max(72, 66 * self._window.TextScale) + 12 or 12) or 84
+					item.check.Size = UDim2.fromOffset(math.max(72, 66 * self._window.TextScale), math.max(24, 16 * self._window.TextScale))
+					item.label.Size = UDim2.new(1, -(item.labelLeft + reserve), 1, 0)
+					item.label.TextWrapped = self._window.Touch
+					local height = self._window.Target
+					if self._window.Touch then
+						height = math.max(height, math.min(height * 3, C.measure(item.option.Label, 14 * self._window.TextScale, panel.Width - 40 - item.labelLeft - reserve) + 16))
+					end
+					item.row.Size = UDim2.new(1, 0, 0, height)
+				end
+			end
 			paintMenu = function()
 				if panel.Closed then return end
 				local count, query = 0, string.lower(search.Text)
@@ -210,17 +223,33 @@ return function(env)
 					item.row.BackgroundColor3 = selected and self._window.Theme.Selected or self._window.Theme.Surface
 				end
 				empty.Visible = count == 0
+				layoutRows()
 			end
 			panel._scope:Connect(search:GetPropertyChangedSignal("Text"), function()
 				paintMenu()
 				panel.Body.CanvasPosition = Vector2.new(0, 0)
 			end)
+			local done
 			if self.Multi then
-				local done = C.node(panel, "TextButton", panel.Actions, { Name = "Done", Size = UDim2.fromScale(1, 1) })
+				done = C.node(panel, "TextButton", panel.Actions, { Name = "Done", Size = UDim2.fromScale(1, 1) })
 				C.corner(done); C.feedback(panel, done, "Primary")
 				C.text(panel, done, "Done", "Body", "OnPrimary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 				panel._scope:Connect(done.Activated, function() panel:Close() end)
 			end
+			panel.OnLayout = function(width)
+				local pinned = self._window.Touch and search.Visible and panel.Body.Size.Y.Offset >= self._window.Target * 2 + 28
+				search.Parent = pinned and panel.Frame or panel.Body
+				search.Size = UDim2.new(1, pinned and -40 or 0, 0, self._window.Target)
+				search.Position = pinned and UDim2.fromOffset(20, panel.HeaderHeight + 8) or UDim2.fromOffset(0, 0)
+				if pinned then
+					local reserved = self._window.Target + 12
+					panel.Body.Position = UDim2.fromOffset(0, panel.HeaderHeight + reserved)
+					panel.Body.Size = UDim2.fromOffset(width, math.max(0, panel.Body.Size.Y.Offset - reserved))
+				end
+				if done then done.Size = UDim2.new(1, 0, 0, self._window.Target) end
+				layoutRows()
+			end
+			self._window:_Layout()
 			paintMenu()
 			for _, item in ipairs(rows) do if not item.option.Disabled then panel:Focus(item.row); break end end
 			return panel
@@ -245,7 +274,7 @@ return function(env)
 			end
 		end
 		self._slotHeight = function()
-			local width = math.max(1, self._window._contentWidth - 72)
+			local width = math.max(1, self._window._contentWidth - self._window._contentPad * 2 - 32)
 			local columns = math.max(1, math.min(#rows, math.floor(width / (100 * self._window.TextScale))))
 			return math.ceil(#rows / columns) * (self._window.Target + 6) - 6
 		end

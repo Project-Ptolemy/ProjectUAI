@@ -16,7 +16,7 @@ the local
 player's Roblox headshot beside their display name, username, and current game.
 No uploaded assets or logo downloads are required.
 
-This is the canonical API and application guide for **UI LIB 1.2.0**. For UAI
+This is the canonical API and application guide for **UI LIB 1.2.1**. For UAI
 sessions, custom agent tools, providers, hooks, and the full host lifecycle, use
 [Embedding Project UAI](EMBEDDING.md). A complete
 [assistant workbench](../examples/embedding/README.md) connects both bundles.
@@ -812,12 +812,27 @@ reading anchor, treat zero measurements during hiding as temporary, and refresh
 from retained state on restore. Viewport chunking must never delete the model's
 conversation or lose a user's draft.
 
-There is no public window visibility-change signal in 1.2.0. Do not invent
+There is no public window visibility-change signal in 1.2.1. Do not invent
 `OnShow`/`OnHide` options or patch a window's methods to simulate them. Simple
 bounded views can remain subscribed. A reusable view that needs dedicated
 visibility lifecycle support should add that capability to the library first.
 
 ### Motion and responsiveness
+
+Mobile layouts use smaller content insets, wrapped section headings, and dialog
+action rows sized for touch. Dropdown search stays above the scrolling choices
+when the keyboard leaves enough space for a complete option row; in shorter
+views it joins the scroll body. Dialog actions likewise join the body when space
+is too short to pin them. Open pickers reflow their fields and actions after
+rotation or text-scale changes without replacing drafts.
+
+On touch screens, horizontal sliders and color bars wait for a tap release or
+horizontal movement before changing values. Vertical swipes remain scroll gestures
+and do not invoke slider `OnCommit`. Active horizontal drags temporarily hold their
+scrolling ancestors; release, cancellation, hide, rotation, replacement, and
+destruction restore scrolling. Multiline fields reveal the editing line when a
+keyboard makes the entire field too tall to display. Hiding a window, tab, or
+control releases its text focus.
 
 Use the library's owned transitions and `SetReducedMotion` API. Do not add
 per-frame entrance tweens, custom drag motion, or artificial typewriter loops to

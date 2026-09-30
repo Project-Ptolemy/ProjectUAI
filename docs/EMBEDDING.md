@@ -2,8 +2,8 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.0.0** in **Project UAI 2.0.5**, alongside **UI LIB
-1.2.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
+documents **embedding SDK 1.0.0** in **Project UAI 2.1.0**, alongside **UI LIB
+1.2.1**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
 bundle with its own version and lifetime.
 
 Start with [the complete workbench example](../examples/embedding/README.md) for
@@ -348,6 +348,7 @@ through `list()` and will not open with `uai.openSession`. Use `open` or
 | Option | Meaning |
 | --- | --- |
 | `title`, `id` | Initial title and optional unique identity |
+| `folderId` | Optional destination from `sessions.folders()`; defaults to the recorded game; `universal` works across games |
 | `activate` | `newThread` selects by default; `open` selects only when true |
 | `ephemeral = true` | Exclude this conversation's history from ordinary persistence |
 | `toolFilter` | Map of allowed tool names, for example `{ workbench_status = true }` |
@@ -398,6 +399,22 @@ replace existing policy. Use a new dedicated conversation when the restored
 policy does not match the integration's requirements.
 
 ### Send and finish
+
+Conversation folders are independent of game context and tool policy.
+`sessions.folders()` lists `{ id, label, kind, current, placeId? }` destinations;
+`kind` is `game`, `universal`, or `custom`. `groups()` adds the conversations and
+last activity, including empty custom folders and built-in destinations.
+`folderLabel(sessionOrId)` resolves the current label.
+
+`createFolder(name)` returns a folder or `nil, reason`. `renameFolder(id, name)`,
+`removeFolder(id)`, and `moveToFolder(sessionOrId, folderId)` return `ok, reason`.
+Only custom folders can be renamed or removed. Removal moves their conversations
+to Universal without deleting messages. Names are unique ignoring ASCII case,
+single-line UTF-8 of at most 120 bytes; at most 64 custom folders are retained.
+Changes emit `sessions.listChanged`. Folder creation and edits verify persistence
+when storage is available; failed writes do not publish the proposed change.
+Older chats keep their game grouping, while missing custom memberships resolve
+to Universal. Folder IDs are opaque; use the IDs returned by these APIs.
 
 ```lua
 local session = uai.sessions.current()
@@ -1072,7 +1089,7 @@ layout has room. Keep text navigation and the fixed attribution. Exposed
 reparenting or styling them bypasses the library's ownership and layout rules.
 
 There is no public `RegisterControl`, arbitrary custom-canvas slot, or docking
-API in 1.2.0. If the existing components do not express a reusable capability,
+API in 1.2.1. If the existing components do not express a reusable capability,
 add it in the shared library and document it there.
 
 ## Files and bridge images

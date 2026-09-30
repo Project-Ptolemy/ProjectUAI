@@ -28,7 +28,7 @@ return function(env)
 		Danger = rgb(166, 47, 48), Scrim = rgb(12, 12, 11),
 	}
 	M.Size = {
-		Target = 40, TouchTarget = 44, Gap = 12, Pad = 20,
+		Target = 40, TouchTarget = 44, TouchSlop = 8, Gap = 12, Pad = 20, MobilePad = 12,
 		Header = 76, Footer = 30, Sidebar = 208, Tabs = 52, Avatar = 36,
 		Radius = 10, FieldRadius = 6, Scrollbar = 3,
 		Width = 780, Height = 580, Compact = 640,

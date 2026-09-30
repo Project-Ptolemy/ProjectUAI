@@ -35,7 +35,8 @@ return function(env)
 	end
 	function Control:_CancelInteraction()
 		local window = self._window
-		if window._gesture and window._gesture.owner == self then window._gesture = nil end
+		C.cancelGesture(window, self)
+		C.releaseFocus(window, self.Frame)
 		if self._cancel then self._cancel() end
 		if window._overlay and window._overlay.Control == self then window:_CloseOverlay() end
 	end
@@ -110,7 +111,7 @@ return function(env)
 		self._slot = C.node(self, "Frame", self.Frame, { Name = "Value", BackgroundTransparency = 1 })
 		self._layout = function()
 			if not self.Alive then return end
-			local width = math.max(1, window._contentWidth - 72)
+			local width = math.max(1, window._contentWidth - window._contentPad * 2 - 32)
 			local stacked = self._mode == "stack" or (self._mode == "inline" and self._slotWidth > 64 and width < 280 * window.TextScale)
 			self._stacked = stacked
 			local content = self._mode == "content"
@@ -273,7 +274,7 @@ return function(env)
 			return self:_Interactive()
 		end, update, function()
 			if self:_Interactive() then C.call(self._window, options.OnCommit, self:Get()) end
-		end)
+		end, { TouchAxis = "X", CanStart = function() return self:_Interactive() end })
 		self._scope:Connect(hit.InputBegan, function(input)
 			if not self:_Interactive() or env.services.UserInputService:GetFocusedTextBox() then return end
 			local key, nextValue = input.KeyCode, nil

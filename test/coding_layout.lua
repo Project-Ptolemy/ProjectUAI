@@ -196,7 +196,12 @@ case("Coding dialogs reserve footer space for larger controls", function()
 			height = math.max(height, button.AbsoluteSize.Y)
 		end
 		check("footer reserves vertical padding", modal.footer.AbsoluteSize.Y >= height + theme.space.sm * 2)
-		check("dialog body stays above footer", modal.scroll.instance.Position.Y.Offset + modal.scroll.instance.Size.Y.Offset <= modal.card.Size.Y.Offset - modal.footer.Size.Y.Offset)
+		if modal.footer.Parent == modal.scroll.instance then
+			check("short mobile dialogs scroll complete actions after the fields", modal.footer.LayoutOrder > modal.content.LayoutOrder
+				and modal.scroll.instance.Size.Y.Offset >= env.require("ui/responsive").minTarget())
+		else
+			check("dialog body stays above pinned footer", modal.scroll.instance.Position.Y.Offset + modal.scroll.instance.Size.Y.Offset <= modal.card.Size.Y.Offset - modal.footer.Size.Y.Offset)
+		end
 		auditBars(f, modal.card); modal.close()
 	end
 	audit(form.modal)

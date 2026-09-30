@@ -19,6 +19,35 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.1.0",
+			revision = "2026-09-30",
+			date = "September 30, 2026",
+			title = "Mobile improvements and conversation folders",
+			highlights = "Native mobile forms and navigation stay usable above the keyboard. Keep conversations in Universal or folders you name, with improved touch controls in UI LIB v1.2.1.",
+			sections = {
+				{ category = "added", label = "Conversation folders", items = {
+					"New conversation lets you choose a game, Universal, or a custom folder and optionally name the chat before starting.",
+					"Move existing chats from their conversation actions. Create or rename custom folders from Conversation folders; removing a folder keeps its chats in Universal.",
+					"Folder names and membership survive reload. Existing chats retain their game grouping, and moving a chat preserves its messages, game context, and tool permissions.",
+				} },
+				{ category = "improved", label = "Project UAI on mobile", items = {
+					"Short keyboard layouts move form actions into the body scroll region at full touch size. Keyboard dismissal pins the same buttons again without replacing inputs or losing drafts.",
+					"Focused fields account for the reported keyboard edge and clipping ancestors. Nested panels avoid repeating an inner scroll, and hidden fields leave background views alone.",
+					"Mobile history searches folder names and filters by folder. New conversation and workspace actions remain reachable by scroll while a keyboard is open.",
+				} },
+				{ category = "fixed", label = "UI LIB v1.2.1", items = {
+					"Vertical swipes over sliders and color bars scroll without changing their values. Taps and horizontal drags edit values; cancellation, rotation, and hiding restore scrolling.",
+					"Mobile layouts use slimmer content padding and wrapped section titles and dialog actions. Short dialogs keep their complete action targets in the scroll body.",
+					"Dropdown search stays above the results when space permits. Open picker fields and buttons reflow with text size and rotation, and hiding releases text focus.",
+				} },
+				{ category = "added", label = "Embedding SDK 1.0.0", items = {
+					"Hosts can boot without mounting the application, reuse a live client, and explicitly open provider setup or a conversation.",
+					"Owned scopes clean up subscriptions, hooks, and custom tools. Structured requests settle once with success, failure, or cancellation.",
+					"Named conversations validate and retain their tool policy and work budgets across reload. Unsupported saved policies keep their files without restoring unrestricted conversations.",
+				} },
+			},
+		},
+		{
 			version = "2.0.5",
 			revision = "2026-09-29",
 			date = "September 29, 2026",

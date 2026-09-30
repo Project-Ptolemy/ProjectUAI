@@ -14,7 +14,11 @@ return function(env)
 		tab.Frame = C.scroll(tab, window._content, "Tab_" .. id)
 		tab._scope:Connect(tab.Frame.Destroying, function() tab:Destroy() end)
 		tab.Frame.Visible = false
-		C.pad(tab.Frame, 20, 20)
+		local padding = C.pad(tab.Frame, 20, 20)
+		C.reflow(tab, function()
+			padding.PaddingLeft, padding.PaddingRight = UDim.new(0, window._contentPad), UDim.new(0, window._contentPad)
+			padding.PaddingTop, padding.PaddingBottom = UDim.new(0, window._contentPad), UDim.new(0, window._contentPad)
+		end)
 		C.list(tab.Frame, false, 20)
 		tab._button = C.node(tab, "TextButton", window._nav, { Name = "Tab_" .. id, LayoutOrder = #window.Tabs + 1 })
 		C.corner(tab._button)
@@ -90,13 +94,14 @@ return function(env)
 		C.corner(section._body, 8); C.stroke(section, section._body, "Subtle")
 		C.list(section._body, false, 0); C.pad(section._body, 0, 4)
 		C.reflow(section, function()
-			local width = math.max(1, window._contentWidth - 40)
+			local width = math.max(1, window._contentWidth - window._contentPad * 2)
 			local reserve = options.Collapsible and 72 or 0
+			local headingHeight = window.Touch and C.measure(section.Title, 15 * window.TextScale, width - reserve) or 22 * window.TextScale
 			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - reserve) or 0
 			section._header.Visible = section.Title ~= "" or section.Description ~= ""
-			section._header.Size = UDim2.new(1, 0, 0, math.max(options.Collapsible and window.Target or 0, 22 * window.TextScale + (descriptionHeight > 0 and descriptionHeight + 4 or 0)))
-			section._heading.Size = UDim2.new(1, -reserve, 0, 22 * window.TextScale)
-			section._description.Position = UDim2.fromOffset(0, 22 * window.TextScale + 4)
+			section._header.Size = UDim2.new(1, 0, 0, math.max(options.Collapsible and window.Target or 0, headingHeight + (descriptionHeight > 0 and descriptionHeight + 4 or 0)))
+			section._heading.Size = UDim2.new(1, -reserve, 0, headingHeight)
+			section._description.Position = UDim2.fromOffset(0, headingHeight + 4)
 			section._description.Size = UDim2.new(1, -reserve, 0, descriptionHeight)
 			if section._collapseLabel then section._collapseLabel.Size = UDim2.fromOffset(64, window.Target) end
 			section._description.Visible = descriptionHeight > 0

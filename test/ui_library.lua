@@ -30,7 +30,7 @@ local function input(kind, x, y, key)
 end
 local function key(name) return input(E.UserInputType.Keyboard, 0, 0, E.KeyCode[name]) end
 check("fixed attribution is part of the window and launcher", node("Attribution", window.Frame).Text == "Project UAI | UI LIB." and node("Attribution", node("Restore")).Text == "Project UAI | UI LIB.")
-check("public metadata points to this repository", UI.Version == "1.2.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
+check("public metadata points to this repository", UI.Version == "1.2.1" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
 check("window chrome draws the mark and leaves the window controls unfilled",
 	node("Brand", window._header) ~= nil and h.byName("minus", window._minimize) ~= nil and h.byName("close", window._close) ~= nil
 		and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)
@@ -97,11 +97,11 @@ local function pointer(kind, fraction)
 end
 local first, second = pointer(E.UserInputType.Touch, 0.2), pointer(E.UserInputType.Touch, 0.9)
 hit.InputBegan:Fire(first)
-check("touch press updates the slider", math.abs(slider:Get() + 0.6) < 0.000001)
+check("touch press waits for a tap or horizontal intent", slider:Get() == 1)
 hit.InputBegan:Fire(second); uis.InputChanged:Fire(second)
 uis.InputChanged:Fire(pointer(E.UserInputType.MouseMovement, 0.8))
 uis.InputEnded:Fire(second)
-check("another finger or mouse cannot hijack a touch gesture", math.abs(slider:Get() + 0.6) < 0.000001 and commits == 0)
+check("another finger or mouse cannot hijack a touch gesture", slider:Get() == 1 and commits == 0)
 first.Position = pointer(E.UserInputType.Touch, 0.7).Position
 uis.InputChanged:Fire(first); uis.InputEnded:Fire(first); uis.InputEnded:Fire(first)
 check("original touch ends and commits exactly once", math.abs(slider:Get() - 0.4) < 0.000001 and commits == 1)

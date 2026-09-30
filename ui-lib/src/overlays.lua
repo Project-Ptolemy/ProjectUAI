@@ -8,7 +8,7 @@ return function(env)
 		window:_CloseOverlay()
 		window:_CancelCapture()
 		window:_ReleaseKeys()
-		window._gesture = nil
+		C.cancelGesture(window)
 		local panel = C.owner(window)
 		panel.Dismissible, panel.Closed, panel.Control = options.Dismissible ~= false, false, options.Control
 		local previous = env.services.GuiService.SelectedObject
@@ -25,7 +25,7 @@ return function(env)
 			panel.Frame.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
 			panel.Frame.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		end)
-		C.text(panel, panel.Frame, options.Title or "", "Heading", "Text", {
+		local title = C.text(panel, panel.Frame, options.Title or "", "Heading", "Text", {
 			Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -40 - math.max(window.Target, 64 * window.TextScale), 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 		})
 		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
@@ -33,14 +33,15 @@ return function(env)
 		C.text(panel, close, "Close", "Caption", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		panel.Body = C.scroll(panel, panel.Frame, "Body")
 		C.pad(panel.Body, 20, 8); C.list(panel.Body, false, 12)
-		panel.Actions = C.node(panel, "Frame", panel.Frame, { Name = "Actions", BackgroundTransparency = 1 })
-		C.list(panel.Actions, true, 8)
+		panel.Actions = C.scroll(panel, panel.Frame, "Actions")
+		panel.Actions.ScrollBarThickness = 0
 		C.footer(panel, panel.Frame)
 		function panel:Close()
 			if self.Closed then return end
 			self.Closed = true
+			C.releaseFocus(window, self.Root)
 			if window._overlay == self then window._overlay = nil end
-			if window._gesture and window._gesture.owner == self then window._gesture = nil end
+			C.cancelGesture(window, self)
 			self._scope:Destroy()
 			self.Root:Destroy()
 			pcall(function()
@@ -60,6 +61,13 @@ return function(env)
 			scrim.BackgroundTransparency = options.Anchor and not window._compact and 1 or 0.4
 			local width = math.min(C.number(options.Width, 440, 160, 1200), rect.width)
 			local height = math.min(C.number(options.Height, 320, 120, 1200), rect.height)
+			local header = math.max(54, window.Target + 12)
+			local actionHeight = options.Actions and window.Target or 0
+			if panel.LayoutActions then actionHeight = panel.LayoutActions(width) end
+			if window.Touch and actionHeight > window.Target then
+				height = math.min(rect.height, math.max(height, header + 30 + actionHeight + 20 + window.Target + 16))
+			end
+			local inlineActions = window.Touch and options.Actions and height - header - 30 - actionHeight - 20 < window.Target + 16
 			local x, y = rect.x + (rect.width - width) / 2, rect.y + (rect.height - height) / 2
 			if options.Anchor and not window._compact then
 				local anchor, origin = options.Anchor, window._viewport.AbsolutePosition
@@ -70,12 +78,20 @@ return function(env)
 			end
 			panel.Width, panel.Height = width, height
 			panel.Frame.Position, panel.Frame.Size = UDim2.fromOffset(math.floor(x), math.floor(y)), UDim2.fromOffset(width, height)
-			local actions = options.Actions and window.Target + 20 or 0
-			local header = math.max(54, window.Target + 12)
+			local actions = options.Actions and not inlineActions and actionHeight + 20 or 0
+			local closeWidth = math.max(window.Target, 64 * window.TextScale)
+			close.Size = UDim2.fromOffset(closeWidth, window.Target)
+			title.Size = UDim2.new(1, -(panel.Dismissible and (40 + closeWidth) or 40), 0, math.max(32, 22 * window.TextScale))
+			panel.HeaderHeight = header
 			panel.Body.Position = UDim2.fromOffset(0, header)
 			panel.Body.Size = UDim2.fromOffset(width, math.max(0, height - header - 30 - actions))
-			panel.Actions.Position = UDim2.new(0, 20, 1, -30 - actions + 8)
-			panel.Actions.Size = UDim2.new(1, -40, 0, window.Target)
+			panel.InlineActions = inlineActions == true
+			panel.Actions.Parent = inlineActions and panel.Body or panel.Frame
+			panel.Actions.LayoutOrder = 10000
+			panel.Actions.Position = inlineActions and UDim2.fromOffset(0, 0) or UDim2.new(0, 20, 1, -30 - actions + 8)
+			panel.Actions.Size = UDim2.new(1, inlineActions and 0 or -40, 0, actionHeight)
+			panel.Actions.ScrollingEnabled = not inlineActions
+			panel.Actions.Visible = options.Actions == true
 			if panel.OnLayout then panel.OnLayout(width, height) end
 		end)
 		panel:Focus(close)
@@ -106,9 +122,24 @@ return function(env)
 			end)
 			actions[#actions + 1] = button
 		end
+		panel.LayoutActions = function(width)
+			local columns = #actions
+			if window.Touch then columns = math.max(1, math.min(#actions, math.floor((width - 32) / (112 * window.TextScale + 8)))) end
+			local cellWidth = math.max(1, (width - 40 - (columns - 1) * 8) / columns)
+			local rowHeight = window.Target
+			if window.Touch then
+				for _, spec in ipairs(buttons) do
+					rowHeight = math.max(rowHeight, math.min(window.Target * 2, C.measure(spec.Text or "Done", 14 * window.TextScale, cellWidth - 16) + 16))
+				end
+			end
+			for index, button in ipairs(actions) do
+				button.Size = UDim2.fromOffset(cellWidth, rowHeight)
+				button.Position = UDim2.fromOffset(((index - 1) % columns) * (cellWidth + 8), math.floor((index - 1) / columns) * (rowHeight + 8))
+			end
+			return math.ceil(#actions / columns) * (rowHeight + 8) - 8
+		end
 		panel.OnLayout = function(width)
 			content.Size = UDim2.new(1, 0, 0, C.measure(content.Text, 14 * window.TextScale, width - 40))
-			for _, button in ipairs(actions) do button.Size = UDim2.new(1 / #actions, -(8 * (#actions - 1) / #actions), 1, 0) end
 		end
 		window:_Layout()
 		panel:Focus(actions[#actions])

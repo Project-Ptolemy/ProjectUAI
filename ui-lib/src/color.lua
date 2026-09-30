@@ -136,18 +136,18 @@ return function(env)
 				brightness = 1 - C.clamp((input.Position.Y - sv.AbsolutePosition.Y) / math.max(1, sv.AbsoluteSize.Y), 0, 1)
 				render()
 			end
-			C.pointer(panel, sv, pickSV, pickSV)
+			C.pointer(panel, sv, pickSV, pickSV, nil, { LockScroll = true })
 			local function pickHue(input)
 				hue = C.clamp((input.Position.X - hueTrack.AbsolutePosition.X) / math.max(1, hueTrack.AbsoluteSize.X), 0, 1)
 				render()
 			end
-			C.pointer(panel, hueHit, pickHue, pickHue)
+			C.pointer(panel, hueHit, pickHue, pickHue, nil, { TouchAxis = "X" })
 			if alphaHit then
 				local function pickAlpha(input)
 					alpha = C.clamp((input.Position.X - alphaTrack.AbsolutePosition.X) / math.max(1, alphaTrack.AbsoluteSize.X), 0, 1)
 					render()
 				end
-				C.pointer(panel, alphaHit, pickAlpha, pickAlpha)
+				C.pointer(panel, alphaHit, pickAlpha, pickAlpha, nil, { TouchAxis = "X" })
 				panel._scope:Connect(alphaHit.InputBegan, function(input)
 					if input.KeyCode == Enum.KeyCode.Left or input.KeyCode == Enum.KeyCode.DPadLeft then alpha = math.max(0, alpha - 0.01)
 					elseif input.KeyCode == Enum.KeyCode.Right or input.KeyCode == Enum.KeyCode.DPadRight then alpha = math.min(1, alpha + 0.01)
@@ -192,8 +192,10 @@ return function(env)
 				panel._scope:Connect(field.FocusLost, commitRGB)
 				panel._scope:Connect(field:GetPropertyChangedSignal("Text"), function() if not painting then pending = "rgb" end end)
 			end
+			local actions = {}
 			for index, spec in ipairs({ { "Cancel", nil }, { "Apply", "Primary" } }) do
-				local action = C.node(panel, "TextButton", panel.Actions, { Name = spec[1], Size = UDim2.new(0.5, -4, 1, 0), LayoutOrder = index })
+				local action = C.node(panel, "TextButton", panel.Actions, { Name = spec[1], Position = UDim2.new((index - 1) / 2, (index - 1) * 4, 0, 0), Size = UDim2.new(0.5, -4, 0, self._window.Target), LayoutOrder = index })
+				actions[#actions + 1] = action
 				C.corner(action); C.feedback(panel, action, spec[2])
 				C.text(panel, action, spec[1], "Body", spec[2] and "OnPrimary" or "Text", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 				panel._scope:Connect(action.Activated, function()
@@ -205,6 +207,12 @@ return function(env)
 				end)
 			end
 			panel.OnLayout = function(width)
+				local target = self._window.Target
+				hueHit.Size, hexField.Size = UDim2.new(1, 0, 0, target), UDim2.new(1, 0, 0, target)
+				rgb.Size = UDim2.new(1, 0, 0, target + 22)
+				for _, field in ipairs(fields) do field.Size = UDim2.new(1, 0, 0, target) end
+				for _, action in ipairs(actions) do action.Size = UDim2.new(0.5, -4, 0, target) end
+				if alphaHit then alphaHit.Size = UDim2.new(1, 0, 0, target + 18) end
 				local reserved = showAlpha and (4 * self._window.Target + 174) or (3 * self._window.Target + 144)
 				sv.Size = UDim2.new(1, 0, 0, math.min(210, math.max(112, math.min(width - 40, panel.Body.Size.Y.Offset - reserved))))
 			end
