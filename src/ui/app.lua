@@ -794,13 +794,10 @@ return function(env)
 		})
 
 		if mobile then
-			-- The old 44px corner hit area covered Send on a phone. Put resizing in
-			-- the header so the entire composer remains available for typing/tapping.
-			local grip = M.window.resizeGrip
-			grip.Parent = right
-			grip.AnchorPoint = Vector2.new(0, 0)
-			grip.Position = UDim2.fromOffset(0, 0)
-			grip.LayoutOrder = 1
+			-- Resize is a corner grip on the panel, as on desktop; only the Expand
+			-- toggle lives in the header. Note the grip sits over the composer's
+			-- bottom-right, which is why it used to be relocated here -- watch Send
+			-- on narrow panels.
 			P.iconButton(right, {
 				name = "ExpandPanel",
 				icon = M.window.maximised and "minus" or "windowMaximize",

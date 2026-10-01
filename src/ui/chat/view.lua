@@ -162,6 +162,10 @@ return function(env)
 			iconDirection = "down",
 			radius = theme.radius.pill,
 			size = "sm",
+			-- Over a touch transcript there is no hover to fill the pill, so a bordered
+			-- but transparent control reads as stray text sitting on the reply beneath
+			-- it. A solid raised surface makes it a floating button on a phone.
+			fillColor = mobile and theme.color.surfaceOverlay or nil,
 			anchor = Vector2.new(0.5, 1),
 			position = UDim2.new(0.5, 0, 1, -theme.space.sm),
 			zIndex = theme.z.raised,

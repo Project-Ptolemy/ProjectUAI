@@ -370,13 +370,15 @@ return function(env)
 			grip.Visible = draggableNow()
 		end
 
+		-- A corner hatch at the bottom-right, on every device: resize is a corner
+		-- grip on the panel exactly as it is on the desktop window. Touch gets a
+		-- brighter tint because the hairline is easy to miss on a phone.
 		for index = 1, 2 do
 			local line = P.frame(grip, {
 				name = "Grip" .. index,
 				size = UDim2.fromOffset(index * 5 + 1, 1),
 				anchor = Vector2.new(1, 1),
-				position = mobile and UDim2.new(0.5, index * 3, 0.5, 4 - index * 4)
-					or UDim2.new(1, -4, 1, -(index * 4)),
+				position = UDim2.new(1, -4, 1, -(index * 4)),
 				bg = mobile and theme.color.textSecondary or theme.color.borderStrong,
 				radius = theme.radius.pill,
 			})

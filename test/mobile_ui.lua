@@ -114,7 +114,7 @@ scenario("mobile header separates window controls from move and resize gestures"
 	check("pressing a header control does not start a window drag", tostring(window.root.Position) == position)
 	local width, height = window.root.Size.X.Offset, window.root.Size.Y.Offset
 	drag(h, h.byName("ResizeGrip", window.root), 20, -40, true)
-	check("header grip still resizes the mobile panel", window.root.Size.X.Offset > width and window.root.Size.Y.Offset < height)
+	check("corner grip still resizes the mobile panel", window.root.Size.X.Offset > width and window.root.Size.Y.Offset < height)
 	check("resize release is saved", app.config.get("ui.mobilePanel.height") == window.root.Size.Y.Offset)
 	healthy(h)
 end)
@@ -168,7 +168,8 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } 
 			check(name .. " retains a full touch target", control.AbsoluteSize.X >= 44 and control.AbsoluteSize.Y >= 44)
 		end
 		local grip = h.byName("ResizeGrip", window.root)
-		check("resize gesture no longer intercepts Send", grip:IsDescendantOf(window.header))
+		check("resize is a corner grip on the panel like desktop", grip.Parent == window.root
+			and grip.AnchorPoint.X == 1 and grip.AnchorPoint.Y == 1)
 		check("starters fit in compact rows", h.byName("Starter_explore", window.root).Size.Y.Offset == 44)
 		h.click(h.byName("Starter_explore", window.root))
 		check("compact starter still inserts its prompt", composer.field.get():find("Explore this game", 1, true) ~= nil)

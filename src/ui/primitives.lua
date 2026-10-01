@@ -414,13 +414,18 @@ return function(env)
 			position = props.position,
 			anchor = props.anchor,
 			layoutOrder = props.layoutOrder,
-			bg = variant.bg,
+			-- `fillColor` is an explicit resting fill for a variant that normally has
+			-- none -- a floating control (the transcript's jump-to-latest pill) has to
+			-- read as a solid button over content rather than as transparent text laid
+			-- on the reply beneath it. Recomputed in paint so setVariant still tracks
+			-- the live variant for callers that do not pass one.
+			bg = props.fillColor or variant.bg,
 			radius = props.radius or theme.radius.md,
 			zIndex = props.zIndex,
 		})
 		local outline = P.stroke(button, variant.stroke or theme.color.accent)
 		outline.Transparency = variant.stroke and 0 or 1
-		if not variant.bg then button.BackgroundTransparency = 1 end
+		if not (props.fillColor or variant.bg) then button.BackgroundTransparency = 1 end
 
 		local content, layout = P.row(button, {
 			name = "Content",
@@ -502,18 +507,19 @@ return function(env)
 		collectIconParts()
 
 		local function paint()
-			local target = variant.bg
+			local restBg = props.fillColor or variant.bg
+			local target = restBg
 			local textColour = variant.text
 			local active = handle.enabled and not handle.busy
 			local motion = pressed and "press" or "hover"
 			if not handle.enabled then
-				target = variant.bg and theme.color.surfaceRaised or nil
+				target = restBg and theme.color.surfaceRaised or nil
 				textColour = theme.color.textDisabled
 			elseif active and pressed then
-				target = variant.bgPress or variant.bgHover or variant.bg
+				target = variant.bgPress or variant.bgHover or restBg
 				textColour = variant.textPress or variant.textHover or variant.text
 			elseif active and (hovered or focused) then
-				target = variant.bgHover or variant.bg
+				target = variant.bgHover or restBg
 				textColour = variant.textHover or variant.text
 			end
 			P.animate(button, motion, {

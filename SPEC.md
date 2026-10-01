@@ -742,9 +742,9 @@ mode: the sidebar in `window`, the app menu in the header everywhere else.
 Mobile chrome trims padding rather than touch targets: at default density its
 header is 48px and its collapsed composer is 56px. The welcome view uses compact
 prompt rows and omits the large decorative mark and subtitle. Desktop chrome and
-spacing retain their existing dimensions. Mobile resize lives in the header so
-its touch target cannot cover Send; a separate expand action restores the previous
-size and position. In short keyboard space, multiline input uses one compact row
+spacing retain their existing dimensions. Mobile resize uses a bottom-corner grip
+as on desktop; a separate header expand action toggles the maximised size and
+position. In short keyboard space, multiline input uses one compact row
 without changing the draft or its multiline editing mode.
 
 Version 2.4.0 also keeps ordinary portrait typing compact until explicitly
