@@ -954,7 +954,6 @@ return function(env)
 	function M.new(parent)
 		local panel = {}
 		local selected = nil
-		local expanded = {}
 
 		-- Two columns where there is room for two, stacked where there is not. Same rule
 		-- and same threshold as the settings dialog, which solved this first.
@@ -969,19 +968,17 @@ return function(env)
 		local railHolder = P.frame(root, {
 			name = "ProviderRail",
 			size = wide and UDim2.new(0, theme.size.dialogNav, 1, 0)
-				or UDim2.new(1, 0, 0, railHeight + (responsive.isMobile() and theme.space.xxs * 2
-					or theme.space.xs * 2 + theme.size.scrollbar)),
+				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + theme.size.scrollbar),
 			bg = theme.color.sidebar,
 			layoutOrder = 1,
 		})
 		local rail = P.column(railHolder, {
 			size = UDim2.fromScale(1, 1),
-			visible = not responsive.isMobile(),
 			gap = theme.space.xs,
 			padding = theme.space.xs,
 		})
 		local mobileRail = P.row(railHolder, { name = "MobileProviderNavigation", size = UDim2.fromScale(1, 1),
-			padding = { x = theme.space.sm, y = theme.space.xxs }, gap = theme.space.xs, visible = responsive.isMobile() })
+			padding = theme.space.xs, gap = theme.space.xs, visible = responsive.isMobile() })
 		local mobilePicker = P.rowButton(mobileRail, { name = "ProviderPicker", height = railHeight,
 			size = UDim2.fromOffset(0, railHeight), flex = "Fill", layoutOrder = 1, onClick = function(button)
 				local options, active = {}, registry.active()
@@ -991,10 +988,9 @@ return function(env)
 				end
 				overlay.menu({ target = button.instance, title = "Providers", options = options, onSelect = panel.select })
 			end })
-		local mobileLabel = mobilePicker.label("Choose provider", 1, theme.color.text, "bodyStrong")
-		P.text(mobilePicker.row, { text = "Switch", role = "caption", color = theme.color.textTertiary,
-			auto = "X", layoutOrder = 2 })
-		P.button(mobileRail, { name = "MobileAddProvider", text = "Add", size = "sm", variant = "ghost", layoutOrder = 2,
+		local mobileLabel = mobilePicker.label("Choose provider", 1, nil, "small")
+		mobilePicker.icon("chevron", 2)
+		P.button(mobileRail, { name = "MobileAddProvider", text = "Add", size = "sm", variant = "secondary", layoutOrder = 2,
 			onClick = function() M.add(function(id) panel.select(id) end) end })
 		local railScrollHolder = P.frame(rail, {
 			size = UDim2.new(1, 0, 0, 0),
@@ -1040,18 +1036,10 @@ return function(env)
 		local detail = P.scroll(detailHolder, {
 			name = "DetailScroll",
 			size = UDim2.fromScale(1, 1),
-			gap = responsive.isMobile() and theme.space.sm or theme.space.lg,
+			gap = responsive.isMobile() and theme.space.md or theme.space.lg,
 			padding = { x = responsive.isMobile() and theme.space.sm or theme.space.lg,
 				top = responsive.isMobile() and theme.space.sm or theme.space.lg, bottom = theme.space.xl },
 		})
-
-		-- On a short mobile viewport the selector can be living inside the detail
-		-- scroll, so a rebuild clears around it rather than through it.
-		local function clearDetail()
-			for _, child in ipairs(detail.instance:GetChildren()) do
-				if child:IsA("GuiObject") and child ~= railHolder then child:Destroy() end
-			end
-		end
 
 		-- Rail -----------------------------------------------------------------
 
@@ -1159,23 +1147,10 @@ return function(env)
 			rootLayout.FillDirection = wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 			rootLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 			railHolder.Size = wide and UDim2.new(0, theme.size.dialogNav, 1, 0)
-				or UDim2.new(1, 0, 0, railHeight + (mobile and theme.space.xxs * 2 or theme.space.xs * 2 + theme.size.scrollbar))
+				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + (mobile and 0 or theme.size.scrollbar))
 			addButton.instance.Visible = wide
 			divider.Size = wide and UDim2.new(0, theme.stroke.hair, 1, 0)
 				or UDim2.new(1, 0, 0, theme.stroke.hair)
-			-- Short mobile layouts put the selector at the top of the detail scroll
-			-- rather than above it, so a raised keyboard cannot leave it crowding
-			-- out the field being edited. It returns to a pinned strip when there
-			-- is room again.
-			local inlineRail = mobile and root.AbsoluteSize.Y < railHolder.Size.Y.Offset + responsive.minTarget() * 4
-			if inlineRail then
-				if railHolder.Parent ~= detail.instance then railHolder.Parent = detail.instance end
-				railHolder.LayoutOrder = 0
-			else
-				if railHolder.Parent ~= root then railHolder.Parent = root end
-				railHolder.LayoutOrder = 1
-			end
-			divider.Visible = not inlineRail
 			detailHolder.Size = wide and UDim2.new(0, 0, 1, 0) or UDim2.new(1, 0, 0, 0)
 			railScroll.layout.FillDirection = wide and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
 			railScroll.layout.VerticalAlignment = wide and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Center
@@ -1196,61 +1171,6 @@ return function(env)
 
 		local statusBox = nil
 		local healthError = nil
-		local mobileStatus = nil
-		local mobileHealthError = nil
-
-		-- Mobile details use the whole column. A disclosure keeps long endpoint
-		-- facts and advanced fields below the everyday controls, while retaining
-		-- the same mounted form when the viewport rotates or the section closes.
-		local function detailSection(parentNode, props)
-			if not responsive.isMobile() then return R.section(parentNode, props) end
-			local state = expanded[selected]
-			if not state then state = {}; expanded[selected] = state end
-			local group = P.column(parentNode, { name = props.name .. "Group",
-				size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xxs,
-				layoutOrder = props.mobileOrder or props.layoutOrder })
-			P.divider(group, { layoutOrder = 1 })
-			local body, stateLabel
-			local header = P.rowButton(group, { name = "Toggle" .. props.name,
-				height = responsive.minTarget(), padding = { x = 0 }, layoutOrder = 2,
-				onClick = function()
-					state[props.name] = not state[props.name]
-					body.Visible = state[props.name] == true
-					stateLabel.Text = body.Visible and "Hide" or "Show"
-				end })
-			header.label(props.mobileTitle or props.title, 1, theme.color.text, "bodyStrong")
-			stateLabel = P.text(header.row, { text = state[props.name] and "Hide" or "Show",
-				role = "caption", color = theme.color.textTertiary, auto = "X", layoutOrder = 2 })
-			body = P.column(group, { name = props.name, size = UDim2.new(1, 0, 0, 0), auto = "Y",
-				gap = theme.space.sm, padding = { bottom = theme.space.sm },
-				visible = state[props.name] == true, layoutOrder = 3 })
-			if props.mobileDescription then
-				R.paragraph(body, props.mobileDescription, { layoutOrder = 0 })
-			end
-			return body
-		end
-
-		local function detailFacts(parentNode, list, props)
-			if not responsive.isMobile() then return R.facts(parentNode, list, props) end
-			local box = P.column(parentNode, { name = props.name, size = UDim2.new(1, 0, 0, 0),
-				auto = "Y", gap = theme.space.sm, layoutOrder = props.layoutOrder })
-			for index, entry in ipairs(list) do
-				local row = P.column(box, { name = "Fact" .. tostring(index), size = UDim2.new(1, 0, 0, 0),
-					auto = "Y", gap = theme.space.xxs, layoutOrder = index })
-				P.text(row, { text = entry.key, role = "caption", color = theme.color.textTertiary, layoutOrder = 1 })
-				P.text(row, { text = entry.value, role = "small", wrap = true, auto = "Y", layoutOrder = 2,
-					color = entry.tone and theme.toneColor(entry.tone) or theme.color.text })
-			end
-			return box
-		end
-
-		local function mobileState(record)
-			local active = registry.active()
-			if record.enabled == false then return "Disabled", theme.color.textTertiary end
-			if registry.cooling(record) then return "Cooling down after failures", theme.color.danger end
-			if active and active.id == record.id then return "Active provider", theme.color.accent end
-			return "Standby provider", theme.color.textSecondary
-		end
 
 		local function order()
 			panel.__order = (panel.__order or 0) + 1
@@ -1316,13 +1236,10 @@ return function(env)
 		end
 
 		function panel.renderDetail()
-			clearDetail()
+			detail.clear()
 			statusBox = nil
 			healthError = nil
-			mobileStatus = nil
-			mobileHealthError = nil
 			panel.__order = 0
-			local mobile = responsive.isMobile()
 			local record = selected and registry.get(selected) or nil
 			if not record then
 				-- The featured cards, shown only on a client with nothing configured:
@@ -1353,22 +1270,11 @@ return function(env)
 
 			local active = registry.active()
 			local isActive = active and active.id == record.id
-			if mobile then
-				local overview = P.column(detail.instance, { name = "ProviderOverview",
-					size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xxs, layoutOrder = 1 })
-				local state, color = mobileState(record)
-				mobileStatus = P.text(overview, { name = "ProviderState", text = state, role = "small",
-					color = color, wrap = true, auto = "Y", layoutOrder = 1 })
-				mobileHealthError = P.text(overview, { name = "ProviderError",
-					text = (record.health or {}).lastError or "", role = "caption", color = theme.color.danger,
-					truncate = true, visible = util.trim((record.health or {}).lastError or "") ~= "", layoutOrder = 2 })
-			end
 
 			-- Header. The window chrome already names the panel and the active provider, so
 			-- this names the record being edited instead of repeating either.
 			local head = P.row(detail.instance, {
 				name = "DetailHead",
-				visible = not mobile,
 				size = UDim2.new(1, 0, 0, 0),
 				auto = "Y",
 				gap = theme.space.sm,
@@ -1400,16 +1306,14 @@ return function(env)
 			subtitle.Size = UDim2.new(1, 0, 0, 0)
 
 			-- Status ------------------------------------------------------------
-			local status = detailSection(detail.instance, {
+			local status = R.section(detail.instance, {
 				name = "Status",
 				title = "Status",
-				mobileTitle = "Connection details and health",
-				mobileOrder = 40,
 				description = "What this client will actually send, and how the endpoint has "
 					.. "been answering.",
 				layoutOrder = order(),
 			})
-			statusBox = detailFacts(status, factsFor(record), { name = "StatusFacts", layoutOrder = 1 })
+			statusBox = R.facts(status, factsFor(record), { name = "StatusFacts", layoutOrder = 1 })
 
 			local health = record.health or {}
 			healthError = R.paragraph(status, health.lastError or "",
@@ -1442,30 +1346,25 @@ return function(env)
 			end
 			actions[#actions + 1] = {
 				name = "EditConnection",
-				text = mobile and "Edit connection" or "Connection",
+				text = "Connection",
 				variant = "secondary",
 				onClick = function() M.editor(record, function() panel.select(record.id) end) end,
 			}
-			local copyAction = caps.clipboard and {
-				name = "CopyEndpoint",
-				text = "Copy endpoint",
-				variant = "ghost",
-				onClick = function()
-					pcall(caps.fn.clipboard, chat.endpointOf(record))
-					overlay.toast("Copied", "good", 1.5)
-				end,
-			} or nil
-			if copyAction and mobile then
-				R.actions(status, { copyAction }, { name = "StatusActions", layoutOrder = 5 })
-			elseif copyAction then
-				actions[#actions + 1] = copyAction
+			if caps.clipboard then
+				actions[#actions + 1] = {
+					name = "CopyEndpoint",
+					text = "Copy endpoint",
+					variant = "ghost",
+					onClick = function()
+						pcall(caps.fn.clipboard, chat.endpointOf(record))
+						overlay.toast("Copied", "good", 1.5)
+					end,
+				}
 			end
-			R.actions(mobile and detail.instance or status, actions,
-				{ name = mobile and "ProviderActions" or "StatusActions", layoutOrder = mobile and 30 or 5 })
+			R.actions(status, actions, { name = "StatusActions", layoutOrder = 5 })
 
 			-- Model -------------------------------------------------------------
-			local modelSection = mobile and P.column(detail.instance, { name = "QuickSetup",
-				size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 10 }) or R.section(detail.instance, {
+			local modelSection = R.section(detail.instance, {
 				name = "Model",
 				title = "Model",
 				description = "Only what the endpoint reported and what you added -- never a guess, "
@@ -1473,87 +1372,39 @@ return function(env)
 				layoutOrder = order(),
 			})
 			local known = models.list(record)
-			if mobile then
-				local function valueRow(name, label, value, action, onClick, color, rowOrder)
-					local height = math.max(responsive.minTarget(), theme.text.caption.height + theme.text.monoSmall.height
-						+ theme.space.xs * 2)
-					local row = P.rowButton(modelSection, { name = name, height = height,
-						padding = { x = theme.space.sm }, bg = theme.color.surface,
-						stroke = true, radius = theme.radius.md, layoutOrder = rowOrder, onClick = onClick })
-					local column = P.column(row.row, { size = UDim2.new(0, 0, 0, 0), auto = "Y",
-						flex = "Fill", gap = 0, layoutOrder = 1 })
-					P.text(column, { text = label, role = "caption", color = theme.color.textTertiary,
-						size = UDim2.new(1, 0, 0, theme.text.caption.height), layoutOrder = 1 })
-					P.text(column, { text = value, role = "monoSmall", color = color or theme.color.text,
-						size = UDim2.new(1, 0, 0, theme.text.monoSmall.height), truncate = true, layoutOrder = 2 })
-					P.text(row.row, { text = action, role = "small", color = theme.color.textSecondary,
-						auto = "X", layoutOrder = 2 })
-				end
-				valueRow("ActiveModel", "Model", util.trim(record.model) ~= "" and record.model or "Choose a model", "Change",
-					function(handle)
+			R.select(modelSection, {
+				name = "ActiveModel",
+				label = "Active model",
+				hint = #known == 0 and "Nothing known yet. Fetch the list, or add an id by hand."
+					or (traits.badge(record.model) and ("Context window " .. traits.badge(record.model))
+						or "No published context window for this id."),
+				options = (function()
+					local out = {}
+					for _, id in ipairs(known) do out[#out + 1] = { value = id, label = id } end
+					if #out == 0 then
+						out[#out + 1] = { value = record.model, label = record.model ~= "" and record.model or "none" }
+					end
+					return out
+				end)(),
+				value = record.model ~= "" and record.model or (known[1] or ""),
+				width = theme.size.menu,
+				onChange = function(value) registry.setModel(record.id, value) end,
+			})
+			R.actions(modelSection, {
+				{
+					name = "ManageModels",
+					text = #known == 0 and "Fetch or add a model" or "Fetch, add or remove",
+					variant = "secondary",
+					onClick = function(handle)
 						modelMenu(record, handle.instance, function() panel.select(record.id) end)
-					end, nil, 1)
-				local key, keyTone = maskedKey(record)
-				valueRow("ProviderKey", "API key", key, keyTone and "Add" or "Edit", function()
-					overlay.prompt({ title = "API key for " .. record.label,
-						description = "Paste a replacement key, or several keys on separate lines to rotate on rate limits.",
-						placeholder = (catalog.get(record.preset) or {}).keyHint or "API key",
-						confirmText = "Save key", multiline = true, onConfirm = function(text)
-							local current = registry.get(record.id)
-							if not current then return end
-							local replacement = tostring(text or "")
-							if current.apiKey ~= replacement then current.keyRotation = nil end
-							current.apiKey = replacement
-							registry.save(current, { force = true })
-							overlay.toast("API key saved", "good", 2)
-						end })
-				end, keyTone and theme.color.warn or nil, 2)
-			else
-				R.select(modelSection, {
-					name = "ActiveModel",
-					label = "Active model",
-					hint = #known == 0 and "Nothing known yet. Fetch the list, or add an id by hand."
-						or (traits.badge(record.model) and ("Context window " .. traits.badge(record.model))
-							or "No published context window for this id."),
-					options = (function()
-						local out = {}
-						for _, id in ipairs(known) do out[#out + 1] = { value = id, label = id } end
-						if #out == 0 then
-							out[#out + 1] = { value = record.model, label = record.model ~= "" and record.model or "none" }
-						end
-						return out
-					end)(),
-					value = record.model ~= "" and record.model or (known[1] or ""),
-					width = theme.size.menu,
-					onChange = function(value) registry.setModel(record.id, value) end,
-				})
-				R.actions(modelSection, {
-					{
-						name = "ManageModels",
-						text = #known == 0 and "Fetch or add a model" or "Fetch, add or remove",
-						variant = "secondary",
-						onClick = function(handle)
-							modelMenu(record, handle.instance, function() panel.select(record.id) end)
-						end,
-					},
-				}, { name = "ModelActions" })
-			end
+					end,
+				},
+			}, { name = "ModelActions" })
 
 			local own = {}
 			for _, id in ipairs(record.models or {}) do own[id] = true end
-			local modelList, displayedModels = modelSection, known
-			if mobile then
-				displayedModels = {}
-				for _, id in ipairs(known) do
-					if own[id] then displayedModels[#displayedModels + 1] = id end
-				end
-				if #displayedModels > 0 then
-					modelList = detailSection(detail.instance, { name = "SavedModels", title = "Saved models",
-						mobileOrder = 45, mobileDescription = "Choose a saved model or remove it from this provider. Fetch and add models with Change above." })
-				end
-			end
-			for index, id in ipairs(displayedModels) do
-				local row = P.rowButton(modelList, {
+			for index, id in ipairs(known) do
+				local row = P.rowButton(modelSection, {
 					name = "Model_" .. tostring(index),
 					height = theme.size.rowSmall,
 					padding = { x = theme.space.sm },
@@ -1598,11 +1449,9 @@ return function(env)
 			end
 
 			-- Behaviour ---------------------------------------------------------
-			local behaviour = detailSection(detail.instance, {
+			local behaviour = R.section(detail.instance, {
 				name = "Behaviour",
 				title = "Behaviour",
-				mobileOrder = 50,
-				mobileDescription = "Provider switches work together with the matching global settings.",
 				description = "Per-provider switches. Each one can only narrow what the matching "
 					.. "global setting allows: turning one off always takes effect, turning it on "
 					.. "needs the global on as well.",
@@ -1653,12 +1502,9 @@ return function(env)
 			end
 
 			-- Transport and the three invisible maps -----------------------------
-			local advanced = detailSection(detail.instance, {
+			local advanced = R.section(detail.instance, {
 				name = "Advanced",
 				title = "Transport",
-				mobileTitle = "Transport and extra parameters",
-				mobileOrder = 60,
-				mobileDescription = "Optional gateway streaming, extra headers, body fields and query parameters.",
 				description = "Optional gateway streaming and extra headers, body fields and query parameters. "
 					.. "HTTP works without a socket; the provider and host still set request limits.",
 				layoutOrder = order(),
@@ -1691,7 +1537,7 @@ return function(env)
 				end
 			end
 			if #extras > 0 then
-				detailFacts(advanced, extras, { name = "ExtraFacts", layoutOrder = 4 })
+				R.facts(advanced, extras, { name = "ExtraFacts", layoutOrder = 4 })
 			else
 				R.paragraph(advanced, "No extra headers, body fields or query parameters.",
 					{ layoutOrder = 4 })
@@ -1704,11 +1550,9 @@ return function(env)
 				for index, entry in ipairs(list) do
 					if entry.id == record.id then position = index end
 				end
-				local ordering = detailSection(detail.instance, {
+				local ordering = R.section(detail.instance, {
 					name = "Order",
 					title = "Fallback order",
-					mobileOrder = 70,
-					mobileDescription = string.format("Position %d of %d. Enabled providers are tried in this order after the active provider fails.", position, #list),
 					description = string.format(
 						"Position %d of %d. When the active provider fails, the chain walks this list "
 						.. "in order. registry.reorder has existed since the beginning with no control "
@@ -1736,12 +1580,9 @@ return function(env)
 			end
 
 			-- Removal -----------------------------------------------------------
-			local danger = detailSection(detail.instance, {
+			local danger = R.section(detail.instance, {
 				name = "Remove",
 				title = "Remove",
-				mobileTitle = "Remove provider",
-				mobileOrder = 80,
-				mobileDescription = "Delete this endpoint and its key from this device. This cannot be undone.",
 				description = "The endpoint and its key are deleted from this device. This cannot "
 					.. "be undone.",
 				layoutOrder = order(),
@@ -1818,7 +1659,7 @@ return function(env)
 				end
 			end
 			if record and statusBox and statusBox.Parent then
-				local replacement = detailFacts(statusBox.Parent, factsFor(record),
+				local replacement = R.facts(statusBox.Parent, factsFor(record),
 					{ name = "StatusFacts", layoutOrder = 1 })
 				pcall(function() statusBox:Destroy() end)
 				statusBox = replacement
@@ -1826,13 +1667,6 @@ return function(env)
 			if record and healthError and healthError.Parent then
 				healthError.Text = tostring((record.health or {}).lastError or "")
 				healthError.Visible = util.trim(healthError.Text) ~= ""
-			end
-			if record and mobileStatus and mobileStatus.Parent then
-				mobileStatus.Text, mobileStatus.TextColor3 = mobileState(record)
-			end
-			if record and mobileHealthError and mobileHealthError.Parent then
-				mobileHealthError.Text = tostring((record.health or {}).lastError or "")
-				mobileHealthError.Visible = util.trim(mobileHealthError.Text) ~= ""
 			end
 		end
 

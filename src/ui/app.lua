@@ -606,14 +606,11 @@ return function(env)
 	-- Window -----------------------------------------------------------------
 
 	function M.buildWindow()
-		-- Window sizing clamps this floor to the usable viewport. It also widens
-		-- older saved touch panels without resetting their placement or desktop size.
-		local minWidth = responsive.isMobile() and theme.size.mobilePanelMin or (M.sidebarVisible()
-			and (theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2)
-			or theme.size.modalMin + theme.space.xl * 2)
 		M.window = windowModule.new(M.screen, {
 			name = "UAI_Window",
-			minWidth = minWidth,
+			minWidth = M.sidebarVisible()
+				and (theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2)
+				or theme.size.modalMin + theme.space.xl * 2,
 			minHeight = 300,
 		})
 		M.buildChrome()
@@ -907,7 +904,7 @@ return function(env)
 		M.body = P.frame(host, {
 			name = "Panels",
 			size = UDim2.new(1, 0, 1, -headerHeight),
-			maxSize = not responsive.isMobile() and Vector2.new(theme.size.reading, math.huge) or nil,
+			maxSize = Vector2.new(theme.size.reading, math.huge),
 			anchor = Vector2.new(0.5, 0),
 			position = UDim2.new(0.5, 0, 0, headerHeight),
 		})

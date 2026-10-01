@@ -162,8 +162,7 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } 
 		check("collapsed composer reserves at most 56px", composer.shell.Size.Y.Offset <= 56)
 		check("decorative header brand is hidden", not h.byName("HeaderBrand", window.root).Visible)
 		check("header detail no longer needs a second line", not h.byName("TitleDetail", window.root).Visible)
-		check("the compact mobile greeting drops the decorative mark",
-			h.byName("HomeBrand", window.root) == nil and h.byName("GreetingText", window.root) ~= nil)
+		check("large greeting mark is hidden", not h.byName("HomeBrand", window.root).Visible)
 		for _, name in ipairs({ "Nav_menu", "Close", "ExpandPanel", "ResizeGrip", "Send", "AddContext", "ComposerOptions", "Starter_explore" }) do
 			local control = assert(h.byName(name, window.root), name)
 			check(name .. " retains a full touch target", control.AbsoluteSize.X >= 44 and control.AbsoluteSize.Y >= 44)

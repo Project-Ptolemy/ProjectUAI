@@ -133,20 +133,19 @@ scenario("mobile focus respects clipping and does not repeat an inner scroll", f
 	outer.instance:Destroy(); healthy(h); app.unload()
 end)
 
-scenario("mobile navigation keeps New chat reachable with a keyboard", function()
+scenario("mobile navigation keeps New conversation reachable with a keyboard", function()
 	local h, app = boot(844, 390)
 	local nav = app.app.showAppMenu(h.byName("Nav_menu"))
-	local chats = h.byName("Conversations", nav.card)
-	local toolbar = h.byName("ConversationActions", nav.card)
-	local button = h.byName("MobileNewChat", toolbar)
-	check("ordinary navigation pins its conversation actions", toolbar.Parent == chats)
+	local footer = h.byName("NavigationActions", nav.card)
+	local button = h.byName("MobileNewChat", footer)
+	check("ordinary navigation pins its actions", footer.Parent == nav.card)
 	keyboard(h, 230)
-	check("short navigation scrolls its actions instead of hiding them", toolbar.Visible
-		and toolbar.Parent == h.byName("NavigationScroll", nav.card) and button.AbsoluteSize.Y >= 44)
+	check("short navigation scrolls its actions instead of hiding them", footer.Visible
+		and footer.Parent == h.byName("NavigationScroll", nav.card) and button.AbsoluteSize.Y >= 44)
 	keyboard(h, 0)
-	check("keyboard dismissal restores the same navigation actions", toolbar.Parent == chats and h.byName("MobileNewChat", toolbar) == button)
+	check("keyboard dismissal restores the same navigation actions", footer.Parent == nav.card and h.byName("MobileNewChat", footer) == button)
 	keyboard(h, 230); h.click(button)
-	check("New chat remains usable above the keyboard", nav.closed and h.byName("ConversationName") ~= nil)
+	check("New conversation remains usable above the keyboard", nav.closed and h.byName("ConversationName") ~= nil)
 	healthy(h); app.unload()
 end)
 

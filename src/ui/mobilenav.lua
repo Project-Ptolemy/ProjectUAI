@@ -1,5 +1,5 @@
--- Mobile navigation opens on conversations. Workspace destinations have their
--- own page, leaving the full width and height below search for readable history.
+-- Touch navigation keeps destinations and searchable history in one scrollable
+-- surface. A conversation opens directly; its separate menu owns rename/delete.
 return function(env)
 	local util = env.require("runtime/util")
 	local theme = env.require("ui/theme")
@@ -12,8 +12,8 @@ return function(env)
 
 	function M.open(app, panels)
 		if opened and not opened.closed then return opened end
-		local dialog = overlay.dialog({ name = "MobileNavigation", width = theme.size.modalWide + theme.size.dialogNav,
-			height = theme.size.dialogTall })
+		local dialog = overlay.dialog({ name = "MobileNavigation", width = theme.size.dialog,
+			height = theme.size.dialogTall + theme.size.controlLarge * 2 })
 		if not dialog then return end
 		opened = dialog
 		local target = responsive.minTarget()
@@ -21,80 +21,82 @@ return function(env)
 		local chromePad = theme.space.xxs
 		local chrome = target + chromePad * 2
 		local body = P.frame(dialog.card, { name = "NavigationBody", position = UDim2.fromOffset(0, chrome),
-			size = UDim2.new(1, 0, 1, -chrome), clip = true })
-		local chats = P.frame(body, { name = "Conversations", size = UDim2.fromScale(1, 1) })
-		local scroll = P.scroll(chats, { name = "NavigationScroll", size = UDim2.fromScale(1, 1), gap = theme.space.xxs,
+			size = UDim2.new(1, 0, 1, -chrome * 2) })
+		local scroll = P.scroll(body, { name = "NavigationScroll", size = UDim2.fromScale(1, 1), gap = theme.space.xxs,
 			padding = { left = pad, right = pad, bottom = pad } })
 		local filter, limit, renderHistory, folderFilter = "", 40, nil, nil
-		local showingWorkspace = false
-		local header = P.row(dialog.card, { name = "NavigationHeader", position = UDim2.fromOffset(pad, chromePad),
-			size = UDim2.new(1, -dialog.closeInset - pad, 0, target), gap = theme.space.xxs })
-		local switchView
-		local menu = P.button(header, { name = "WorkspaceMenu", text = "Menu", size = "sm", variant = "ghost",
-			padX = pad, layoutOrder = 1, onClick = function() switchView(not showingWorkspace) end })
-		local search = P.field(header, { name = "ConversationFilter", placeholder = "Search chats or folders",
-			size = UDim2.new(0, 0, 0, target), flex = "Fill", layoutOrder = 2, padX = pad,
+		local search = P.field(dialog.card, { name = "ConversationFilter", placeholder = "Search conversations or folders",
+			size = UDim2.new(1, -dialog.closeInset - pad * 2, 0, target),
 			onChange = function(text)
 				filter, limit = util.trim(text):lower(), 40
 				if renderHistory then renderHistory(true) end
 			end })
-		local workspaceTitle = P.text(header, { name = "WorkspaceTitle", text = "Workspace", role = "bodyStrong",
-			size = UDim2.new(0, 0, 0, target), flex = "Fill", alignY = "Center", visible = false, layoutOrder = 3 })
-		local workspace = P.scroll(body, { name = "WorkspaceDestinations", visible = false, gap = pad,
-			padding = { left = pad, right = pad, bottom = pad } })
-		local destinations = P.frame(workspace.instance, { name = "Destinations", size = UDim2.new(1, 0, 0, 0), layoutOrder = 1 })
-		local destinationButtons, widestLabel = {}, 0
+		search.shell.Position = UDim2.fromOffset(pad, chromePad)
+		local destinations = P.scroll(scroll.instance, { name = "Destinations", horizontal = true,
+			size = UDim2.new(1, 0, 0, target + theme.size.scrollbar), gap = theme.space.xxs, layoutOrder = 2 })
+		local destinationButtons = {}
 		for index, entry in ipairs(panels) do
-			local button = P.rowButton(destinations, { name = "MobileNav_" .. entry.id, height = target,
-				selected = app.panel == entry.id, padding = { x = pad }, stroke = true,
+			local button = P.rowButton(destinations.instance, { name = "MobileNav_" .. entry.id,
+				auto = "X", height = target, size = UDim2.fromOffset(0, target),
+				selected = app.panel == entry.id, padding = { x = pad }, layoutOrder = index,
 				onClick = function()
 					dialog.close()
 					if entry.id == "settings" then app.showSettingsDialog() else app.show(entry.id) end
 				end })
-			button.label(entry.label, 1, theme.color.text, "small")
-			widestLabel = math.max(widestLabel, P.measureText(entry.label, { role = "small" }).X)
+			button.icon(entry.icon, 1)
+			button.label(entry.label, 2, nil, "small")
 			destinationButtons[#destinationButtons + 1] = button
 		end
-		local toolbar = P.row(chats, { name = "ConversationActions", position = UDim2.fromOffset(pad, 0),
-			size = UDim2.new(1, -pad * 2, 0, target), gap = theme.space.xs })
-		local count, history, folderPicker
+		local lastWide, count, footer, footerCorner, footerEdge, history, folderPicker
 		local function reflow()
 			if dialog.closed then return end
-			-- Search keeps its TextBox when rotating or opening the menu. When the
-			-- keyboard is short on space, results precede the folder/new-chat row.
-			local compact = dialog.card.AbsoluteSize.Y < chrome + target * 4
-			toolbar.Parent = compact and scroll.instance or chats
-			toolbar.Position = UDim2.fromOffset(compact and 0 or pad, 0)
-			toolbar.Size = UDim2.new(1, compact and 0 or -pad * 2, 0, target)
-			toolbar.LayoutOrder = 3
-			scroll.instance.Position = UDim2.fromOffset(0, compact and 0 or target + chromePad)
-			scroll.instance.Size = UDim2.new(1, 0, 1, compact and 0 or -(target + chromePad))
-			if count then count.Visible = not compact end
-			local width = math.max(0, dialog.card.AbsoluteSize.X - pad * 2 - theme.size.scrollbar)
-			local columns = width >= (widestLabel + pad * 2) * 2 + pad and 2 or 1
-			local cell = math.floor((width - pad * (columns - 1)) / columns)
-			for index, button in ipairs(destinationButtons) do
-				button.instance.Position = UDim2.fromOffset(((index - 1) % columns) * (cell + pad),
-					math.floor((index - 1) / columns) * (target + theme.space.xs))
-				button.instance.Size = UDim2.fromOffset(cell, target)
+			-- Keep search pinned above the results. Short keyboards return the
+			-- footer band to history while keeping its actions reachable by scroll.
+			local compact = dialog.card.AbsoluteSize.Y < chrome * 2 + target * 3
+			body.Size = UDim2.new(1, 0, 1, -chrome * (compact and 1 or 2))
+			if footer then
+				footer.Parent = compact and scroll.instance or dialog.card
+				footer.AnchorPoint = Vector2.new(0, compact and 0 or 1)
+				footer.Position = compact and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1)
+				footer.LayoutOrder = 6
+				-- Round only while the footer sits on the card's bottom edge; in
+				-- the scroll body it is an ordinary bar, and the edge fill that
+				-- squares its inner corners does not belong there either.
+				footerCorner.CornerRadius = UDim.new(0, compact and 0 or theme.radius.xl)
+				footerEdge.Visible = not compact
 			end
-			destinations.Size = UDim2.new(1, 0, 0, math.ceil(#destinationButtons / columns) * (target + theme.space.xs) - theme.space.xs)
-		end
-		switchView = function(value)
-			showingWorkspace = value == true
-			if showingWorkspace then pcall(function() search.instance:ReleaseFocus(false) end) end
-			chats.Visible, workspace.instance.Visible = not showingWorkspace, showingWorkspace
-			search.shell.Visible, workspaceTitle.Visible = not showingWorkspace, showingWorkspace
-			menu.setText(showingWorkspace and "Back" or "Menu")
-			reflow()
+			if count then count.Visible = not compact end
+			-- Above a keyboard, show the matching conversation first. Destination
+			-- and folder controls stay reachable after the results instead of
+			-- occupying the entire short history viewport before its first row.
+			if history then history.LayoutOrder = compact and 1 or 5 end
+			destinations.instance.LayoutOrder = compact and 4 or 2
+			local wide = responsive.orientation == "landscape" and dialog.card.AbsoluteSize.X >= theme.size.dialogNav * 3
+			if wide == lastWide then return end
+			lastWide = wide
+			local navWidth = theme.size.dialogNav
+			destinations.instance.Parent = wide and body or scroll.instance
+			destinations.instance.Position = UDim2.fromOffset(0, 0)
+			destinations.instance.Size = wide and UDim2.new(0, navWidth, 1, 0)
+				or UDim2.new(1, 0, 0, target + theme.size.scrollbar)
+			destinations.layout.FillDirection = wide and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
+			destinations.instance.ScrollingDirection = wide and Enum.ScrollingDirection.Y or Enum.ScrollingDirection.X
+			destinations.instance.AutomaticCanvasSize = wide and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+			destinations.instance.VerticalScrollBarInset = wide and Enum.ScrollBarInset.ScrollBar or Enum.ScrollBarInset.None
+			destinations.instance.CanvasPosition = Vector2.new(0, 0)
+			for _, button in ipairs(destinationButtons) do
+				button.instance.AutomaticSize = wide and Enum.AutomaticSize.None or Enum.AutomaticSize.X
+				button.instance.Size = wide and UDim2.new(1, 0, 0, target) or UDim2.fromOffset(0, target)
+			end
+			scroll.instance.Position = UDim2.fromOffset(wide and navWidth + pad or 0, 0)
+			scroll.instance.Size = UDim2.new(1, wide and -(navWidth + pad) or 0, 1, 0)
 		end
 		dialog.card:GetPropertyChangedSignal("AbsoluteSize"):Connect(reflow)
 		local unbindLayout = responsive.changed:connect(reflow)
 		dialog.scrim.Destroying:Connect(unbindLayout)
 		reflow()
 		local folderLabel
-		folderPicker = P.rowButton(toolbar, { name = "HistoryFolder", height = target, layoutOrder = 1,
-			size = UDim2.new(0, 0, 0, target), flex = "Fill", padding = { x = theme.space.xxs },
+		folderPicker = P.rowButton(scroll.instance, { name = "HistoryFolder", height = target, layoutOrder = 3,
 			onClick = function(button)
 				local options = { { label = "All folders", value = "all", selected = folderFilter == nil } }
 				for _, folder in ipairs(sessions.folders()) do
@@ -109,14 +111,12 @@ return function(env)
 						renderHistory(true)
 					end })
 			end })
-		folderLabel = folderPicker.label("All folders", 1, nil, "small")
+		folderLabel = folderPicker.label("All folders", 1)
 		count = P.text(folderPicker.row, { name = "HistoryCount", text = "", role = "caption", auto = "X",
 			color = theme.color.textTertiary, layoutOrder = 2 })
 		folderPicker.icon("chevron", 3)
-		P.button(toolbar, { name = "MobileNewChat", text = "New chat", variant = "primary", size = "sm",
-			padX = pad, layoutOrder = 2, onClick = function() dialog.close(); app.newConversation(folderFilter) end })
 		history = P.column(scroll.instance, { name = "MobileHistory", auto = "Y",
-			size = UDim2.new(1, 0, 0, 0), gap = theme.space.xxs, layoutOrder = 1 })
+			size = UDim2.new(1, 0, 0, 0), gap = theme.space.xxs, layoutOrder = 5 })
 
 		local function sessionMenu(session, anchor)
 			overlay.menu({ target = anchor, title = "Conversation", options = {
@@ -171,21 +171,15 @@ return function(env)
 						local open = P.rowButton(row, { name = "Open_" .. session.id,
 							size = UDim2.new(1, -target - theme.space.xxs, 1, 0), selected = selected,
 							padding = { x = pad }, onClick = function() dialog.close(); app.openSession(session.id) end })
-						if selected then
-							P.frame(open.instance, { name = "CurrentConversation", bg = theme.color.accent,
-								size = UDim2.new(0, theme.stroke.focus, 1, -pad * 2), position = UDim2.fromOffset(0, pad) })
-						end
+						open.icon(session.busy and "circle" or "circleHollow", 1,
+							session.busy and theme.color.accent or theme.color.textTertiary)
 						local label = P.column(open.row, { size = UDim2.new(0, 0, 1, 0),
 							flex = "Fill", gap = 0, alignY = "Center", layoutOrder = 2 })
 						P.text(label, { name = "ConversationTitle", text = session.title, role = "small",
 							size = UDim2.new(1, 0, 0, theme.text.small.height), truncate = true, layoutOrder = 1 })
 						P.text(label, { text = sessions.folderLabel(session) .. (session.ephemeral and " (not saved)" or ""),
 							role = "caption", color = theme.color.textTertiary, truncate = true,
-								size = UDim2.new(1, 0, 0, theme.text.caption.height), layoutOrder = 2 })
-						if session.busy then
-							P.text(open.row, { text = "Running", role = "caption", auto = "X",
-								color = theme.color.accent, layoutOrder = 3 })
-						end
+							size = UDim2.new(1, 0, 0, theme.text.caption.height), layoutOrder = 2 })
 						P.iconButton(row, { name = "HistoryActions_" .. session.id, icon = "ellipsis",
 							diameter = target, anchor = Vector2.new(1, 0.5), position = UDim2.fromScale(1, 0.5),
 							onClick = function(button) sessionMenu(session, button.instance) end })
@@ -203,21 +197,40 @@ return function(env)
 			end
 		end
 
-		P.button(workspace.instance, { name = "MobileHistorySearch", text = "Search message history", fill = true,
-			variant = "ghost", align = "Left", size = "sm", padX = pad, layoutOrder = 2,
-			onClick = function() dialog.close(); app.showSearch() end })
-		P.button(workspace.instance, { name = "MobileFolders", text = "Conversation folders", fill = true,
-			variant = "ghost", align = "Left", size = "sm", padX = pad, layoutOrder = 3,
-			onClick = function() dialog.close(); app.manageFolders() end })
-		P.button(workspace.instance, { name = "MobileMore", text = "More options", fill = true,
-			variant = "ghost", align = "Left", size = "sm", padX = pad, layoutOrder = 4, onClick = function(button)
+		-- UICorner rounds a frame's own fill, not its descendants, so the footer
+		-- carries the dialog's radius on the corners it exposes at the card's bottom.
+		-- The straight fill above it keeps the inner edge square.
+		footerEdge = P.frame(dialog.card, {
+			name = "NavigationActionsEdgeFill",
+			size = UDim2.new(1, 0, 0, theme.radius.xl),
+			position = UDim2.new(0, 0, 1, -chrome),
+			bg = theme.color.surface,
+		})
+		footer = P.frame(dialog.card, { name = "NavigationActions", anchor = Vector2.new(0, 1),
+			position = UDim2.fromScale(0, 1), size = UDim2.new(1, 0, 0, chrome), bg = theme.color.surface })
+		footerCorner = P.corner(footer, theme.radius.xl)
+		P.divider(footer, {})
+		P.button(footer, { name = "MobileNewChat", text = "New conversation", icon = "plus", variant = "primary",
+			width = 0, height = target, position = UDim2.fromOffset(pad, chromePad),
+			onClick = function()
+				dialog.close(); app.newConversation(folderFilter)
+			end }).instance.Size =
+			UDim2.new(1, -target - pad * 3, 0, target)
+		P.iconButton(footer, { name = "MobileMore", icon = "ellipsis", diameter = target,
+			anchor = Vector2.new(1, 0), position = UDim2.new(1, -pad, 0, chromePad), onClick = function(button)
 				overlay.menu({ target = button.instance, title = "Workspace", options = {
-					{ label = "About UAI", value = "about" },
-					{ label = "Join Discord", value = "discord" },
-					{ label = "Unload UAI", value = "unload", tone = "bad" },
+					{ label = "Search message history", value = "search", icon = "search" },
+					{ label = "Conversation folders", value = "folders" },
+					{ label = "Settings", value = "settings", icon = "gear" },
+					{ label = "About UAI", value = "about", icon = "document" },
+					{ label = "Join Discord", value = "discord", icon = "globe" },
+					{ label = "Unload UAI", value = "unload", icon = "signOut", tone = "bad" },
 				}, onSelect = function(value)
 					dialog.close()
-					if value == "about" then app.showAbout()
+					if value == "search" then app.showSearch()
+					elseif value == "folders" then app.manageFolders()
+					elseif value == "settings" then app.showSettingsDialog()
+					elseif value == "about" then app.showAbout()
 					elseif value == "discord" then app.joinDiscord()
 					elseif value == "unload" then
 						overlay.confirm({ title = "Unload UAI?", description = "Saves your settings and removes the interface.",
