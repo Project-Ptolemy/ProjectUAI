@@ -66,7 +66,6 @@ scenario("short mobile history puts matching rows before navigation furniture", 
 	local nav = app.app.showAppMenu(h.byName("Nav_menu"))
 	local scroll = h.byName("NavigationScroll", nav.card)
 	local history = h.byName("MobileHistory", nav.card)
-	local toolbar = h.byName("ConversationActions", nav.card)
 	local folder = h.byName("HistoryFolder", nav.card)
 	check("folder and count share a row", h.byName("HistoryCount", nav.card):IsDescendantOf(folder))
 	check("search chrome does not waste a second padding band", h.byName("NavigationBody", nav.card).Position.Y.Offset <= 52)
@@ -74,12 +73,12 @@ scenario("short mobile history puts matching rows before navigation furniture", 
 	nav.filter.set("Saved project 12")
 	check("a new query starts at its first match", scroll.CanvasPosition.Y == 0)
 	keyboard(h, 664)
-	check("short layout prioritises results", history.LayoutOrder < toolbar.LayoutOrder
-		and toolbar:IsDescendantOf(scroll))
+	check("short layout prioritises results", history.LayoutOrder < folder.LayoutOrder
+		and history.LayoutOrder < h.byName("Destinations", nav.card).LayoutOrder)
 	check("folder controls remain available", folder.Visible and folder:IsDescendantOf(scroll))
 	check("the matching conversation remains reachable", h.byName("Open_" .. wanted.id, history) ~= nil)
 	keyboard(h, 0)
-	check("normal navigation order returns", not toolbar:IsDescendantOf(scroll))
+	check("normal navigation order returns", history.LayoutOrder > folder.LayoutOrder)
 	healthy(h); app.unload()
 end)
 

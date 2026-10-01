@@ -37,24 +37,14 @@ folder moves its chats to Universal and keeps their messages. Folders organize
 history without changing game context or conversation tool permissions. Older
 conversations retain their original game grouping.
 
-On mobile, navigation opens to full-width conversation history and searches folder
-names as well as titles and game names. Search stays above the results; Menu opens
-workspace destinations on a separate page. New chat shares the folder filter row.
-Short keyboard layouts move that row below the results. Forms keep their
+On mobile, the app menu filters history by folder and searches folder names as
+well as titles and game names. Search stays above the results. Forms keep their
 existing fields during rotation; when a landscape keyboard leaves too little
 space, footer actions move into the scrollable body at full touch size. Dismissing
 the keyboard restores the pinned actions. Focused fields account for the keyboard
-edge and clipping ancestors, without repeatedly scrolling nested panels.
-
-The mobile welcome view has a compact heading, text starters in two columns and
-an Activity shortcut. At default density the composer is one 48px row. Expanding
-it grows the draft beside the existing controls, with height reserved for reading
-above it. Context details and attachment management remain in Message options.
-Mobile windows open wider; older narrow placements are clamped to the new minimum
-within the device's usable width. Providers put model, masked key and connection
-actions first, with diagnostics and advanced settings in expandable sections.
-Their selector scrolls with the form when height is limited. Desktop layout is
-unchanged.
+edge and clipping ancestors, without repeatedly scrolling nested panels. Short
+navigation layouts put New conversation and workspace actions after the history
+in its scroll region, keeping them available while the keyboard is open.
 
 Version 2.4.0 keeps ordinary mobile typing compact in both orientations; explicit
 expansion opens the longer draft editor. Mobile Return adds a newline in both

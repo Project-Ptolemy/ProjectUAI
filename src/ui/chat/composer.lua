@@ -50,10 +50,10 @@ return function(env)
 		local chipHeight = math.max(theme.size.chip, responsive.minTarget())
 
 		local controlHeight = math.max(theme.size.control, responsive.minTarget())
-		local inset = mobile and theme.space.hair or theme.space.sm
+		local inset = mobile and theme.space.xxs or theme.space.sm
 		local sideInset = mobile and theme.space.sm or theme.space.lg
-		local topInset = mobile and theme.space.none or theme.space.xxs
-		local bottomInset = mobile and theme.space.none or theme.space.sm
+		local topInset = mobile and theme.space.hair or theme.space.xxs
+		local bottomInset = mobile and theme.space.hair or theme.space.sm
 		local controlGap = mobile and theme.space.xxs or theme.space.sm
 		local resizeComposer
 		local shell = P.frame(parent, {
@@ -61,7 +61,7 @@ return function(env)
 			zIndex = theme.z.raised,
 		})
 		local composer = { expanded = false, busy = false, attachments = {} }
-		local extraHeight = 0
+		local contextRequested, extraHeight = false, 0
 		local draftId
 		local restoring = false
 		local destroyed = false
@@ -86,7 +86,7 @@ return function(env)
 			bg = theme.color.surface, radius = mobile and theme.radius.md or theme.radius.lg,
 		})
 		local boxStroke = P.stroke(surface, theme.color.border)
-		local sendButton, moreButton
+		local sendButton
 		local function syncSend()
 			if alive() and sendButton then
 				sendButton.setEnabled(not pendingSends[draftId] and (composer.busy
@@ -113,10 +113,6 @@ return function(env)
 		})
 
 		local scopeChips = {}
-		local scopeNames = {
-			runtime = "Runtime", place = "Game", version = "Game version",
-			isolate = "Conversation storage", attach = "Attach file or memory",
-		}
 		local function chip(name, iconName, labelText, order, onClick)
 			local handle = P.rowButton(scopeRow, {
 				name = "Chip_" .. name,
@@ -141,7 +137,6 @@ return function(env)
 					layoutOrder = 2,
 				})
 			end
-			handle.menuLabel, handle.open = scopeNames[name] or name, onClick
 			scopeChips[#scopeChips + 1] = handle
 			return handle
 		end
@@ -323,9 +318,6 @@ return function(env)
 				attachmentHandles[#attachmentHandles + 1] = { button = handle, label = label, leading = leading, close = close }
 			end
 			fitAttachments()
-			if mobile and moreButton then
-				moreButton.setIcon(#composer.attachments > 0 and "document" or "ellipsis")
-			end
 			if resizeComposer then resizeComposer() end
 			saveDraft()
 			syncSend()
@@ -521,24 +513,23 @@ return function(env)
 		end
 
 		local function stackedInput()
-			-- Mobile keeps one row of controls beside the draft at every height.
-			return not mobile and composer.expanded
+			if not mobile then return composer.expanded end
+			-- A focused single line must not double the chrome in portrait. Explicit
+			-- expansion is preserved when the keyboard temporarily needs one row.
+			return composer.expanded and parent.AbsoluteSize.Y >= extraHeight + controlHeight * 2
+				+ inset * 2 + topInset + bottomInset + theme.space.xs + theme.text.body.height * 2
 		end
 		local function promptHeight()
-			if mobile and composer.expanded then
-				local width = math.max(controlHeight, surface.AbsoluteSize.X - inset * 2
-					- theme.space.xs - controlHeight - chipHeight - controlGap * 2)
-				local text = composer.field and composer.field.get() or ""
-				local measured = P.measureText(text, { width = width }).Y + theme.space.sm * 2
-				local wanted = math.max(measured, theme.text.body.height * 2 + theme.space.sm * 2)
-				-- Reserve room to read above the input, including while the keyboard is
-				-- open. A temporarily short row never changes the draft or expansion state.
-				local room = parent.AbsoluteSize.Y - extraHeight - inset * 2 - topInset - bottomInset
-					- controlHeight * 2 - theme.space.sm
-				return math.max(controlHeight, math.min(wanted, theme.size.composerExpanded,
-					parent.AbsoluteSize.Y * 0.4, room))
-			end
 			if stackedInput() then
+				if mobile then
+					local width = math.max(controlHeight, surface.AbsoluteSize.X - inset * 2)
+					local text = composer.field and composer.field.get() or ""
+					local measured = P.measureText(text, { width = width }).Y + theme.space.sm * 2
+					local wanted = composer.expanded and math.max(measured, theme.text.body.height * 2 + theme.space.sm * 2) or measured
+					local room = parent.AbsoluteSize.Y - extraHeight - controlHeight - theme.space.xs
+						- inset * 2 - topInset - bottomInset - theme.text.body.height * 2
+					return math.max(controlHeight, math.min(wanted, theme.size.composerExpanded, room))
+				end
 				local wanted = math.max(theme.text.body.height * 2 + theme.space.md,
 					math.min(theme.size.composerExpanded, responsive.viewport.Y * 0.25))
 				return wanted
@@ -646,7 +637,7 @@ return function(env)
 				end
 			end })
 		end
-		moreButton = P.iconButton(metaRow, {
+		local moreButton = P.iconButton(metaRow, {
 			name = "ComposerOptions", icon = "ellipsis", variant = "ghost", diameter = theme.size.chip,
 			onClick = function(handle)
 				local options = {
@@ -654,7 +645,7 @@ return function(env)
 					{ label = "Prompt library", detail = "Explore, create, or diagnose", value = "prompts", icon = "spark" },
 					{ label = "Model and effort", detail = modelLabel.Text, value = "model", icon = "spark" },
 					{ label = "Permissions", detail = permissionLabel.Text, value = "permissions", icon = "sliders" },
-					{ label = mobile and "Context details" or (scopeScroll.instance.Visible and "Hide context details" or "Show context details"), value = "context", icon = "folder" },
+					{ label = (mobile and contextRequested or scopeScroll.instance.Visible) and "Hide context details" or "Show context details", value = "context", icon = "folder" },
 					{ label = "Context breakdown", detail = "What is filling the window", value = "context_inspect", icon = "folder" },
 					{ label = mobile and (composer.expanded and "Compact input" or "Expand input")
 						or (composer.expanded and "Single-line input" or "Multiline input"), value = "expand", icon = "code" },
@@ -708,21 +699,9 @@ return function(env)
 							permissions.setMode(mode); composer.syncContext()
 						end })
 					elseif value == "context" then
-						if mobile then
-							local details = {}
-							for index, scope in ipairs(scopeChips) do
-								details[#details + 1] = { label = scope.menuLabel,
-									detail = scope.text and scope.text.Text or nil, value = index }
-							end
-							overlay.menu({ target = handle.instance, title = "Context details", options = details,
-								onSelect = function(index)
-									local scope = scopeChips[index]
-									if alive() and scope and scope.open then scope.open({ instance = handle.instance }) end
-								end })
-						else
-							scopeScroll.instance.Visible = not scopeScroll.instance.Visible
-							resizeComposer()
-						end
+						if mobile then contextRequested = not contextRequested
+						else scopeScroll.instance.Visible = not scopeScroll.instance.Visible end
+						resizeComposer()
 					elseif value == "context_inspect" then env.require("ui/chat/context").open(sessions.current())
 					elseif value == "expand" then composer.setExpanded(not composer.expanded)
 					elseif value == "status" then overlay.toast(statusLabel.Text, "info", 5)
@@ -777,11 +756,10 @@ return function(env)
 			local top = inset
 			if mobile then
 				local room = parent.AbsoluteSize.Y
-				-- Context is a menu on mobile. Show attachment previews only when there
-				-- is room for both the input and two touch rows of transcript above it.
-				scopeScroll.instance.Visible = false
-				attachmentScroll.instance.Visible = attachRow.Visible and room >= controlHeight * 3
-					+ chipHeight + theme.size.scrollbar + inset * 3 + topInset + bottomInset + theme.space.sm
+				-- Extra context never takes the typing row off screen. Attachments
+				-- remain removable from Message options when keyboard space is short.
+				scopeScroll.instance.Visible = contextRequested and room >= controlHeight * 4 + theme.space.lg
+				attachmentScroll.instance.Visible = attachRow.Visible and room >= controlHeight * 3 + theme.space.lg
 			end
 			if scopeScroll.instance.Visible then
 				scopeScroll.instance.Position = UDim2.fromOffset(inset, top)
@@ -804,8 +782,7 @@ return function(env)
 			local inputHeight = fieldHeight + (expanded and controlHeight + theme.space.xs or 0)
 			inputHolder.Size = UDim2.new(1, -inset * 2, 0, inputHeight)
 			composer.field.shell.Size = UDim2.new(1, 0, 0, fieldHeight)
-			metaRow.Position = UDim2.fromOffset(0, mobile and fieldHeight - controlHeight
-				or (expanded and fieldHeight + theme.space.xs or 0))
+			metaRow.Position = UDim2.fromOffset(0, expanded and fieldHeight + theme.space.xs or 0)
 			metaRow.Size = UDim2.new(1, 0, 0, controlHeight)
 			local surfaceHeight = top + inputHeight + inset
 			surface.Size = UDim2.new(1, -sideInset * 2, 0, surfaceHeight)
@@ -815,7 +792,7 @@ return function(env)
 			resizing = false
 		end
 		surface:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-			if mobile then resizeComposer() else fitLabels() end
+			fitLabels()
 			fitAttachments()
 		end)
 		modelLabel:GetPropertyChangedSignal("TextBounds"):Connect(fitLabels)
