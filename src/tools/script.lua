@@ -78,7 +78,7 @@ return function(env)
 		{
 			name = "script_source",
 			risk = "read",
-			description = "Read a script's source. Works when the host can read or decompile it; many live scripts cannot be read at all.",
+			description = "Read a script's source. Works when the host can read or decompile it; when the host has no decompiler or it fails, the bundled luacid service is used instead. Many live scripts still cannot be read at all.",
 			parameters = {
 				type = "object",
 				properties = {

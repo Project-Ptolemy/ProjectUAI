@@ -508,6 +508,11 @@ return function(env)
 			closeButton.instance.LayoutOrder = 2
 		end
 
+		-- The footer's own rounded fill, and the straight fill that keeps the edge
+		-- it shares with the body square. The fit pass retunes both when a short
+		-- keyboard moves the footer off the card's bottom edge and into the scroll.
+		local footerCorner, footerEdge
+
 		-- The body. In bounded scroll mode, it takes the region between the fixed-height
 		-- header and pinned footer without layout-fighting UIFlexItem.
 		do
@@ -526,6 +531,17 @@ return function(env)
 				gap = theme.space.sm,
 				layoutOrder = 1,
 			})
+			-- UICorner rounds a frame's own fill, not its descendants, so the footer
+			-- painting over the card's bottom edge would square the card's rounded
+			-- corners. The footer carries the card's radius itself, and this straight
+			-- fill covers the rounded corners that radius leaves at its inner edge --
+			-- the same correction the shell's sidebar makes at the other edge.
+			footerEdge = P.frame(card, {
+				name = "FooterEdgeFill",
+				size = UDim2.new(1, 0, 0, theme.radius.xl),
+				position = UDim2.new(0, 0, 1, -footerTotal),
+				bg = theme.color.surface,
+			})
 			handle.footer = P.row(card, {
 				name = "Footer",
 				size = UDim2.new(1, 0, 0, footerTotal),
@@ -537,6 +553,7 @@ return function(env)
 				alignX = "Right",
 				wrap = true,
 			})
+			footerCorner = P.corner(handle.footer, theme.radius.xl)
 			P.frame(card, {
 				name = "FooterDivider",
 				size = UDim2.new(1, 0, 0, theme.stroke.hair),
@@ -583,8 +600,13 @@ return function(env)
 				local preferred = props.height or (props.scroll == true and 620
 					or (wantedHeader + footerTotal + bodyHeight + theme.space.sm + theme.space.xxs))
 				local cardHeight = math.max(1, math.floor(math.min(preferred, roomNow)))
+				-- Reserve a control's height for the body only when the body actually
+				-- has content. A description-only confirmation has none, and reserving
+				-- it anyway clipped the wrapped description to one line, which forced
+				-- a scroll in a card with space to spare.
+				local bodyRoom = bodyHeight > 0 and closeDiameter or 0
 				local measured = math.min(cardHeight, wantedHeader, math.max(closeDiameter + chromePad * 2,
-					cardHeight - footerTotal - closeDiameter))
+					cardHeight - footerTotal - bodyRoom))
 				local minimumBody = theme.space.xxs + theme.space.sm
 				for _, child in ipairs(handle.content:GetChildren()) do
 					if child:IsA("GuiObject") and child.Visible then minimumBody = minimumBody + closeDiameter; break end
@@ -620,6 +642,14 @@ return function(env)
 					divider.Visible = hasFooter and not inlineFooter
 					divider.Position = UDim2.new(0, 0, 1, -pinnedFooter)
 				end
+				-- The footer follows the card's radius while it is pinned to the
+				-- card's bottom edge and drops it when it moves into the body scroll.
+				-- The edge fill squares the inner corners that radius leaves and keeps
+				-- the card's silhouette intact at the outer ones.
+				footerCorner.CornerRadius = UDim.new(0, inlineFooter and 0 or theme.radius.xl)
+				footerEdge.Size = UDim2.new(1, 0, 0, math.min(theme.radius.xl, pinnedFooter))
+				footerEdge.Position = UDim2.new(0, 0, 1, -pinnedFooter)
+				footerEdge.Visible = hasFooter and not inlineFooter and pinnedFooter > 0
 				fitting = false
 			end
 			local scheduled = false

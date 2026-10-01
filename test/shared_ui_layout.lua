@@ -260,6 +260,24 @@ env.uis.InputBegan:Fire({ KeyCode = E.KeyCode.Escape }, false)
 check("Escape honours nondismissable modals", not locked.closed)
 locked.close(); h.settle(1)
 
+-- A confirmation carries its whole description. The header used to reserve a
+-- control height for a body it did not have, which clipped a wrapped description
+-- to one line and forced a scroll inside a card with space to spare.
+local longDescription = "This removes the saved script and its history from the library. " ..
+	string.rep("The workspace file stays on disk. ", 3)
+local confirmable = overlay.modal({ title = "Delete the script?", description = longDescription, width = 420 })
+h.settle(0.1)
+local confirmHeader = confirmable.card:FindFirstChild("Header")
+local confirmPad = responsive.isMobile() and theme.space.md or theme.space.lg
+local descriptionWidth = math.max(1, confirmable.card.Size.X.Offset - confirmPad * 2
+	- (theme.size.control + theme.space.sm))
+local neededHeader = theme.text.title.height + theme.space.hair
+	+ P.measureText(longDescription, { role = "small", width = descriptionWidth }).Y
+check("a description-only confirmation is tall enough for the wrapped text",
+	confirmHeader.AbsoluteSize.Y >= neededHeader,
+	("header %d, needed %d"):format(confirmHeader.AbsoluteSize.Y, neededHeader))
+confirmable.close(); h.settle(1)
+
 local target = P.frame(root, { position = U.fromOffset(120, 80), size = U.fromOffset(40, 28) })
 local menu = overlay.menu({ target = target, options = { { label = "A deliberately long menu action", value = "go", detail = "Secondary line" } } })
 check("menu width follows its text rather than a tiny anchor", menu.card.Size.X.Offset > theme.size.menuMin)

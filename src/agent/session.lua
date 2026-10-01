@@ -417,6 +417,23 @@ return function(env)
 			return true
 		end
 
+		-- A title the agent chose for the thread, from what it turned out to be
+		-- about. Deliberately not `rename`: naming the conversation stays the
+		-- user's move, so a name they typed is refused outright and `named` is
+		-- left alone -- another turn may refine the agent's own title, and the
+		-- first-message fallback still belongs to the user, not to the agent.
+		function session.renameByAgent(title)
+			if session.named then return false, "the user named this conversation" end
+			if session.headless then return false, "a subagent has no conversation title to set" end
+			local clean = util.ellipsis(util.trim(tostring(title or "")), 60)
+			if clean == "" then return false, "a title is required" end
+			if clean == session.title then return true, clean end
+			session.title = clean
+			M.listChanged:fire()
+			M.persist(session)
+			return true, clean
+		end
+
 		-- Nothing about this conversation is written to disk. The composer's isolation
 		-- toggle is what turns it on, for the same reason a worktree exists: somewhere
 		-- to try something without it becoming part of the history.

@@ -93,6 +93,24 @@ return function(env)
 		end
 		M.view.pages = {}; return { path = file, isDir = folder == true }
 	end
+	function M.isDir(path)
+		local file = clean(path); if not file or file == "" then return false end
+		return fs.isDir(file)
+	end
+	-- Deleting a workspace entry. The root is never deletable, and a binding whose
+	-- file is gone is dropped so a later save cannot report a change against a file
+	-- that no longer exists.
+	function M.delete(path)
+		local file, why = clean(path)
+		if not file or file == "" then return nil, why or "Choose a file or folder to delete." end
+		local directory = fs.isDir(file)
+		local removed, err = fs.delete(file); if not removed then return nil, err end
+		for id, binding in pairs(M.bindings) do
+			if binding.path == file or binding.path:sub(1, #file + 1) == file .. "/" then M.bindings[id] = nil end
+		end
+		M.view.pages, M.view.selected = {}, nil
+		return { path = file, isDir = directory }
+	end
 	function M.reveal(path)
 		local file = clean(path); if not file then return end
 		M.view.expanded[""] = true

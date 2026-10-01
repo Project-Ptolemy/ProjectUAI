@@ -19,6 +19,36 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.2.0",
+			revision = "2026-10-01",
+			date = "October 1, 2026",
+			title = "Modal polish, workspace cleanup and donations",
+			highlights = "Modal and dialog cards keep their full rounded silhouette, the agent can name a conversation by what it became, Files can delete workspace entries, the profile menu links the Project Ptolemy donation place and Ko-fi, and a failed host decompiler falls back to luacid.",
+			sections = {
+				{ category = "added", label = "Conversations", items = {
+					"The agent sets a short, specific title from the user's request once the subject is clear, so the list reads as topics instead of opening lines.",
+					"A conversation the user has named keeps its title: the rename tool is not offered there, a direct call is refused, and subagents have no title to set.",
+				} },
+				{ category = "added", label = "Workspace files", items = {
+					"Delete a file or folder from the Files pane -- from the toolbar, the right-click menu, or the row's close control -- behind one confirmation.",
+					"Deleting a file drops its binding, so a later save cannot report a change against a file that is gone. The workspace root is never deletable.",
+				} },
+				{ category = "added", label = "Script sources", items = {
+					"When the host has no script decompiler, or its decompiler fails, script_source falls back to the bundled luacid service, using the executor's own bytecode and HTTP functions.",
+				} },
+				{ category = "added", label = "Support", items = {
+					"The profile menu offers a Donate entry. Donate with Robux opens the Project Ptolemy donation place after a confirmation; Ko-fi copies its link for the browser.",
+				} },
+				{ category = "fixed", label = "Interface", items = {
+					"Modal and dialog cards keep their rounded corners at the bottom. Opaque footers, the settings navigation bar, and mobile navigation no longer square the card's edge; each inner edge stays straight against the body while the outer corners follow the card.",
+					"A confirmation that carries only a description shows its full wrapped text instead of clipping it to one line and forcing a scroll in a card with space to spare.",
+				} },
+				{ category = "improved", label = "Providers", items = {
+					"Rebuilt model pricing and the model directory from the OpenRouter and LiteLLM datasets, covering current and newly released model ids.",
+				} },
+			},
+		},
+		{
 			version = "2.1.1",
 			revision = "2026-09-30",
 			date = "September 30, 2026",

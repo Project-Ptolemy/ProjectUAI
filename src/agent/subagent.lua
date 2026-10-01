@@ -561,7 +561,10 @@ return function(env)
 			turns = turns,
 		})
 
-		local excluded = { ask_user = true }
+		-- A child cannot ask, and a headless worker has no conversation of its own to
+		-- name: both tools are absent from its catalogue rather than described and
+		-- refused.
+		local excluded = { ask_user = true, conversation_rename = true }
 		if record.preset ~= "full" then
 			-- Every preset must be able to read skills first. This does not grant a
 			-- restricted worker permission to change the user's standing playbooks.

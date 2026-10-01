@@ -324,6 +324,34 @@ return function(env)
 			end,
 		},
 		{
+			-- The conversation list is read by a person, and a title derived from the
+			-- opening message goes stale as soon as the thread moves on. The agent has
+			-- read the whole conversation, so it is the party that can name what the
+			-- thread actually became. A name the user typed is theirs: the loop does
+			-- not offer this tool in a named conversation, and the handler refuses as
+			-- the second line of defence.
+			name = "conversation_rename",
+			risk = "read",
+			description = "Rename this conversation to a short, specific title based on what it is actually about, so the user can pick the thread out of their list later. Call it once the subject is clear -- usually after the first exchange -- and again only when the work has genuinely moved on. Name the job, not the tools used. Never use it to replace a name the user set themselves; a conversation the user has named is not offered this tool.",
+			parameters = {
+				type = "object",
+				properties = {
+					title = {
+						type = "string",
+						description = "The new title, under about 60 characters: a few specific words, not a sentence.",
+					},
+				},
+				required = { "title" },
+			},
+			run = function(args, ctx)
+				local session = ctx and ctx.session or nil
+				if not session then return H.fail("there is no conversation to rename") end
+				local ok, result = session.renameByAgent(args.title)
+				if not ok then return H.fail(result) end
+				return "Conversation renamed to \"" .. tostring(result) .. "\"."
+			end,
+		},
+		{
 			-- The model's side of a question it cannot answer from the world. A
 			-- permission prompt asks "may I" and the permission layer owns it; this
 			-- asks "which" or "what" and the answer is a fact, not a decision about

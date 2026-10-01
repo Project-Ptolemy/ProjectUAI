@@ -101,7 +101,9 @@ return function(env)
 			if not item then return end
 			local revision = item.revision
 			overlay.confirm({ title = "Delete " .. item.name .. "?",
-				description = "This removes the saved " .. row.kind .. ". Closing a script view keeps it in the library.",
+				description = row.kind == "document"
+					and "This removes the saved script and its history from the library. Workspace files stay on disk."
+					or "This removes the saved action from the library.",
 				danger = true, confirmText = "Delete", onConfirm = function()
 					local current = row.kind == "document" and store.resolve(row.id) or store.action(row.id)
 					if not current or current.revision ~= revision then common.message(nil, "This entry changed; review it before deleting."); return end

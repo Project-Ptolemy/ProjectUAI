@@ -247,12 +247,21 @@ return function(env)
 				})
 			end
 
+			-- A conversation the user has named keeps that name: the rename tool is
+			-- absent from its catalogue rather than described and refused, the same
+			-- way a missing capability or a disabled group is handled. A headless
+			-- child has no visible title to name either.
+			local exclude = session.toolExclude
+			if session.named or session.headless then
+				exclude = util.copy(exclude or {})
+				exclude.conversation_rename = true
+			end
 			local request = {
 				messages = ctx.wire(systemText),
 				tools = registry.definitions({
 					only = session.toolFilter,
 					groups = session.toolGroups,
-					exclude = session.toolExclude,
+					exclude = exclude,
 				}),
 				stream = session.stream,
 				onFrame = session.onFrame,

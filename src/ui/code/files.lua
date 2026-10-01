@@ -36,6 +36,7 @@ return function(env)
 			end)
 		end, { flex = true })
 		bar.add("", function() handle.create(false) end, { icon = "plus", iconOnly = true, name = "NewWorkspaceFile" })
+		bar.add("", function() handle.deleteSelected() end, { icon = "trash", iconOnly = true, name = "DeleteWorkspaceEntry" })
 		bar.add("Refresh", function() view.pages = {}; refresh() end, { tight = true, name = "RefreshWorkspaceFiles" })
 		local filter = P.field(root, { name = "WorkspaceFileSearch", placeholder = "Filter loaded files", text = view.query or "", role = "small", onChange = function(text) view.query = text; if refresh then refresh() end end })
 		filter.shell.Position, filter.shell.Size = UDim2.fromOffset(8, common.barHeight() + 6), UDim2.new(1, -16, 0, common.barHeight())
@@ -65,7 +66,34 @@ return function(env)
 				return true
 			end, { key = "workspace-new", submit = "Create" })
 		end
+		-- One delete path for the context menu, the toolbar and the row's ×, so the
+		-- confirmation and the refresh after it cannot drift apart.
+		local function deleteEntry(path, name, isDir)
+			if not path or path == "" then
+				env.require("ui/overlay").toast("Choose a file or folder to delete", "info", 2)
+				return
+			end
+			local overlay = env.require("ui/overlay")
+			overlay.confirm({
+				title = "Delete " .. tostring(name or path) .. "?",
+				description = isDir
+					and "This removes the folder and everything inside it from the workspace on disk."
+					or "This removes the file from the workspace on disk. A copy open in the library stays until it is closed.",
+				danger = true, confirmText = "Delete",
+				onConfirm = function()
+					local result, why = files.delete(path)
+					if not common.message(result, why) then return end
+					refresh()
+					overlay.toast("Deleted " .. (result.isDir and "folder " or "file ") .. result.path, "good", 2)
+				end,
+			})
+		end
+		function handle.deleteSelected()
+			deleteEntry(view.selected, view.selected and view.selected:match("[^/]+$"), view.selected and files.isDir(view.selected))
+		end
 		list = common.virtualList(root, { name = "WorkspaceFileTree", position = UDim2.fromOffset(0, top), size = UDim2.new(1, 0, 1, -top - 24), dense = true,
+			onClose = function(row) if row.path and row.path ~= "" then deleteEntry(row.path, row.name, row.isDir) end end,
+			closable = function(row) return row.path ~= nil and row.path ~= "" end,
 			icon = function(row) return row.path ~= nil and (row.isDir and "Folder" or row.name:lower():match("%.lua[u]?$") and "ModuleScript" or "Document") or nil end,
 			indent = function(row) return row.depth or 0 end,
 			chevron = function(row) if row.isDir then return view.expanded[row.path] and "open" or "closed" end end,
@@ -83,10 +111,12 @@ return function(env)
 				local choices = { { label = "Copy path", value = "path" } }
 				if row.isDir then choices[#choices + 1] = { label = "New file here", value = "new" }; choices[#choices + 1] = { label = "Refresh folder", value = "refresh" }
 				else choices[#choices + 1] = { label = "Open file", value = "open" } end
+				choices[#choices + 1] = { label = "Delete", value = "delete", tone = "bad" }
 				common.menu(button, row.name, choices, function(action)
 					if action == "path" then common.copy(files.root .. "/" .. row.path)
 					elseif action == "new" then handle.create(false)
 					elseif action == "refresh" then load(row.path); refresh()
+					elseif action == "delete" then deleteEntry(row.path, row.name, row.isDir)
 					else common.message(handle.open(row.path)) end
 				end)
 			end })

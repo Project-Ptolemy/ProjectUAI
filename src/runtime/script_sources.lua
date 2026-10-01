@@ -88,7 +88,7 @@ return function(env)
 		if not result.supported then result.diagnostics = "This object does not contain source"; return result end
 		local readable, source = pcall(function() return object.Source end)
 		result.source, result.empty = readable and type(source) == "string", readable and source == ""
-		result.decompile = caps.fn.decompile ~= nil
+		result.decompile = caps.fn.decompile ~= nil or env.require("runtime/luacid").available()
 		result.status = result.source and (result.empty and "empty" or "source") or result.decompile and "decompile" or "unavailable"
 		return result
 	end
@@ -128,9 +128,28 @@ return function(env)
 					if not options.decompile then read, source = pcall(function() return object.Source end); origin = "host-readable" end
 					local used = "source"
 					if options.decompile or not read or type(source) ~= "string" then
-						if not caps.fn.decompile then return nil, "Decompiler unavailable on this host", failure("decompiler_unavailable", "Source is unreadable and no decompiler is available", instanceId) end
-						read, source = pcall(caps.fn.decompile, object); used, origin = "decompiled", "decompiled"
-						if not read or type(source) ~= "string" then return nil, "Decompiler failed to return source", failure("decompiler_failure", "Decompiler failed to return source; host error text was omitted", instanceId, used) end
+						-- The host's own decompiler first; the bundled luacid fallback
+						-- when it is missing or fails. A client whose executor has no
+						-- native decompiler still reaches source through the service.
+						local decompiled, from
+						if caps.fn.decompile then
+							local okRead, value = pcall(caps.fn.decompile, object)
+							if okRead and type(value) == "string" then decompiled, from = value, "decompiled" end
+						end
+						if not decompiled then
+							local fallback = env.require("runtime/luacid").install()
+							if fallback then
+								local okRead, value = pcall(fallback, object)
+								if okRead and type(value) == "string" then decompiled, from = value, "luacid" end
+							end
+						end
+						if not decompiled then
+							if caps.fn.decompile then
+								return nil, "Decompiler failed to return source", failure("decompiler_failure", "Decompiler failed to return source; host error text was omitted", instanceId, "decompiled")
+							end
+							return nil, "Decompiler unavailable on this host", failure("decompiler_unavailable", "Source is unreadable and no decompiler is available", instanceId)
+						end
+						source, read, used, origin = decompiled, true, "decompiled", from
 					end
 					local wanted = false; for _, cancelled in pairs(flight.waiters) do if not cancelled() then wanted = true end end
 					if not wanted or not alive or flight.epoch ~= refs.epoch or generation ~= (generations[instanceId] or 0) or not refs.resolve(instanceId) then return reject("stale_request", "Discarded stale source completion") end

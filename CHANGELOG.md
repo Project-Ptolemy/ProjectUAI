@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.2.0 — October 1, 2026
+
+Modal polish, workspace cleanup, agent-named conversations, and donations.
+
+- Keep modal and dialog cards rounded at the bottom, and show a description-only
+  confirmation in full instead of clipping it to one line. Opaque footers, the
+  settings navigation bar, and mobile navigation no longer square the card's
+  edge: each inner edge stays straight against the body while the outer corners
+  follow the card's radius.
+- Let the agent name a conversation from the user's request once its subject is
+  clear, so the list reads as topics rather than opening lines. A conversation
+  the user has named keeps its title -- the rename tool is not offered there, a
+  direct call is refused, and subagents have no title to set.
+- Delete files and folders from the Files pane, from the toolbar, the right-click
+  menu, or the row's close control, behind one confirmation. Deleting drops the
+  file's binding, and the workspace root is never deletable.
+- Fall back to the bundled luacid decompiler when the host has none or its
+  decompiler fails, so `script_source` still reaches source through the
+  executor's own bytecode and HTTP functions.
+- Add a Donate entry to the profile menu: Donate with Robux opens the Project
+  Ptolemy donation place after a confirmation, and Ko-fi copies its link.
+- Rebuild model pricing and the model directory from the OpenRouter and LiteLLM
+  datasets, covering current and newly released model ids.
+
 ## 2.1.1 — September 30, 2026
 
 Long streaming and Remote Spy reliability.

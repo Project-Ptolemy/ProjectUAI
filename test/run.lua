@@ -6413,6 +6413,57 @@ scenario("conversation_search reads other threads", function()
 	falsy("an unknown id is a clean failure, not a crash", missing.ok)
 end)
 
+-- The conversation list is read by a person, and a title taken from the opening
+-- message goes stale once the thread moves on. The agent may name its own
+-- conversation; it must never touch a name the user typed.
+scenario("the agent names its own conversation, never the user's", function()
+	local sent = {}
+	local harness, handle = bootWith({
+		handler = function(entry)
+			if not tostring(entry.url):find("/chat/completions") then
+				return { StatusCode = 404, Body = "{}" }
+			end
+			sent[#sent + 1] = json.decode(entry.body)
+			return { StatusCode = 200, Body = chatBody({ content = "Noted." }) }
+		end,
+	})
+	local current = handle.sessions.current()
+	local context = current.toolContext()
+
+	local renamed = handle.tools.dispatch({ id = "r1", ["function"] = {
+		name = "conversation_rename",
+		arguments = json.encode({ title = "Raft spawn fix" }),
+	} }, context)
+	truthy("the agent can name its own conversation", renamed.ok, renamed.text)
+	check("and the title is applied", current.title, "Raft spawn fix")
+	falsy("without counting as the user's own name", current.named == true)
+
+	local function offered()
+		for _, definition in ipairs(sent[#sent].tools or {}) do
+			if definition["function"] and definition["function"].name == "conversation_rename" then return true end
+		end
+		return false
+	end
+	current.send("carry on")
+	harness.settle(6)
+	truthy("an unnamed conversation is offered the rename tool", offered())
+
+	current.rename("My raft notes")
+	current.send("and again")
+	harness.settle(6)
+	falsy("a user-named conversation is not offered it", offered())
+
+	local refused = handle.tools.dispatch({ id = "r2", ["function"] = {
+		name = "conversation_rename",
+		arguments = json.encode({ title = "Something else" }),
+	} }, context)
+	falsy("and a direct call to rename it is refused", refused.ok)
+	check("with the user's title untouched", current.title, "My raft notes")
+
+	check("no thread errors", #harness.errors(), 0,
+		harness.errors()[1] and harness.errors()[1].traceback or nil)
+end)
+
 -- The subagent's own catalogue must not contain ask_user, and its brief has to say
 -- what it is: a delegated worker nobody can answer.
 scenario("a subagent has no ask tool and knows what it is", function()
@@ -6448,6 +6499,7 @@ scenario("a subagent has no ask tool and knows what it is", function()
 			names[definition["function"].name] = true
 		end
 		falsy("the child is not offered ask_user", names["ask_user"] ~= nil)
+		falsy("and has no conversation of its own to name", names["conversation_rename"] ~= nil)
 		-- The main conversation still is, which is what makes it an exclusion and
 		-- not the tool having vanished everywhere.
 		local main = handle.tools.definitions({})
@@ -6456,6 +6508,7 @@ scenario("a subagent has no ask tool and knows what it is", function()
 			mainNames[definition["function"].name] = true
 		end
 		truthy("while the main conversation keeps it", mainNames["ask_user"] ~= nil)
+		truthy("and can rename itself", mainNames["conversation_rename"] ~= nil)
 	end
 
 	-- The brief states the identity and the no-asking rule in words.
@@ -7198,6 +7251,51 @@ scenario("universal model pricing resolves across inference providers", function
 	local pickle = usage.priceFor("big-pickle", zen)
 	check("big-pickle on OpenCode costs nothing", pickle and pickle[1], 0)
 	check("big-pickle completion costs nothing", pickle and pickle[2], 0)
+end)
+
+-- The profile menu's donation entry. The Roblox route asks first, because a
+-- teleport cannot be undone from here; Ko-fi copies its link instead.
+scenario("the profile menu offers a donation that confirms before teleporting", function()
+	local harness, handle = bootWith({ provider = false })
+	local anchor = harness.byName("ProfileBar")
+	truthy("the profile control exists", anchor ~= nil)
+	local menu = handle.app.showProfileMenu(anchor)
+	truthy("the profile menu opens", menu ~= nil)
+	local donate = harness.byName("Option_donate", menu.card)
+	truthy("with a Donate entry", donate ~= nil, harness.dump(menu.card))
+	harness.click(donate)
+	harness.settle(1)
+
+	local modal = harness.byName("Modal")
+	truthy("the donation modal opens", modal ~= nil)
+	contains("it names the project", harness.textOf(modal), "Project Ptolemy")
+	contains("it offers Robux", harness.textOf(modal), "Robux")
+	contains("and Ko-fi", harness.textOf(modal), "Ko-fi")
+
+	local function button(root, label)
+		for _, node in ipairs(root:GetDescendants()) do
+			if node.ClassName == "TextLabel" and node.Text == label then
+				local parent = node.Parent
+				while parent and parent.ClassName ~= "TextButton" do parent = parent.Parent end
+				if parent then return parent end
+			end
+		end
+		return nil
+	end
+	local robux = button(modal, "Donate with Robux")
+	truthy("the Robux action exists", robux ~= nil, harness.dump(modal))
+	harness.click(robux)
+	harness.settle(1)
+	local confirmModal = harness.byName("Modal")
+	truthy("it confirms before teleporting", confirmModal ~= nil
+		and harness.textOf(confirmModal):find("Open the donation place", 1, true) ~= nil,
+		harness.dump(confirmModal or handle.app.screen))
+	local teleport = button(confirmModal, "Teleport")
+	truthy("with a Teleport action", teleport ~= nil)
+	harness.click(teleport)
+	harness.settle(1)
+	check("and no thread errors", #harness.errors(), 0,
+		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
 
 print(("="):rep(72))

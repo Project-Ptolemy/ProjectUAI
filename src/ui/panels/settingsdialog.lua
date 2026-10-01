@@ -82,6 +82,17 @@ return function(env)
 				or UDim2.new(0, navWidth, 1, 0),
 			bg = theme.color.sidebar,
 		})
+		-- UICorner rounds a frame's own fill, not its descendants, so the nav bar
+		-- has to carry the dialog's radius on the corners it exposes -- the left
+		-- pair in the wide layout, the top pair in the collapsed strip. The edge
+		-- fill keeps the side it shares with the body straight.
+		P.corner(navHolder, theme.radius.xl)
+		local navEdge = P.frame(navHolder, {
+			name = "DialogNavEdgeFill",
+			size = UDim2.new(0, theme.radius.xl, 1, 0),
+			position = UDim2.new(1, -theme.radius.xl, 0, 0),
+			bg = theme.color.sidebar,
+		})
 		local nav = P.scroll(navHolder, {
 			name = "Categories",
 			size = UDim2.new(1, narrow and -closeInset or 0, 1, 0),
@@ -214,6 +225,10 @@ return function(env)
 			nav.instance.HorizontalScrollBarInset = narrow and Enum.ScrollBarInset.ScrollBar or Enum.ScrollBarInset.None
 			divider.Size = narrow and UDim2.new(1, 0, 0, theme.stroke.hair) or UDim2.new(0, theme.stroke.hair, 1, 0)
 			divider.Position = narrow and UDim2.new(0, 0, 0, stripHeight) or UDim2.new(0, navWidth, 0, 0)
+			-- The nav bar exposes its rounded corners on the card's outer edge only;
+			-- this fill squares the side it shares with the body as the layout turns.
+			navEdge.Size = narrow and UDim2.new(1, 0, 0, theme.radius.xl) or UDim2.new(0, theme.radius.xl, 1, 0)
+			navEdge.Position = narrow and UDim2.new(0, 0, 1, -theme.radius.xl) or UDim2.new(1, -theme.radius.xl, 0, 0)
 			bodyHolder.Size = narrow and UDim2.new(1, 0, 1, -(stripHeight + theme.stroke.hair))
 				or UDim2.new(1, -(navWidth + theme.stroke.hair), 1, 0)
 			bodyHolder.Position = narrow and UDim2.new(0, 0, 0, stripHeight + theme.stroke.hair)

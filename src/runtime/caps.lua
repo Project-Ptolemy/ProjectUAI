@@ -73,6 +73,7 @@ return function(env)
 		getinstances = callable(getinstances),
 		getscripts = callable(getscripts),
 		decompile = callable(decompile),
+		getscriptbytecode = callable(getscriptbytecode),
 		cloneref = callable(cloneref),
 		queueTeleport = callable(queue_on_teleport),
 		setfflag = callable(setfflag),
@@ -110,6 +111,7 @@ return function(env)
 		invokeOutcomes = { state = "available_unverified", reason = "Requires a yielding native backend fixture" },
 	}
 	M.sourceRead = M.fn.decompile ~= nil or M.fn.getscripts ~= nil
+		or (M.fn.loadstring ~= nil and M.fn.getscriptbytecode ~= nil and M.fn.request ~= nil)
 
 	-- Thread identity ----------------------------------------------------------
 	-- The identity of the thread that boots the client. Some executors resume a

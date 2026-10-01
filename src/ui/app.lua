@@ -40,6 +40,8 @@ return function(env)
 	local M = { panel = "chat", built = false, history = { entries = {}, index = 0 } }
 
 	local DISCORD_INVITE = "https://discord.gg/9xYyyYuKap"
+	local KOFI_URL = "https://ko-fi.com/davidkreutzer"
+	local DONATION_PLACE_ID = 80876331264594
 
 	-- A client GUI cannot open external links, so the invite goes to the clipboard
 	-- and a toast confirms it. Without a clipboard, the toast shows the link itself.
@@ -50,6 +52,73 @@ return function(env)
 		else
 			overlay.toast(DISCORD_INVITE, "info", 4)
 		end
+	end
+
+	-- Supporting the project, from the profile menu. Donations are optional, and
+	-- neither route works from a client GUI by itself: the Ko-fi link goes to the
+	-- clipboard and the Roblox route moves the player to the donation place, behind
+	-- a confirmation because a teleport is not reversible from here.
+	function M.teleportToDonationPlace()
+		local ok, err = pcall(function()
+			env.services.TeleportService:Teleport(DONATION_PLACE_ID, env.plr)
+		end)
+		if ok then
+			overlay.toast("Teleporting to the Project Ptolemy donation place", "good", 3)
+		else
+			overlay.toast("Could not start the teleport: " .. tostring(err), "bad", 4)
+		end
+	end
+
+	function M.donate()
+		local modal = overlay.modal({
+			title = "Support Project Ptolemy",
+			description = "You may now support Project Ptolemy by donating via Robux or Ko-fi. "
+				.. "This is completely optional -- any donation would be appreciated.",
+			width = theme.size.modal,
+		})
+		if not modal then return end
+		local note = P.text(modal.content, {
+			name = "DonationNote",
+			text = "Robux donations go to the Project Ptolemy donation place; supporters are thanked in our Discord. "
+				.. "Ko-fi copies its link, which you can open in a browser.",
+			role = "small",
+			color = theme.color.textSecondary,
+			wrap = true,
+			auto = "Y",
+			size = UDim2.new(1, 0, 0, 0),
+			layoutOrder = 1,
+		})
+		P.button(modal.footer, {
+			text = "Ko-fi",
+			variant = "secondary",
+			size = "sm",
+			layoutOrder = 1,
+			onClick = function()
+				modal.close()
+				if caps.clipboard then
+					local ok = pcall(caps.fn.clipboard, KOFI_URL)
+					overlay.toast(ok and "Ko-fi link copied" or KOFI_URL, ok and "good" or "info", ok and 2 or 4)
+				else
+					overlay.toast(KOFI_URL, "info", 4)
+				end
+			end,
+		})
+		P.button(modal.footer, {
+			text = "Donate with Robux",
+			variant = "primary",
+			size = "sm",
+			layoutOrder = 2,
+			onClick = function()
+				modal.close()
+				overlay.confirm({
+					title = "Open the donation place?",
+					description = "Roblox will move you to the Project Ptolemy donation place. "
+						.. "Your conversations and settings are saved before you leave.",
+					confirmText = "Teleport",
+					onConfirm = function() M.teleportToDonationPlace() end,
+				})
+			end,
+		})
 	end
 
 	-- Where a client GUI can live. gethui is the sturdiest under an executor
@@ -1278,6 +1347,7 @@ return function(env)
 				{ label = env.require("ui/changelog").menuLabel(), value = "changelog", icon = "spark" },
 				{ label = "About this build", value = "about", icon = "book" },
 				{ label = "Join Discord", value = "discord", icon = "globe" },
+				{ label = "Donate", value = "donate", icon = "spark" },
 				{ divider = true },
 				{ label = "Unload UAI", value = "unload", icon = "signOut", tone = "bad" },
 			},
@@ -1292,6 +1362,8 @@ return function(env)
 					M.showAbout()
 				elseif value == "discord" then
 					M.joinDiscord()
+				elseif value == "donate" then
+					M.donate()
 				elseif value == "unload" then
 					overlay.confirm({
 						title = "Unload UAI?",

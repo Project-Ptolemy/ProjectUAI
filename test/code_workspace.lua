@@ -123,6 +123,43 @@ case("runner attribution, live output, reservation and Stop", function()
 	f.healthy(); f.close()
 end)
 
+case("workspace files and folders can be deleted with their bindings", function()
+	local f = F.new(); local files = f.env.require("runtime/code_files")
+	local store = f.env.require("runtime/code_store"); store.init()
+	assert(files.create("scratch.lua", false))
+	check("a new file is recognised", files.isDir("scratch.lua") == false)
+	local opened = assert(files.open("scratch.lua"))
+	check("opening a file binds it", files.binding(opened.documentId) ~= nil and files.dirty(opened.documentId) == false)
+	local removed, why = files.delete("scratch.lua")
+	check("the file is deleted", removed ~= nil and removed.isDir == false, why)
+	check("its binding is dropped", files.binding(opened.documentId) == nil)
+	check("and it no longer lists", #(files.children("") or {}) == 0)
+	assert(files.create("nested", true))
+	check("a folder is recognised before deletion", files.isDir("nested") == true)
+	local folder, folderWhy = files.delete("nested")
+	check("the folder is deleted", folder ~= nil and folder.isDir == true, folderWhy)
+	check("the workspace root is never deletable", files.delete("") == nil)
+	f.healthy(); f.close()
+end)
+
+case("the luacid fallback degrades cleanly when the host cannot run it", function()
+	local f = F.new(); local caps = f.env.require("runtime/caps"); local luacid = f.env.require("runtime/luacid")
+	local saved = { loadstring = caps.fn.loadstring, bytecode = caps.fn.getscriptbytecode, request = caps.fn.request }
+	caps.fn.loadstring = nil
+	check("without a compiler the fallback reports unavailable", not luacid.available())
+	check("and install explains what is missing",
+		tostring(select(2, luacid.install())):find("compile", 1, true) ~= nil)
+	caps.fn.loadstring = saved.loadstring
+	caps.fn.getscriptbytecode = nil
+	check("bytecode access is required", not luacid.available())
+	caps.fn.request = nil
+	check("an HTTP request function is required", not luacid.available())
+	caps.fn.getscriptbytecode, caps.fn.request = saved.bytecode, saved.request
+	check("the embedded source is intact", type(luacid.SOURCE) == "string" and #luacid.SOURCE > 1000
+		and luacid.SOURCE:find("getgenv().decompile", 1, true) ~= nil)
+	f.healthy(); f.close()
+end)
+
 case("Code tools share the live store and bounded scoped detail reads", function()
 	local f = F.new(); f.tools({ "coding", "instance", "remotes", "script" })
 	local store = f.env.require("runtime/code_store"); store.init(); local doc = store.active()

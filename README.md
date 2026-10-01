@@ -4,13 +4,17 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.1.1 — September 30, 2026.** Long streamed replies finish instead of
-being discarded as an over-budget stream, and the Remote Spy view keeps refreshing
-when an executor drops the client's thread identity on scheduled threads. The
-2.1.0 release brought native mobile forms and navigation that keep their actions
-reachable above the keyboard, Universal or custom conversation folders, UI LIB
-v1.2.1 touch and layout improvements, and embedding SDK 1.0.0 with UI-free boot,
-owned integration scopes, and structured requests.
+**Version 2.2.0 — October 1, 2026.** Modal and dialog cards keep their rounded
+corners at the footer and navigation edges, the agent names a conversation from
+your request without ever overriding a name you set, Files can delete workspace
+entries, a failed host decompiler falls back to luacid, the profile menu links
+the Project Ptolemy donation place and Ko-fi, and the provider model directory
+has been rebuilt from current price data. The 2.1.x releases brought long
+streamed replies that finish instead of being discarded, native mobile forms and
+navigation that keep their actions reachable above the keyboard, Universal or
+custom conversation folders, UI LIB v1.2.1 touch and layout improvements, and
+embedding SDK 1.0.0 with UI-free boot, owned integration scopes, and structured
+requests.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua

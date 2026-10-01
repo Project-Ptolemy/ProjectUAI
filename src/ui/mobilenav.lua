@@ -46,7 +46,7 @@ return function(env)
 			button.label(entry.label, 2, nil, "small")
 			destinationButtons[#destinationButtons + 1] = button
 		end
-		local lastWide, count, footer
+		local lastWide, count, footer, footerCorner, footerEdge
 		local function reflow()
 			if dialog.closed then return end
 			-- Keep search pinned above the results. Short keyboards return the
@@ -58,6 +58,11 @@ return function(env)
 				footer.AnchorPoint = Vector2.new(0, compact and 0 or 1)
 				footer.Position = compact and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1)
 				footer.LayoutOrder = 6
+				-- Round only while the footer sits on the card's bottom edge; in
+				-- the scroll body it is an ordinary bar, and the edge fill that
+				-- squares its inner corners does not belong there either.
+				footerCorner.CornerRadius = UDim.new(0, compact and 0 or theme.radius.xl)
+				footerEdge.Visible = not compact
 			end
 			if count then count.Visible = not compact end
 			local wide = responsive.orientation == "landscape" and dialog.card.AbsoluteSize.X >= theme.size.dialogNav * 3
@@ -184,8 +189,18 @@ return function(env)
 			end
 		end
 
+		-- UICorner rounds a frame's own fill, not its descendants, so the footer
+		-- carries the dialog's radius on the corners it exposes at the card's bottom.
+		-- The straight fill above it keeps the inner edge square.
+		footerEdge = P.frame(dialog.card, {
+			name = "NavigationActionsEdgeFill",
+			size = UDim2.new(1, 0, 0, theme.radius.xl),
+			position = UDim2.new(0, 0, 1, -chrome),
+			bg = theme.color.surface,
+		})
 		footer = P.frame(dialog.card, { name = "NavigationActions", anchor = Vector2.new(0, 1),
 			position = UDim2.fromScale(0, 1), size = UDim2.new(1, 0, 0, chrome), bg = theme.color.surface })
+		footerCorner = P.corner(footer, theme.radius.xl)
 		P.divider(footer, {})
 		P.button(footer, { name = "MobileNewChat", text = "New conversation", icon = "plus", variant = "primary",
 			width = 0, height = target, position = UDim2.fromOffset(pad, pad),
