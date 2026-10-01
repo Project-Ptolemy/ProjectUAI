@@ -233,7 +233,7 @@ return function(env)
 		handle.header = P.row(root, {
 			name = "Header",
 			size = UDim2.new(1, 0, 0, headerHeight),
-			gap = theme.space.sm,
+			gap = mobile and theme.space.xxs or theme.space.sm,
 			padding = { x = mobile and theme.space.xs or theme.space.md },
 			zIndex = theme.z.header,
 		})

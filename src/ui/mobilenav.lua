@@ -18,19 +18,20 @@ return function(env)
 		opened = dialog
 		local target = responsive.minTarget()
 		local pad = theme.space.sm
-		local chrome = target + pad * 2
+		local chromePad = theme.space.xxs
+		local chrome = target + chromePad * 2
 		local body = P.frame(dialog.card, { name = "NavigationBody", position = UDim2.fromOffset(0, chrome),
 			size = UDim2.new(1, 0, 1, -chrome * 2) })
-		local scroll = P.scroll(body, { name = "NavigationScroll", size = UDim2.fromScale(1, 1), gap = theme.space.sm,
+		local scroll = P.scroll(body, { name = "NavigationScroll", size = UDim2.fromScale(1, 1), gap = theme.space.xxs,
 			padding = { left = pad, right = pad, bottom = pad } })
 		local filter, limit, renderHistory, folderFilter = "", 40, nil, nil
 		local search = P.field(dialog.card, { name = "ConversationFilter", placeholder = "Search conversations or folders",
 			size = UDim2.new(1, -dialog.closeInset - pad * 2, 0, target),
 			onChange = function(text)
 				filter, limit = util.trim(text):lower(), 40
-				if renderHistory then renderHistory() end
+				if renderHistory then renderHistory(true) end
 			end })
-		search.shell.Position = UDim2.fromOffset(pad, pad)
+		search.shell.Position = UDim2.fromOffset(pad, chromePad)
 		local destinations = P.scroll(scroll.instance, { name = "Destinations", horizontal = true,
 			size = UDim2.new(1, 0, 0, target + theme.size.scrollbar), gap = theme.space.xxs, layoutOrder = 2 })
 		local destinationButtons = {}
@@ -46,7 +47,7 @@ return function(env)
 			button.label(entry.label, 2, nil, "small")
 			destinationButtons[#destinationButtons + 1] = button
 		end
-		local lastWide, count, footer, footerCorner, footerEdge
+		local lastWide, count, footer, footerCorner, footerEdge, history, folderPicker
 		local function reflow()
 			if dialog.closed then return end
 			-- Keep search pinned above the results. Short keyboards return the
@@ -65,6 +66,11 @@ return function(env)
 				footerEdge.Visible = not compact
 			end
 			if count then count.Visible = not compact end
+			-- Above a keyboard, show the matching conversation first. Destination
+			-- and folder controls stay reachable after the results instead of
+			-- occupying the entire short history viewport before its first row.
+			if history then history.LayoutOrder = compact and 1 or 5 end
+			destinations.instance.LayoutOrder = compact and 4 or 2
 			local wide = responsive.orientation == "landscape" and dialog.card.AbsoluteSize.X >= theme.size.dialogNav * 3
 			if wide == lastWide then return end
 			lastWide = wide
@@ -90,7 +96,7 @@ return function(env)
 		dialog.scrim.Destroying:Connect(unbindLayout)
 		reflow()
 		local folderLabel
-		local folderPicker = P.rowButton(scroll.instance, { name = "HistoryFolder", height = target, layoutOrder = 3,
+		folderPicker = P.rowButton(scroll.instance, { name = "HistoryFolder", height = target, layoutOrder = 3,
 			onClick = function(button)
 				local options = { { label = "All folders", value = "all", selected = folderFilter == nil } }
 				for _, folder in ipairs(sessions.folders()) do
@@ -102,13 +108,14 @@ return function(env)
 					onSelect = function(value)
 						if value == "manage" then dialog.close(); app.manageFolders(); return end
 						folderFilter, limit = value ~= "all" and value or nil, 40
-						renderHistory()
+						renderHistory(true)
 					end })
 			end })
 		folderLabel = folderPicker.label("All folders", 1)
-		count = P.text(scroll.instance, { name = "HistoryCount", text = "Conversations", role = "caption",
-			color = theme.color.textTertiary, size = UDim2.new(1, 0, 0, theme.text.caption.height + pad), layoutOrder = 4 })
-		local history = P.column(scroll.instance, { name = "MobileHistory", auto = "Y",
+		count = P.text(folderPicker.row, { name = "HistoryCount", text = "", role = "caption", auto = "X",
+			color = theme.color.textTertiary, layoutOrder = 2 })
+		folderPicker.icon("chevron", 3)
+		history = P.column(scroll.instance, { name = "MobileHistory", auto = "Y",
 			size = UDim2.new(1, 0, 0, 0), gap = theme.space.xxs, layoutOrder = 5 })
 
 		local function sessionMenu(session, anchor)
@@ -138,8 +145,9 @@ return function(env)
 			end })
 		end
 
-		renderHistory = function()
+		renderHistory = function(resetScroll)
 			if dialog.closed then return end
+			if resetScroll == true then scroll.instance.CanvasPosition = Vector2.new(0, 0) end
 			for _, child in ipairs(history:GetChildren()) do if child:IsA("GuiObject") then child:Destroy() end end
 			local folderBySession, selectedLabel = {}, nil
 			for _, group in ipairs(sessions.groups()) do
@@ -178,7 +186,7 @@ return function(env)
 					end
 				end
 			end
-			count.Text = util.pluralise(matches, "conversation")
+			count.Text = tostring(matches)
 			if matches == 0 then
 				P.text(history, { name = "NoConversations", text = filter == "" and "No conversations in this folder yet."
 					or "No matches. Try a title, folder, or game name.", role = "small", wrap = true, auto = "Y",
@@ -203,13 +211,13 @@ return function(env)
 		footerCorner = P.corner(footer, theme.radius.xl)
 		P.divider(footer, {})
 		P.button(footer, { name = "MobileNewChat", text = "New conversation", icon = "plus", variant = "primary",
-			width = 0, height = target, position = UDim2.fromOffset(pad, pad),
+			width = 0, height = target, position = UDim2.fromOffset(pad, chromePad),
 			onClick = function()
 				dialog.close(); app.newConversation(folderFilter)
 			end }).instance.Size =
 			UDim2.new(1, -target - pad * 3, 0, target)
 		P.iconButton(footer, { name = "MobileMore", icon = "ellipsis", diameter = target,
-			anchor = Vector2.new(1, 0), position = UDim2.new(1, -pad, 0, pad), onClick = function(button)
+			anchor = Vector2.new(1, 0), position = UDim2.new(1, -pad, 0, chromePad), onClick = function(button)
 				overlay.menu({ target = button.instance, title = "Workspace", options = {
 					{ label = "Search message history", value = "search", icon = "search" },
 					{ label = "Conversation folders", value = "folders" },

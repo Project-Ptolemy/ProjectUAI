@@ -170,8 +170,43 @@ return function(env)
 		return table.concat({ record.api or "openai", M.endpoint(record, "/models"), record.model or "" }, "\n")
 	end
 
-	-- OpenCode compatibility metadata belongs only to the official host.
+	local PROXY_HOST = "puai-proxy.davidzk.tech"
+	local function providerRoute(record)
+		local parsed = urls.parse(M.normaliseBaseUrl(record and record.baseUrl or ""))
+		if not parsed then return nil end
+		local path = parsed.path:gsub("/+$", "")
+		local base = path:match("^(.*)/chat/completions$") or path:match("^(.*)/messages$") or path:match("^(.*)/models$")
+		return parsed, base or path
+	end
+
+	-- Only these exact HTTPS proxy routes inherit vendor behavior. A preset label
+	-- or a matching substring cannot attach an identity to an unrelated endpoint.
+	function M.proxyProvider(record)
+		local parsed, path = providerRoute(record)
+		if not parsed or parsed.scheme ~= "https" or parsed.host ~= PROXY_HOST then return nil end
+		local port = parsed.authority:match(":(%d+)$")
+		if port and port ~= "443" then return nil end
+		if path == "/opencode/v1" then return "opencode" end
+		if path == "/agentrouter/v1" then return "agentrouter" end
+	end
+
+	-- Custom hosts, paths and nonstandard ports are never silently rewritten.
+	function M.proxyTarget(record)
+		local parsed, path = providerRoute(record)
+		if not parsed or (parsed.scheme ~= "https" and parsed.scheme ~= "http") then return nil end
+		local port = parsed.authority:match(":(%d+)$")
+		if port and port ~= (parsed.scheme == "https" and "443" or "80") then return nil end
+		local vendor
+		if parsed.host == "opencode.ai" and path == "/zen/v1" then vendor = "opencode" end
+		if (parsed.host == "agentrouter.org" or parsed.host:match("^[%w%.%-]+%.agentrouter%.org$")) and path == "/v1" then vendor = "agentrouter" end
+		if not vendor then return nil end
+		return "https://" .. PROXY_HOST .. "/" .. vendor .. "/v1"
+			.. (parsed.query and parsed.query ~= "" and ("?" .. parsed.query) or "")
+	end
+
+	-- OpenCode compatibility metadata belongs to the official host or its UAI proxy.
 	function M.isOpencode(record)
+		if M.proxyProvider(record) == "opencode" then return true end
 		local base = util.trim(tostring(record and record.baseUrl or "")):lower()
 		local authority = base:match("^https?://([^/%?#]+)")
 		if not authority then return false end
@@ -180,6 +215,7 @@ return function(env)
 
 	-- Host based so manually entered gateways keep the same required identity.
 	function M.requiresClaude(record)
+		if M.proxyProvider(record) == "agentrouter" then return true end
 		local base = util.trim(tostring(record and record.baseUrl or "")):lower()
 		local authority = base:match("^https?://([^/%?#]+)")
 		if not authority or authority:find("@", 1, true) then return false end
@@ -266,7 +302,8 @@ return function(env)
 
 		if util.trim(record.opencodeSession or "") == "" or #record.opencodeSession < 25 then
 			record.opencodeSession = opencodeId("ses_")
-			M.save(record, { quiet = true })
+			-- Header construction also runs for unsaved provider-editor drafts.
+			if M.get(record.id) == record then M.save(record, { quiet = true }) end
 		end
 		return record.opencodeSession
 	end

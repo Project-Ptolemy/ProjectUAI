@@ -42,7 +42,8 @@ return function(env)
 		return P.card(group, {
 			name = props.name,
 			layoutOrder = 2,
-			gap = theme.space.md,
+			gap = responsive.isMobile() and theme.space.sm or theme.space.md,
+			padding = responsive.isMobile() and theme.space.sm or theme.space.lg,
 		})
 	end
 
@@ -293,7 +294,7 @@ return function(env)
 			layout.FillDirection = stacked and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
 			layout.VerticalAlignment = stacked and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Center
 			left.Size = UDim2.new(1, stacked and 0 or -(controlWidth + theme.space.md), 0, 0)
-			right.Size = UDim2.fromOffset(math.min(controlWidth, width), 0)
+			right.Size = UDim2.new(stacked and 1 or 0, stacked and 0 or math.min(controlWidth, width), 0, 0)
 		end
 		row:GetPropertyChangedSignal("AbsoluteSize"):Connect(reflow)
 		reflow()
@@ -397,7 +398,8 @@ return function(env)
 		if props.label then
 			P.text(parent, { text = props.label, role = "small", layoutOrder = props.layoutOrder })
 		end
-		local field = P.field(parent, {
+		local field
+		field = P.field(parent, {
 			name = props.name,
 			text = tostring(props.value ~= nil and props.value or config.get(props.path, "")),
 			placeholder = props.placeholder,
@@ -406,10 +408,17 @@ return function(env)
 			onBlur = function(text)
 				local clean = util.trim(text)
 				if props.transform then clean = props.transform(clean) end
-				if props.path then config.set(props.path, clean) end
+				if props.path then
+					config.set(props.path, clean)
+					field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
+				end
 				if props.onChange then pcall(props.onChange, clean) end
 			end,
 		})
+		if props.path then
+			field.instance:SetAttribute("UAIConfigPath", props.path)
+			field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
+		end
 		if props.hint then R.paragraph(parent, props.hint,
 			{ layoutOrder = props.layoutOrder and (props.layoutOrder + 2) or nil }) end
 		return field
@@ -423,7 +432,8 @@ return function(env)
 		if props.label then
 			P.text(parent, { text = props.label, role = "small", layoutOrder = props.layoutOrder })
 		end
-		local field = P.field(parent, {
+		local field
+		field = P.field(parent, {
 			name = props.name,
 			multiline = true,
 			height = props.height or theme.size.controlLarge * 2,
@@ -433,10 +443,17 @@ return function(env)
 			-- Written on blur rather than per keystroke, same as R.field: the value is
 			-- read by the next request, not this frame.
 			onBlur = function(text)
-				if props.path then config.set(props.path, tostring(text or "")) end
+				if props.path then
+					config.set(props.path, tostring(text or ""))
+					field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
+				end
 				if props.onChange then pcall(props.onChange, tostring(text or "")) end
 			end,
 		})
+		if props.path then
+			field.instance:SetAttribute("UAIConfigPath", props.path)
+			field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
+		end
 		if props.hint then R.paragraph(parent, props.hint,
 			{ layoutOrder = props.layoutOrder and (props.layoutOrder + 2) or nil }) end
 		return field

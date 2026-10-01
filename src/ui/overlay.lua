@@ -19,6 +19,13 @@ return function(env)
 
 	local M = { toasts = {}, open = {} }
 
+	local function releaseFocusWithin(surface)
+		pcall(function()
+			local field = env.uis:GetFocusedTextBox()
+			if field and field:IsDescendantOf(surface) then field:ReleaseFocus(false) end
+		end)
+	end
+
 	local layingOutToasts = false
 	local function layoutToasts()
 		if layingOutToasts or not M.toastColumn or not M.toastColumn.Parent then return end
@@ -411,8 +418,9 @@ return function(env)
 			theme.text.title.height + (props.description and (theme.space.hair + theme.text.small.height) or 0))
 		local footerContentHeight = math.max(theme.size.control, responsive.minTarget())
 		local pad = responsive.isMobile() and theme.space.md or theme.space.lg
+		local footerPad = responsive.isMobile() and theme.space.xxs or theme.space.sm
 		local headerTotal = headerContentHeight + pad * 2
-		local footerTotal = footerContentHeight + theme.space.sm * 2
+		local footerTotal = footerContentHeight + footerPad * 2
 
 		local header = P.row(card, {
 			name = "Header",
@@ -471,6 +479,7 @@ return function(env)
 		function handle.close(confirmed)
 			if handle.closed then return end
 			handle.closed = true
+			releaseFocusWithin(card)
 			unregister()
 			P.animate(scale, "exit", { Scale = responsive.reduceMotion and 1 or theme.scale.enter })
 			P.animate(scrim, "exit", { BackgroundTransparency = 1 }, function() scrim:Destroy() end)
@@ -547,7 +556,7 @@ return function(env)
 				size = UDim2.new(1, 0, 0, footerTotal),
 				anchor = Vector2.new(0, 1),
 				position = UDim2.new(0, 0, 1, 0),
-				padding = { x = pad, y = theme.space.sm },
+				padding = { x = pad, y = footerPad },
 				bg = theme.color.surface,
 				gap = theme.space.sm,
 				alignX = "Right",
@@ -591,10 +600,10 @@ return function(env)
 				end
 				local footerBounds = footerLayout.AbsoluteContentSize
 				if footerBounds then footerHeight = math.max(footerHeight, footerBounds.Y) end
-				footerTotal = hasFooter and (footerHeight + theme.space.sm * 2) or 0
+				footerTotal = hasFooter and (footerHeight + footerPad * 2) or 0
 				local bodyBounds = bodyLayout.AbsoluteContentSize
 				local bodyHeight = bodyBounds and bodyBounds.Y or handle.content.AbsoluteSize.Y
-				local chromePad = responsive.isMobile() and theme.space.xs
+				local chromePad = responsive.isMobile() and theme.space.xxs
 					or (roomNow < (headerTotal + footerTotal + closeDiameter) and theme.space.xs or pad)
 				local wantedHeader = math.max(closeDiameter, titleHeight) + chromePad * 2
 				local preferred = props.height or (props.scroll == true and 620
@@ -939,6 +948,7 @@ return function(env)
 		function handle.close()
 			if handle.closed then return end
 			handle.closed = true
+			releaseFocusWithin(card)
 			if unbindResponsive then unbindResponsive() end
 			for index, item in ipairs(M.open) do
 				if item == handle then table.remove(M.open, index) end
@@ -960,12 +970,13 @@ return function(env)
 		dismiss.Activated:Connect(handle.close)
 
 		local closeDiameter = math.max(theme.size.control, responsive.minTarget())
+		local closePad = responsive.isMobile() and theme.space.xxs or theme.space.sm
 		local close = P.iconButton(card, {
 			name = "DialogClose",
 			icon = "close",
 			diameter = theme.size.control,
 			anchor = Vector2.new(1, 0),
-			position = UDim2.new(1, -theme.space.sm, 0, theme.space.sm),
+			position = UDim2.new(1, -closePad, 0, closePad),
 			zIndex = theme.z.modal + 4,
 			onClick = handle.close,
 		})
@@ -977,7 +988,7 @@ return function(env)
 		-- content at the top edge draws under it -- which on a narrow layout put the
 		-- button on top of the last category row and made it unreachable. Published
 		-- rather than left for each caller to re-derive from two tokens.
-		handle.closeInset = closeDiameter + theme.space.sm * 2
+		handle.closeInset = closeDiameter + closePad * 2
 
 		M.open[#M.open + 1] = handle
 		P.animate(scrim, "enter", { BackgroundTransparency = theme.opacity.scrim })

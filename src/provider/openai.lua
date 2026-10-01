@@ -13,6 +13,7 @@ return function(env)
 	local http = env.require("net/http")
 	local sse = env.require("net/sse")
 	local registry = env.require("provider/registry")
+	local proxy = env.require("provider/proxy")
 	local traits = env.require("provider/traits")
 	local urls = env.require("net/url")
 	local headerMap = env.require("net/headers")
@@ -909,6 +910,7 @@ return function(env)
 		local headers = rebuildHeaders()
 
 		local started = clock.ms()
+		local deadline, recovery
 		local lastRequestMs = 0
 		local attemptsAllowed = request.attempts or config.get("agent.retries", 3)
 		local rotationsLeft = math.max(#pool - 1, 0)
@@ -920,11 +922,12 @@ return function(env)
 
 		local function fire(payload)
 			if registry.compatibilityKey(record) ~= requestScope then return nil, "aborted" end
+			if deadline and clock.ms() >= deadline then return nil, "deadline: request budget expired" end
 			-- A socket is only used when the record names one and the host has
 			-- WebSocket support; otherwise the SSE body arrives whole over HTTP.
 			local imageRequest = env.require("runtime/images").hasReferences(request.messages)
 			local web = imageRequest or (config.get("bridge.enabled", false) and config.get("bridge.runtime", "game") == "web")
-			if not web and payload.stream and util.trim(record.wsUrl) ~= "" and caps.ws then
+			if not web and not registry.proxyProvider(record) and payload.stream and util.trim(record.wsUrl) ~= "" and caps.ws then
 				local ws = env.require("net/ws")
 				local socketHeaders = http.headersFor({ url = url, headers = headers, body = payload,
 					identity = registry.identityFor(record), identityRequired = registry.requiresClaude(record), timeout = requestTimeout(request) })
@@ -945,6 +948,12 @@ return function(env)
 				log.warn("provider", "websocket stream failed, falling back to http", wsErr)
 			end
 			local requestStarted = clock.ms()
+			-- A socket setup failure before Send retains its existing HTTP fallback.
+			-- Once HTTP starts, proxy/key/parameter retries share its one deadline.
+			if not deadline then
+				deadline = requestStarted + math.max(1, math.min(300, tonumber(requestTimeout(request)) or 120)) * 1000
+				recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
+			end
 			local res, err = http.send({
 				relay = web,
 				sessionId = request.sessionId,
@@ -962,9 +971,16 @@ return function(env)
 				-- The one deadline that matters for a reasoning model: nothing arrives
 				-- until it finishes thinking, so this has to outlast the think.
 				timeout = requestTimeout(request),
+				deadlineMs = deadline,
 			})
 			lastRequestMs = clock.since(requestStarted)
 			if request.aborted and request.aborted() then return nil, "aborted" end
+			if recovery.recover(res, err) then
+				requestScope = registry.compatibilityKey(record)
+				url = registry.endpoint(record, "/chat/completions")
+				headers = rebuildHeaders()
+				return fire(payload)
+			end
 			return res, err
 		end
 

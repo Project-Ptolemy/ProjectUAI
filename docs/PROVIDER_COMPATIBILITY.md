@@ -1,6 +1,6 @@
 # Provider compatibility and WebSockets
 
-Applies to **2.2.0**, October 1, 2026.
+Applies to **2.4.0**, October 1, 2026.
 
 UAI implements two inference protocols: **Chat Completions** and **Anthropic
 Messages**. A provider works through one of these APIs, including when it is a
@@ -90,6 +90,41 @@ Relays can impose account, model or official-client restrictions that an adapter
 does not remove. Discovery is not authorization to use every listed model.
 
 ## Connection and response behavior
+
+### Automatic unauthorized-client recovery
+
+When an official OpenCode Zen or AgentRouter endpoint explicitly returns an
+**unauthorized client** error, UAI switches its Base URL and retries through the
+Project UAI proxy:
+
+| Provider | Recovery Base URL |
+| --- | --- |
+| OpenCode Zen | `https://puai-proxy.davidzk.tech/opencode/v1` |
+| AgentRouter | `https://puai-proxy.davidzk.tech/agentrouter/v1` |
+
+The proxy receives the same provider key, request and model. The selected protocol,
+custom headers and query parameters are retained, as are the required vendor
+identity headers. A live provider's new Base URL is saved and remains editable in
+Providers. A connection test or model fetch in an unsaved editor changes only that
+draft until it is saved. The retry status identifies the switch.
+
+These paths share the proxy operator's stated **90,000 requests per day** limit;
+availability depends on the proxy and its upstream provider. The proxy does not
+change account permissions, model access or provider billing. Invalid keys,
+ordinary 401/403 responses, free-tier/account restrictions, HTML challenges and
+transport failures do not trigger this recovery. Only explicit structured error
+fields or a short plain-text client refusal qualify; successful content and stream
+errors cannot redirect a request.
+
+Automatic switching is limited to OpenCode's official `/zen/v1` route and
+AgentRouter's official `/v1` route, including full inference URLs. Custom hosts,
+custom paths and nonstandard ports remain unchanged. An operation switches at
+most once, and proxy retries share the HTTP deadline and cancellation state.
+In-flight edits, removed providers and stale model fetches cannot overwrite a new
+connection. Known proxy routes use HTTP or the selected web relay; a configured
+UAI socket gateway has its own upstream origin and cannot route this proxy switch.
+
+### General connection rules
 
 - A bare public hostname gains `https://` and, if no path exists, `/v1`. Bare local
   addresses gain `http://`. An explicit scheme and custom prefix are preserved.
@@ -211,6 +246,7 @@ dispatch/fallback boundaries.
 
 ```powershell
 luajit test/provider_compatibility.lua
+luajit test/provider_proxy.lua
 luajit test/provider_transport.lua
 luajit test/provider_editor.lua
 node tools/test_native.js

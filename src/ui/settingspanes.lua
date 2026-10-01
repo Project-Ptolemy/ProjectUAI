@@ -7,8 +7,9 @@
 -- the panel held the real ones.
 --
 -- A pane is `{ id, section, label, icon, build(container) }`. `build` is handed a
--- column to fill and returns nothing; everything it puts there reads and writes
--- config, so nothing has to be re-read when it is shown again.
+-- column to fill and returns nothing. Controls read their initial configuration
+-- when built; a retaining dialog invalidates panes when that configuration or
+-- their live facts change, preserving drafts only for unchanged bound values.
 return function(env)
 	local util = env.require("runtime/util")
 	local config = env.require("runtime/config")
@@ -38,6 +39,11 @@ return function(env)
 	local bridgeModule = env.require("net/bridge")
 
 	local M = {}
+	function M.observeChanges(callback)
+		local subscriptions = { config.changed:connect(callback), providers.changed:connect(callback),
+			permissions.changed:connect(callback), usage.changed:connect(callback), stats.changed:connect(callback) }
+		return function() for _, unsubscribe in ipairs(subscriptions) do unsubscribe() end end
+	end
 
 	-- The token budgets. They stop where the widest models of the moment do -- a
 	-- million in, a hundred and twenty-eight thousand out -- rather than where a
@@ -83,7 +89,8 @@ return function(env)
 				layoutOrder = api.order(),
 			})
 			P.sectionHeader(group, { title = title, description = description, layoutOrder = 1 })
-			return P.card(group, { layoutOrder = 2, gap = theme.space.md })
+			return P.card(group, { layoutOrder = 2, gap = responsive.isMobile() and theme.space.sm or theme.space.md,
+				padding = responsive.isMobile() and theme.space.sm or theme.space.lg })
 		end
 		function api.note(text, colour)
 			return R.paragraph(container, text, { color = colour, layoutOrder = api.order() })

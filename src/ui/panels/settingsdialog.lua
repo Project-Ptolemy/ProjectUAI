@@ -10,6 +10,7 @@ return function(env)
 	local overlay = env.require("ui/overlay")
 	local P = env.require("ui/primitives")
 	local panes = env.require("ui/settingspanes")
+	local config = env.require("runtime/config")
 
 	local M = {}
 
@@ -21,8 +22,40 @@ return function(env)
 		local top = control + pad * 2
 		local body = P.scroll(dialog.card, { name = "PaneScroll", position = UDim2.fromOffset(0, top),
 			size = UDim2.new(1, 0, 1, -top), gap = theme.space.md,
-			padding = { x = theme.space.md, top = pad, bottom = theme.space.lg } })
+			padding = { x = pad, top = pad, bottom = theme.space.md } })
 		local active, category, select
+		local cached = {}
+		-- A retained form keeps native text/selection until an external setting or
+		-- live fact changes. Rebuilding then restores only drafts whose bound value
+		-- has not changed, so a later blur cannot undo an imported configuration.
+		local function visitFields(column, callback)
+			local function walk(parent, path)
+				local counts = {}
+				for _, child in ipairs(parent:GetChildren()) do
+					local name = child.ClassName .. ":" .. child.Name
+					counts[name] = (counts[name] or 0) + 1
+					local key = path .. "/" .. name .. ":" .. counts[name]
+					if child:IsA("TextBox") then callback(child, key) end
+					walk(child, key)
+				end
+			end
+			walk(column, "")
+		end
+		local function captureDrafts(column)
+			local drafts = {}
+			visitFields(column, function(field, key)
+				local path = field:GetAttribute("UAIConfigPath")
+				if not path or field:GetAttribute("UAIConfigValue") == tostring(config.get(path, "")) then
+					drafts[key] = { text = field.Text, cursor = field.CursorPosition, selection = field.SelectionStart }
+				end
+			end)
+			return drafts
+		end
+		local function invalidate()
+			for _, entry in pairs(cached) do entry.dirty = true end
+		end
+		local unsubscribe = panes.observeChanges(invalidate)
+		dialog.card.Destroying:Connect(unsubscribe)
 		category = P.rowButton(dialog.card, { name = "CategoryPicker",
 			position = UDim2.fromOffset(pad, pad), size = UDim2.new(1, -dialog.closeInset - pad, 0, control),
 			padding = { x = pad }, onClick = function(button)
@@ -44,13 +77,32 @@ return function(env)
 		select = function(id)
 			local entry = panes.pane(id)
 			if dialog.closed or not entry or active == id then return end
+			if active and cached[active] then
+				cached[active].position = body.instance.CanvasPosition
+				cached[active].column.Visible = false
+			end
 			active = id
 			label.Text = entry.label
-			body.clear()
-			local column = P.column(body.instance, { name = "Pane_" .. id, size = UDim2.new(1, 0, 0, 0),
-				auto = "Y", gap = theme.space.md })
-			panes.render(id, column)
-			body.instance.CanvasPosition = Vector2.new(0, 0)
+			local drafts, position
+			if cached[id] and cached[id].dirty then
+				drafts, position = captureDrafts(cached[id].column), cached[id].position
+				cached[id].column:Destroy(); cached[id] = nil
+			end
+			if not cached[id] then
+				local column = P.column(body.instance, { name = "Pane_" .. id, size = UDim2.new(1, 0, 0, 0),
+					auto = "Y", gap = theme.space.md })
+				panes.render(id, column)
+				cached[id] = { column = column, position = position or Vector2.new(0, 0) }
+				if drafts then visitFields(column, function(field, key)
+					local draft = drafts[key]
+					if draft then field.Text, field.CursorPosition, field.SelectionStart = draft.text, draft.cursor, draft.selection end
+				end) end
+			end
+			cached[id].column.Visible = true
+			body.instance.CanvasPosition = cached[id].position
+			task.defer(function()
+				if not dialog.closed and active == id then body.instance.CanvasPosition = cached[id].position end
+			end)
 		end
 		select(panes.pane(initial) and initial or panes.PANES[1].id)
 		dialog.select = select

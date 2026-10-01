@@ -149,7 +149,8 @@ for _, width in ipairs({ 320, 390, 620, 960 }) do
 						local field = h.byName("FindSourceText", view.root)
 						check("Find field has typing room", field.AbsoluteSize.X >= 100)
 						local edge = field.AbsolutePosition.X + field.AbsoluteSize.X
-						for _, name in ipairs({ "FindPrevious", "FindNext", "CloseFind" }) do
+						local findActions = touch and { "FindNext", "MobileFindOptions" } or { "FindPrevious", "FindNext", "CloseFind" }
+						for _, name in ipairs(findActions) do
 							local button = h.byName(name, view.root)
 							check(name .. " leaves a gap", button.AbsolutePosition.X - edge >= 4)
 							check(name .. " keeps a full hit target", button.AbsoluteSize.X >= env.require("ui/responsive").minTarget())
@@ -195,7 +196,8 @@ case("Coding dialogs reserve footer space for larger controls", function()
 			check("footer button leaves space around larger text", button.AbsoluteSize.Y >= theme.text.small.height + 8)
 			height = math.max(height, button.AbsoluteSize.Y)
 		end
-		check("footer reserves vertical padding", modal.footer.AbsoluteSize.Y >= height + theme.space.sm * 2)
+		local footerPad = env.require("ui/responsive").isMobile() and theme.space.xxs or theme.space.sm
+		check("footer reserves vertical padding", modal.footer.AbsoluteSize.Y >= height + footerPad * 2)
 		if modal.footer.Parent == modal.scroll.instance then
 			check("short mobile dialogs scroll complete actions after the fields", modal.footer.LayoutOrder > modal.content.LayoutOrder
 				and modal.scroll.instance.Size.Y.Offset >= env.require("ui/responsive").minTarget())

@@ -1,6 +1,6 @@
 # Code workspace: native testing guide
 
-Current testing guide for release 2.2.0, October 1, 2026. Use synthetic workspaces
+Current testing guide for release 2.4.0, October 1, 2026. Use synthetic workspaces
 and an isolated fixture place; do not touch a user's live Roblox session or private
 usage/accounting files. Current features and limits are in
 [NATIVE_CLIENT.md](NATIVE_CLIENT.md), with internal contracts in [SPEC.md](../SPEC.md).
@@ -29,6 +29,25 @@ LuaJIT mocks establish synthetic behavior only. Lune is not Roblox's GUI rendere
 Chromium previews are approximate. Neither proves IME, native selection/touch/
 gamepad, executor forwarding, server effects or client performance. Record native
 outcomes with actual capabilities and host details, not just an executor brand.
+
+For the manual review gate, audit changed inputs first, run
+`node tools/test_native.js --build-only`, inspect the generated bundles, manifest
+and site mirror, then run `node tools/test_native.js --verify-only`. The second
+command checks freshness before tests and never rebuilds those outputs. Review
+each fix, rebuild if needed, inspect outputs and restart verification. Neither
+command generates image previews.
+
+For 2.4.0, exercise 320/390px portrait phones, 667/844px landscape phones and a
+tablet in both orientations, with the keyboard open and closed. Check compact
+typing, explicit expansion, long model names, horizontal attachments, history
+search, provider forms, category switching, Code pickers and Find. Scroll across
+sliders vertically, then drag them horizontally; only the latter changes values.
+Rotate Quick Chat with a selected draft and press Return; retain the text and
+selection, and insert a newline without sending. Repeat at enlarged text scale.
+Verify the Discord prompt waits for idle use, respects dismissal and opt-out,
+and does not open over another dialog or a running request. Provider recovery
+and the shared key setup have synthetic tests; proxy reachability and native
+keyboard/rendering behavior still require real host checks.
 
 ## Conversation reading
 

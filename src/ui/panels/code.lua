@@ -2,6 +2,7 @@
 return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
+	local responsive = env.require("ui/responsive")
 	local common = env.require("ui/code/common")
 	local tabs = env.require("ui/code/tabs")
 	local forms = env.require("ui/code/forms")
@@ -32,6 +33,18 @@ return function(env)
 		local views, containers, constructing, layingOut = {}, {}, {}, false
 		local navigate, layout, sync
 		local navigation = tabs.new(root, { name = "CodeDestinations", size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(id) navigate(id) end })
+		local mobileNav = common.toolbar(root, { name = "MobileCodeNavigation" })
+		local destinationButton = mobileNav.add("Editor", function(button)
+			local options = {}
+			for _, destination in ipairs(destinations) do
+				options[#options + 1] = { label = destination.label, value = destination.id, selected = store.workspace.destination == destination.id }
+			end
+			common.menu(button, "Code", options, navigate)
+		end, { name = "CodeDestinationPicker", flex = true })
+		local mobileDocuments = common.toolbar(root, { name = "MobileCodeDocuments" })
+		local chooseDocument
+		local documentButton = mobileDocuments.add("Open script", function(button) chooseDocument(button) end,
+			{ name = "CodeDocumentPicker", flex = true })
 		local body = P.frame(root, { name = "WorkspaceContent", clip = true })
 		local status = P.text(root, { name = "CodeStatus", text = "", role = "caption", truncate = true, color = theme.color.textSecondary })
 		local statusRule = P.frame(root, { name = "CodeStatusRule", size = UDim2.new(1, 0, 0, 1), bg = theme.color.borderSubtle })
@@ -42,6 +55,19 @@ return function(env)
 		local function newDocument()
 			local doc, why = store.create("Untitled " .. (#store.list() + 1) .. ".lua", "", { select = true })
 			if common.message(doc, why) then store.workspace.sourceId = nil; navigate("Editor"); if editor() then editor().gotoLine(1) end end
+		end
+		chooseDocument = function(button)
+			local options = {}
+			for _, id in ipairs(store.openIds()) do
+				local doc = store.resolve(id)
+				if doc then options[#options + 1] = { label = doc.name, value = id,
+					detail = files.dirty(id) and "Unsaved file changes" or nil, selected = id == store.activeId() and not store.workspace.sourceId } end
+			end
+			options[#options + 1] = { label = "New script", value = "new" }
+			common.menu(button, "Open scripts", options, function(id)
+				if id == "new" then newDocument(); return end
+				store.workspace.sourceId = nil; common.message(store.select(id)); navigate("Editor")
+			end)
 		end
 		local function namedVersion()
 			local doc = store.active(); if not doc then return end
@@ -64,11 +90,12 @@ return function(env)
 			local id, why = runner.start(store.activeId())
 			if common.message(id, why) then
 				store.workspace.outputVisible = true
-				if root.AbsoluteSize.X < 620 then navigate("Output") else layout(); sync() end
+				if responsive.isMobile() or root.AbsoluteSize.X < 620 then navigate("Output") else layout(); sync() end
 			end
 		end
 		local function more(button)
 			local options = {
+				{ label = "Switch script", value = "documents" }, { label = "New script", value = "new" },
 				{ label = "Open workspace files", value = "file" }, { label = "Save file · Ctrl+S", value = "save" },
 				{ label = "Save file as…", value = "saveAs" }, { label = "Save named version", value = "version" },
 				{ label = "Rename script", value = "rename" }, { label = "Close script", value = "close" },
@@ -81,11 +108,23 @@ return function(env)
 				{ label = "Extract editable copy / selection", value = "extract" }, { label = "Refresh source snapshot", value = "refreshSource" },
 				{ label = "Workspace save details", value = "storageDetails" }, { label = "Retry workspace autosave", value = "workspaceSave" }, { label = "Delete script…", value = "delete" },
 			}
+			if responsive.isMobile() then
+				for index = #options, 1, -1 do
+					local option = options[index]
+					if option.value == "filesPane" then table.remove(options, index)
+					elseif option.value == "outputPane" then option.label = "Open output"
+					elseif option.value == "save" then option.label = "Save file"
+					elseif option.value == "find" then option.label = "Find" end
+				end
+			end
 			common.menu(button or moreButton, "Editor actions", options, function(action)
 				local doc = store.active()
-				if action == "file" then navigate("Files")
+				if action == "documents" then chooseDocument(button or moreButton)
+				elseif action == "new" then newDocument()
+				elseif action == "file" then navigate("Files")
 				elseif action == "filesPane" then store.workspace.filesVisible = store.workspace.filesVisible == false; layout()
-				elseif action == "outputPane" then store.workspace.outputVisible = not store.workspace.outputVisible; layout()
+				elseif action == "outputPane" then
+					if responsive.isMobile() then navigate("Output") else store.workspace.outputVisible = not store.workspace.outputVisible; layout() end
 				elseif action == "workspaceSave" then local ok, why = store.saveNow(); if common.message(ok, why) then overlay.toast("Workspace saved", "good") end
 				elseif action == "storageDetails" then overlay.code({ title = "Workspace storage", code = store.storage.message or store.storage.state })
 				elseif action == "refreshSource" then
@@ -137,6 +176,10 @@ return function(env)
 		stopButton = actionBar.add("", function() runner.stop() end, { icon = "square", iconOnly = true, name = "StopCode" })
 		stopButton.instance.Visible = false
 		moreButton = actionBar.add("", more, { icon = "ellipsis", iconOnly = true, name = "CodeActions" })
+		local mobileRun = mobileNav.add("Run", run, { variant = "primary", name = "MobileRunCode", tight = true })
+		local mobileStop = mobileNav.add("Stop", function() runner.stop() end, { name = "MobileStopCode", tight = true })
+		local mobileMore = mobileNav.add("", more, { icon = "ellipsis", iconOnly = true, name = "MobileCodeActions" })
+		mobileStop.instance.Visible = false
 		local function getView(id)
 			if views[id] then return views[id] end
 			if constructing[id] then return nil end
@@ -164,19 +207,31 @@ return function(env)
 			local editing = id == "Editor"
 			local barHeight = common.barHeight()
 			local compact = root.AbsoluteSize.Y < 360
+			local mobile = responsive.isMobile()
+			local short = mobile and root.AbsoluteSize.Y < barHeight * 4 + theme.size.codeStatus
+			local statusHeight = mobile and root.AbsoluteSize.Y < barHeight * 3 + theme.size.codeStatus and 0 or theme.size.codeStatus
+			status.Visible, statusRule.Visible = statusHeight > 0, statusHeight > 0
+			navigation.root.Visible = not mobile
+			mobileNav.root.Visible = mobile
+			mobileDocuments.root.Visible = mobile and editing and not short
+			mobileDocuments.root.Position = UDim2.fromOffset(0, barHeight)
+			mobileRun.instance.Visible = editing and not runner.busy()
+			mobileStop.instance.Visible = runner.busy()
+			mobileMore.instance.Visible = editing
 			saveButton.instance.Visible = root.AbsoluteSize.X >= 380
 			local actionsWidth = actionBar.width()
-			documentTabs.root.Visible, actionBar.root.Visible, filePath.Visible = editing, editing, editing and not compact
+			documentTabs.root.Visible, actionBar.root.Visible, filePath.Visible = editing and not mobile, editing and not mobile, editing and not compact and not mobile
 			documentTabs.root.Size = UDim2.new(1, -actionsWidth, 0, barHeight)
 			actionBar.root.Position, actionBar.root.Size = UDim2.new(1, -actionsWidth, 0, barHeight), UDim2.fromOffset(actionsWidth, barHeight)
 			filePath.Position, filePath.Size = UDim2.fromOffset(12, barHeight * 2), UDim2.new(1, -24, 0, 24)
 			local top = editing and barHeight * 2 + (compact and 0 or 24) or barHeight
-			body.Position, body.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top - theme.size.codeStatus)
+			if mobile then top = barHeight * (editing and not short and 2 or 1) end
+			body.Position, body.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top - statusHeight)
 			status.Position, status.Size = UDim2.new(0, 10, 1, -theme.size.codeStatus), UDim2.new(1, -20, 0, theme.size.codeStatus)
 			statusRule.Position = UDim2.new(0, 0, 1, -theme.size.codeStatus)
 			local actual = editing and store.workspace.sourceId and "Large source" or id
-			local dockFiles = editing and root.AbsoluteSize.X >= 640 and not compact and store.workspace.filesVisible ~= false
-			local dockOutput = editing and root.AbsoluteSize.X >= 620 and body.AbsoluteSize.Y >= 250 and store.workspace.outputVisible == true
+			local dockFiles = editing and root.AbsoluteSize.X >= 640 and not compact and not mobile and store.workspace.filesVisible ~= false
+			local dockOutput = editing and root.AbsoluteSize.X >= 620 and body.AbsoluteSize.Y >= 250 and not mobile and store.workspace.outputVisible == true
 			getView(actual); if dockFiles then getView("Files") end; if dockOutput then getView("Output") end
 			for key, view in pairs(views) do
 				local visible = key == actual or (dockFiles and key == "Files") or (dockOutput and key == "Output")
@@ -206,6 +261,8 @@ return function(env)
 			if not panel.alive then return end
 			local doc = store.active()
 			navigation.set(destinations, store.workspace.destination)
+			for _, destination in ipairs(destinations) do if destination.id == store.workspace.destination then destinationButton.setText(destination.label); break end end
+			documentButton.setText(store.workspace.sourceId and "Source snapshot" or doc and doc.name or "Open script")
 			local documents = {}
 			for _, id in ipairs(store.openIds()) do
 				local item = store.resolve(id)
@@ -214,6 +271,7 @@ return function(env)
 			documents[#documents + 1] = { id = "new", label = "+", closable = false }
 			documentTabs.set(documents, store.activeId())
 			runButton.setEnabled(caps.exec and doc ~= nil and not store.workspace.sourceId and not doc.readOnly and not runner.busy())
+			mobileRun.setEnabled(caps.exec and doc ~= nil and not store.workspace.sourceId and not doc.readOnly and not runner.busy())
 			stopButton.setEnabled(runner.busy())
 			local stopping = runner.busy()
 			if stopButton.instance.Visible ~= stopping then stopButton.instance.Visible = stopping; layout() end
@@ -277,13 +335,16 @@ return function(env)
 			end
 		end)
 		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+		local offResponsive = responsive.changed:connect(layout)
+		local rootDestroying = false
 		function panel.setVisible(visible) panel.visible = visible; if not visible then cancelSource() end; layout(); sync() end
 		function panel.destroy()
 			if not panel.alive then return end; panel.alive = false
-			input:Disconnect(); offStore(); offStorage(); offRun(); offCapture(); fileDivider.destroy(); outputDivider.destroy()
+			input:Disconnect(); offStore(); offStorage(); offRun(); offCapture(); offResponsive(); fileDivider.destroy(); outputDivider.destroy()
 			for _, view in pairs(views) do if view.destroy then view.destroy() end end
-			cancelSource(); store.saveNow(); root:Destroy()
+			cancelSource(); store.saveNow(); if not rootDestroying then root:Destroy() end
 		end
+		root.Destroying:Connect(function() rootDestroying = true; panel.destroy() end)
 		panel.navigate, panel.views = navigate, views
 		layout(); sync(); return panel
 	end

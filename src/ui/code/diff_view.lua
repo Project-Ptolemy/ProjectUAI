@@ -32,7 +32,18 @@ return function(env)
 		bar.add("", function() nextChange(-1) end, { name = "PreviousSourceChange", icon = "arrowLeft", iconOnly = true, enabled = #comparison.hunks > 0 })
 		bar.add("Next change", function() nextChange(1) end, { name = "NextSourceChange", tight = true, enabled = #comparison.hunks > 0 })
 		if #comparison.hunks > 0 then nextChange(1) end
-		return { root = root, comparison = comparison, list = list, destroy = function() root:Destroy() end }
+		local handle = { root = root, comparison = comparison, list = list, nextChange = nextChange,
+			destroy = function() root:Destroy() end }
+		-- A parent with its own review actions can expose hunk navigation there.
+		-- Relayout preserves the current comparison, scroll and selected hunk.
+		function handle.setCompact(compact)
+			local top = compact and 0 or common.barHeight()
+			bar.root.Visible = not compact
+			list.root.Position, list.root.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top)
+			empty.Position = UDim2.fromOffset(16, top + 12)
+			list.render()
+		end
+		return handle
 	end
 	return M
 end

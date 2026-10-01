@@ -108,6 +108,8 @@ local providers = { changed = signal.new("providers"),
 	endpoint = function(record, suffix) return record.baseUrl .. suffix end,
 	normaliseBaseUrl = function(url) return url end,
 	validate = function() return true, {} end }
+providers.proxyTarget = function() return nil end
+providers.proxyProvider = function() return nil end
 cache["provider/registry"] = providers
 cache["provider/catalog"] = { presets = {}, get = function() return nil end }
 cache["provider/models"] = { list = function(record) return record.models end,
@@ -227,8 +229,9 @@ values["enabled"] = true
 local toggle = R.toggle(parent, { label = "Explicit off", path = "enabled", value = false })
 check("explicit false is not replaced by config true", toggle.value == false)
 local slot, setting = R.setting(parent, { label = "Label", width = 240 })
-setting.AbsoluteSize = dt.Vector2.new(180, 40)
-check("narrow setting stacks and clamps its control", slot.Size.X.Offset == 180
+setting.Size = dt.UDim2.fromOffset(180, 40)
+setting:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check("narrow setting stacks and clamps its control", slot.AbsoluteSize.X == 180
 	and setting:FindFirstChildOfClass("UIListLayout").FillDirection == Enum.FillDirection.Vertical)
 R.field(parent, { name = "OrderedField", label = "Field", hint = "Ordered hint", value = "", layoutOrder = 4 })
 check("field hint follows its input", labels(parent, "Ordered hint")[1].LayoutOrder == 6)

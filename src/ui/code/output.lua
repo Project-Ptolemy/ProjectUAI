@@ -7,11 +7,11 @@ return function(env)
 	local overlay = env.require("ui/overlay")
 	local M = {}
 	function M.new(parent)
-		local root = P.frame(parent, { name = "CodeOutput", size = UDim2.fromScale(1, 1) })
-		local header = common.toolbar(root)
+		local root = P.frame(parent, { name = "CodeOutput", size = UDim2.fromScale(1, 1), clip = true })
+		local header = common.toolbar(root, { name = "OutputActions" })
 		local picker, selected = nil, store.workspace.outputRun
-		local scroll = P.scroll(root, { position = UDim2.fromOffset(0, common.barHeight()), size = UDim2.new(1, 0, 1, -common.barHeight()), padding = theme.space.sm, bg = theme.color.codeSurface })
-		local label = P.text(scroll.instance, { text = "Run a document to see its output here.", role = "mono", auto = "Y", wrap = true, color = theme.color.codeText })
+		local scroll = P.scroll(root, { name = "OutputTextScroll", position = UDim2.fromOffset(0, common.barHeight()), size = UDim2.new(1, 0, 1, -common.barHeight()), padding = theme.space.sm, bg = theme.color.codeSurface })
+		local label = P.text(scroll.instance, { name = "OutputText", text = "Run a document to see its output here.", role = "mono", auto = "Y", wrap = true, color = theme.color.codeText })
 		local handle = { root = root, visible = true, alive = true }
 		local rawOutput = label.Text
 		local palette = {}; for _, key in ipairs({ "keyword", "string", "number", "comment", "call" }) do palette[key] = "#" .. theme.code[key]:ToHex() end
@@ -32,16 +32,30 @@ return function(env)
 		picker = header.add("Run output", function()
 			local options = {}; for i = #runner.runs, 1, -1 do local run = runner.runs[i]; options[#options + 1] = { label = run.name .. " · r" .. run.revision .. " · " .. run.status, value = run.id } end
 			common.menu(picker, "Runs", options, function(key) selected = key; render() end)
-		end, { flex = true })
+		end, { flex = true, name = "OutputRunPicker" })
 		header.add("More", function(button) common.menu(button, "Output actions", { { label = "Copy output", value = "copy" }, { label = "Expand output", value = "expand" }, { label = "Latest run", value = "latest" } }, function(action)
 			if action == "copy" then common.copy(rawOutput) elseif action == "expand" then overlay.code({ title = "Run output", code = rawOutput }) else selected = nil; render(); scroll.toBottom() end
-		end) end, { icon = "ellipsis" })
+		end) end, { icon = "ellipsis", name = "OutputMore" })
+		local function layout()
+			if not handle.alive then return end
+			local top = common.barHeight()
+			header.root.Size = UDim2.new(1, 0, 0, top)
+			scroll.instance.Position, scroll.instance.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top)
+			header.layout()
+		end
 		local queued = false
 		local off = runner.changed:connect(function() if queued or not handle.visible then return end; queued = true; env.require("runtime/clock").delay(0.1, function() queued = false; render() end) end)
-		function handle.setVisible(visible) handle.visible = visible; if visible then render() end end
-		function handle.destroy() handle.alive = false; store.workspace.outputY = scroll.instance.CanvasPosition.Y; off(); root:Destroy() end
+		function handle.setVisible(visible) handle.visible = visible; if visible then layout(); render() end end
+		local function cleanup()
+			if not handle.alive then return false end
+			handle.alive = false; store.workspace.outputY = scroll.instance.CanvasPosition.Y; off()
+			return true
+		end
+		function handle.destroy() if cleanup() then root:Destroy() end end
+		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+		root.Destroying:Connect(cleanup)
 		scroll.instance.CanvasPosition = Vector2.new(0, store.workspace.outputY or 0)
-		handle.render = render; render(); return handle
+		handle.render = render; layout(); render(); return handle
 	end
 	return M
 end

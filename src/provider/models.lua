@@ -15,6 +15,7 @@ return function(env)
 	local log = env.require("runtime/log")
 	local http = env.require("net/http")
 	local registry = env.require("provider/registry")
+	local proxy = env.require("provider/proxy")
 	local signal = env.require("runtime/signal")
 	local urls = env.require("net/url")
 
@@ -139,19 +140,32 @@ return function(env)
 		pending[key] = token
 		local snapshot = util.deepCopy(record)
 		local url = registry.endpoint(snapshot, "/models")
-		local headers = env.require("provider/chat").headers(snapshot)
-
-		local decoded, err, res = http.json({
-			url = url,
-			method = "GET",
-			headers = headers,
-			identity = registry.identityFor(snapshot),
-			identityRequired = registry.requiresClaude(snapshot),
-			attempts = 2,
-			timeout = opts.timeout,
-			aborted = opts.aborted,
-			tag = "models:" .. tostring(record.id or "draft"),
-		})
+		local deadline = clock.ms() + math.max(1, math.min(300, tonumber(opts.timeout) or 120)) * 1000
+		local recovery = proxy.new(record, { aborted = opts.aborted, onRetry = opts.onRetry, deadlineMs = deadline })
+		local function fetch()
+			return http.send({
+				url = url,
+				method = "GET",
+				headers = env.require("provider/chat").headers(snapshot),
+				identity = registry.identityFor(snapshot),
+				identityRequired = registry.requiresClaude(snapshot),
+				attempts = 2,
+				timeout = opts.timeout,
+				deadlineMs = deadline,
+				aborted = opts.aborted,
+				tag = "models:" .. tostring(record.id or "draft"),
+			})
+		end
+		local res, err = fetch()
+		if pending[key] == token and same(scope, scopeFor(record)) and recovery.recover(res, err) then
+			scope = scopeFor(record)
+			snapshot = util.deepCopy(record)
+			url = registry.endpoint(snapshot, "/models")
+			if pending[key] == token then res, err = fetch() end
+		end
+		local decoded, decodeError
+		if res then decoded, decodeError = util.decode(res.body) end
+		err = err or decodeError
 
 		if pending[key] ~= token or not same(scope, scopeFor(record)) then
 			if pending[key] == token then pending[key] = nil end
@@ -163,7 +177,9 @@ return function(env)
 			if res and res.status == 404 then note = "this endpoint has no /models route -- add a model by hand" end
 			if res and res.status == 401 then note = "the API key was rejected" end
 			if res and res.status == 403 then note = "the key is not allowed to list models" end
-			if res and res.status ~= 401 and res.status ~= 403 and res.status ~= 404 then
+			if proxy.isClientRefusal(res) then
+				note = "the endpoint rejected this client: " .. env.require("provider/chat").errorText(snapshot, res, err)
+			elseif res and res.status ~= 401 and res.status ~= 403 and res.status ~= 404 then
 				note = note .. ": " .. env.require("provider/chat").errorText(snapshot, res, err)
 			end
 			log.info("models", tostring(record.label) .. ": " .. note, err)

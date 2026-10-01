@@ -9,6 +9,10 @@ const logDir = path.join(root, 'refer', 'native-verification');
 fs.mkdirSync(logDir, { recursive: true });
 const results = [];
 const skipImages = process.argv.includes('--skip-images');
+// Split build/review/verification when following the manual artifact audit gate.
+const buildOnly = process.argv.includes('--build-only');
+const verifyOnly = process.argv.includes('--verify-only');
+if (buildOnly && verifyOnly) throw new Error('Choose either --build-only or --verify-only.');
 const skipped = skipImages ? ['image_input.lua (image verification omitted by request)'] : [];
 const reportPath = path.join(logDir, 'results.json');
 const startedAt = new Date().toISOString();
@@ -45,10 +49,16 @@ function run(label, command, args) {
 }
 
 report(false);
-run('Standalone UI library build and agent reference', process.execPath, ['tools/build_ui_lib.js']);
+if (!verifyOnly) {
+  run('Standalone UI library build and agent reference', process.execPath, ['tools/build_ui_lib.js']);
+  run('Native bundle build', luajit, ['tools/bundle.lua', '--native']);
+  run('Generated native tool catalog', process.execPath, ['tools/build_site.js']);
+}
+if (buildOnly) {
+  process.stdout.write('Build complete. Inspect generated outputs, then run node tools/test_native.js --verify-only.\n');
+  process.exit(0);
+}
 run('Standalone UI library freshness', process.execPath, ['tools/build_ui_lib.js', '--check']);
-run('Native bundle build', luajit, ['tools/bundle.lua', '--native']);
-run('Generated native tool catalog', process.execPath, ['tools/build_site.js']);
 run('Bundle freshness and deterministic manifest', process.execPath, ['tools/build_site.js', '--bundle-only', '--check']);
 run('Generated catalog freshness', process.execPath, ['tools/build_site.js', '--check']);
 run('Native static checker', luajit, ['test/check.lua', '--native']);

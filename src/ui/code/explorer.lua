@@ -1,6 +1,7 @@
 return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
+	local responsive = env.require("ui/responsive")
 	local common = env.require("ui/code/common")
 	local forms = env.require("ui/code/forms")
 	local overlay = env.require("ui/overlay")
@@ -30,6 +31,7 @@ return function(env)
 		local searchGeneration, debounceGeneration = 0, 0
 		local dirtyBranches, selectingRow = {}, false
 		local search, changingSearch
+		local compact = false
 		local function setSearchText(text)
 			changingSearch = true
 			if search and search.get() ~= text then search.set(text) end
@@ -127,6 +129,16 @@ return function(env)
 				{ label = "Game roots", value = "game" }, { label = "Session bookmarks", value = "bookmarks" }, { label = "Nil / unparented objects", value = "nil" },
 				{ label = "Search options…", value = "search" }, { label = "World picker…", value = "pick" },
 			}
+			if compact then
+				if object then table.insert(options, 1, { isHeader = true, title = object.Name, subtitle = refs.describe(object).displayPath }) end
+				table.insert(options, 1, { label = "Refresh hierarchy", value = "refreshTree" })
+				table.insert(options, 1, { label = "Hierarchy status", detail = status.Text, value = "status" })
+				if object then
+					for _, section in ipairs({ { "Properties", "properties" }, { "Attributes", "attributes" }, { "Tags", "tags" } }) do
+						options[#options + 1] = { label = "Inspect " .. section[1]:lower(), value = "section:" .. section[2], selected = view.detail and view.section == section[2] }
+					end
+				end
+			end
 			if object then
 				for _, pair in ipairs({ { "Copy object reference", "reference" }, { "Copy diagnostic path", "path" }, { "Parent / breadcrumb", "parent" }, { "Bookmark object", "bookmark" }, { "Remove bookmark", "unbookmark" }, { "Rename", "rename" }, { "Move…", "reparent" }, { "Detach…", "detach" }, { "Create child…", "create" }, { "Duplicate", "duplicate" }, { "Delete…", "delete" }, { "Add attribute…", "attribute" }, { "Add tag…", "tag" }, { "Export metadata…", "export" }, { "Ask AI about selection", "ask" } }) do options[#options + 1] = { label = pair[1], value = pair[2] } end
 			end
@@ -141,7 +153,10 @@ return function(env)
 				options[#options + 1] = { label = "Reveal path", value = "revealPath" }
 			end
 			common.menu(button or menuButton, "Explorer actions", options, function(action)
-				if action == "multi" then explorer.setSelectionMode(explorer.selectionMode == "multiple" and "replace" or "multiple"); view.selectMode = explorer.selectionMode == "multiple"; refresh()
+				if action == "refreshTree" then view.pages = {}; if view.query then handle.search(store.workspace.explorerQuery) else page(view.root); refresh() end
+				elseif action == "status" then overlay.toast(status.Text, "info", 5)
+				elseif util.startsWith(action, "section:") then view.section, view.detail = action:sub(9), true; refreshProperties(); layout()
+				elseif action == "multi" then explorer.setSelectionMode(explorer.selectionMode == "multiple" and "replace" or "multiple"); view.selectMode = explorer.selectionMode == "multiple"; refresh()
 				elseif action == "game" or action == "bookmarks" or action == "nil" then view.root = action == "game" and refs.id(game) or action; clearSearch(); page(view.root); view.detail = false; refresh(); layout()
 				elseif action == "search" then forms.form("Search objects", { { key = "name", label = "Name", default = store.workspace.explorerQuery }, { key = "class", label = "Class (optional)", default = view.class }, { key = "tag", label = "Tag (optional)", default = view.tag }, { key = "scope", label = "Scope", type = "choice", choices = { "Current root", "Selected subtree", "Game" } }, { key = "pattern", label = "Use Lua pattern", type = "boolean", default = view.pattern } }, function(data)
 					view.class, view.tag, view.pattern = data.class, data.tag, data.pattern; view.searchRoot = data.scope == "Selected subtree" and id or data.scope == "Game" and refs.id(game) or view.root
@@ -179,6 +194,8 @@ return function(env)
 		treeBar.add("Pick", pick, { name = "PickWorldObject", tight = true })
 		treeBar.add("Refresh", function() view.pages = {}; if view.query then handle.search(store.workspace.explorerQuery) else page(view.root); refresh() end end, { tight = true })
 		menuButton = treeBar.add("", actionsMenu, { icon = "ellipsis", iconOnly = true, name = "ExplorerActions" })
+		local compactTreeMenu = common.button(treeHost, { name = "CompactExplorerActions", icon = "ellipsis", text = "", fill = true,
+			onClick = actionsMenu })
 		search = P.field(treeHost, { name = "ExplorerSearch", placeholder = "Search name", text = store.workspace.explorerQuery or "", onChange = function(text)
 			if changingSearch then return end
 			store.workspace.explorerQuery = text; debounceGeneration = debounceGeneration + 1; local generation = debounceGeneration
@@ -254,6 +271,10 @@ return function(env)
 				refresh(); refreshProperties(); layout()
 		end })
 		local backButton = detailBar.add("Back", function() view.detail = false; layout() end, { icon = "arrowLeft" })
+		local compactBack = common.button(detailHost, { name = "CompactInspectorBack", icon = "arrowLeft", text = "", fill = true,
+			onClick = function() view.detail = false; layout() end })
+		local compactDetailMenu = common.button(detailHost, { name = "CompactInspectorActions", icon = "ellipsis", text = "", fill = true,
+			onClick = actionsMenu })
 		local sectionButton = detailBar.add("Inspector", function() end, { flex = true, trailing = false })
 		local sourceButton = detailBar.add("Source", function() if explorer.primaryId then chooseSource(explorer.primaryId) end end, { name = "OpenInstanceSource", tight = true })
 		detailBar.add("", actionsMenu, { icon = "ellipsis", iconOnly = true, name = "DetailActions" })
@@ -311,7 +332,7 @@ return function(env)
 			local capability = object and sources.capabilities(explorer.primaryId)
 			sourceButton.instance.Visible = capability ~= nil and capability.supported
 			if capability and capability.supported then sourceButton.setText(capability.source and "Source" or capability.decompile and "Decompile" or "Unavailable"); sourceButton.setEnabled(capability.source or capability.decompile) end
-			identityIcon.Visible = info ~= nil
+			identityIcon.Visible = info ~= nil and not compact
 			if info then instanceIcons.paint(identityIcon, info.className) end
 			identity.Text = info and (info.name .. " · " .. info.className .. "\n" .. util.ellipsis(info.displayPath, 180)) or "Selected object is no longer available"
 			local result, why = explorer.properties(selectedCopy, view.section)
@@ -400,13 +421,35 @@ return function(env)
 			view.treeWidth = math.max(240, math.min(root.AbsoluteSize.X - 280, position.X - root.AbsolutePosition.X)); layout()
 		end)
 		layout = function()
-			local wide = root.AbsoluteSize.X >= 620
+			local wide = not responsive.isMobile() and root.AbsoluteSize.X >= 620
+			compact = responsive.isMobile() and root.AbsoluteSize.Y < detailTop + common.controlHeight() * 2
 			local width = math.max(240, math.min(root.AbsoluteSize.X - 280, view.treeWidth or root.AbsoluteSize.X * 0.42))
 			treeHost.Visible, detailHost.Visible = wide or not view.detail, wide or view.detail == true
 			treeHost.Size = wide and UDim2.new(0, width, 1, 0) or UDim2.fromScale(1, 1)
 			detailHost.Position, detailHost.Size = UDim2.fromOffset(wide and width + 6 or 0, 0), UDim2.new(1, wide and -width - 6 or 0, 1, 0)
 			backButton.instance.Visible, divider.root.Visible = not wide, wide and handle.visible
 			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
+			-- One search row remains above each list in short keyboard space. The
+			-- same actions and inspector sections move into the reachable menu;
+			-- both native search fields and their selections remain mounted.
+			local inset, control, bar = common.inset(), common.controlHeight(), common.barHeight()
+			treeBar.root.Visible, detailBar.root.Visible = not compact, not compact
+			status.Visible, inspectButton.instance.Visible = not compact, not compact
+			sectionTabs.root.Visible, identity.Visible = not compact, not compact
+			identityIcon.Visible = not compact and #selectedCopy > 0 and refs.resolve(explorer.primaryId) ~= nil
+			compactTreeMenu.instance.Visible, compactDetailMenu.instance.Visible = compact, compact
+			compactBack.instance.Visible = compact and not wide
+			local treeTop, propertiesTop = compact and bar or top, compact and bar or detailTop
+			search.shell.Position = UDim2.fromOffset(inset, compact and theme.space.xxs or bar + theme.space.xs)
+			search.shell.Size = UDim2.new(1, -inset * 2 - (compact and (control + common.gap()) or 0), 0, compact and control or bar)
+			compactTreeMenu.instance.Position, compactTreeMenu.instance.Size = UDim2.new(1, -inset - control, 0, theme.space.xxs), UDim2.fromOffset(control, control)
+			local backWidth = compact and not wide and (control + common.gap()) or 0
+			propertySearch.shell.Position = UDim2.fromOffset(inset + backWidth, compact and theme.space.xxs or detailTop - bar - 8)
+			propertySearch.shell.Size = UDim2.new(1, -inset * 2 - backWidth - (compact and (control + common.gap()) or 0), 0, compact and control or bar)
+			compactBack.instance.Position, compactBack.instance.Size = UDim2.fromOffset(inset, theme.space.xxs), UDim2.fromOffset(control, control)
+			compactDetailMenu.instance.Position, compactDetailMenu.instance.Size = UDim2.new(1, -inset - control, 0, theme.space.xxs), UDim2.fromOffset(control, control)
+			treeList.root.Position, treeList.root.Size = UDim2.fromOffset(0, treeTop), UDim2.new(1, 0, 0, math.max(1, root.AbsoluteSize.Y - treeTop))
+			propertyList.root.Position, propertyList.root.Size = UDim2.fromOffset(0, propertiesTop), UDim2.new(1, 0, 0, math.max(1, root.AbsoluteSize.Y - propertiesTop))
 		end
 		local queued = false
 		local function queue()
@@ -440,7 +483,7 @@ return function(env)
 			handle.visible = visible; treeList.visible, propertyList.visible = visible, visible; observe()
 			if visible then explorer.reconcileSelection(); page(view.root); if explorer.primaryId then reveal(explorer.primaryId) end; queue(); refresh(); refreshProperties(); layout()
 			else searchGeneration = searchGeneration + 1; sourceGeneration = sourceGeneration + 1; sources.cancel(handle); busy = false; env.require("ui/code/world_picker").stop() end
-			divider.root.Visible = visible and root.AbsoluteSize.X >= 620
+			divider.root.Visible = visible and not responsive.isMobile() and root.AbsoluteSize.X >= 620
 		end
 		function handle.destroy() handle.alive = false; sourceGeneration = sourceGeneration + 1; sources.cancel(handle); view.y = treeList.root.CanvasPosition.Y; off(); if observerOff then observerOff() end; divider.destroy(); env.require("ui/code/world_picker").stop(); root:Destroy() end
 		handle.list, handle.more, handle.refresh = treeList, actionsMenu, function() refresh(); refreshProperties() end

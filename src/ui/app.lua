@@ -39,19 +39,11 @@ return function(env)
 
 	local M = { panel = "chat", built = false, history = { entries = {}, index = 0 } }
 
-	local DISCORD_INVITE = "https://discord.gg/9xYyyYuKap"
 	local KOFI_URL = "https://ko-fi.com/davidkreutzer"
 	local DONATION_PLACE_ID = 80876331264594
 
-	-- A client GUI cannot open external links, so the invite goes to the clipboard
-	-- and a toast confirms it. Without a clipboard, the toast shows the link itself.
 	function M.joinDiscord()
-		if caps.clipboard then
-			local ok = pcall(caps.fn.clipboard, DISCORD_INVITE)
-			overlay.toast(ok and "Discord invite copied" or DISCORD_INVITE, ok and "good" or "info", ok and 2 or 4)
-		else
-			overlay.toast(DISCORD_INVITE, "info", 4)
-		end
+		return env.require("ui/community").open()
 	end
 
 	-- Supporting the project, from the profile menu. Donations are optional, and
@@ -317,6 +309,8 @@ return function(env)
 		-- Same shape, same reason: a question can arrive from a conversation nobody is
 		-- looking at, and the turn it belongs to is parked until it is answered.
 		env.require("ui/panels/ask").watch()
+		local releaseCommunity = dispose.add(env.require("ui/community").watch(M), "community invitation")
+		screen.Destroying:Connect(releaseCommunity)
 
 		log.info("app", "interface mounted in " .. tostring(container.Name) .. " as " .. responsive.mode)
 		return M
@@ -692,7 +686,7 @@ return function(env)
 		local left = P.row(header, {
 			name = "Left",
 			size = UDim2.new(0, 0, 1, 0),
-			gap = theme.space.sm,
+			gap = mobile and theme.space.xxs or theme.space.sm,
 			flex = "Fill",
 			layoutOrder = 1,
 		})
@@ -790,7 +784,7 @@ return function(env)
 			name = "Right",
 			size = UDim2.new(0, 0, 1, 0),
 			auto = "X",
-			gap = theme.space.xxs,
+			gap = mobile and theme.space.none or theme.space.xxs,
 			layoutOrder = 3,
 			-- Anchors the control cluster to the header's right edge regardless of
 			-- what the title column beside it measures. Without it the row's own

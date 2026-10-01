@@ -226,6 +226,23 @@ or conflicting custom headers. The provider UI explains the requirement instead
 of offering a toggle. The featured preset uses `https://agentrouter.org` with the
 Anthropic Messages adapter, producing `https://agentrouter.org/v1/messages`.
 
+An explicit unauthorized-client refusal from the standard OpenCode Zen or
+AgentRouter endpoint can switch that record to the Project UAI HTTPS proxy at
+`puai-proxy.davidzk.tech/opencode/v1` or `/agentrouter/v1`, respectively. Both
+adapters and model discovery retry once within the original HTTP deadline.
+Only exact supported official hosts/routes qualify; invalid credentials,
+unrelated errors, custom endpoints, timeouts and cancellation never cause this
+switch. Registered records persist the URL, while editor drafts stay local until
+Save. Required vendor identity, query fields and credentials remain intact;
+known proxy routes use HTTP rather than an unrelated WebSocket gateway. The UI
+discloses that requests and keys pass through the proxy and its shared daily cap
+of 90,000 requests. The Base URL remains editable.
+
+HCNSEC setup offers an explicitly selected community key for its official HTTPS
+endpoint. Applying it replaces the editor draft's key pool and resets rotation;
+it neither replaces saved credentials nor selects a guessed model. Keys remain
+masked in the provider UI, including this intentionally distributed shared key.
+
 **Models are never guessed.** Presets carry no model list. `provider/models`
 resolves a provider's models from exactly two sources — ids the user added by
 hand (which rank first, and persist on the record) and whatever `GET /v1/models`
@@ -729,6 +746,26 @@ spacing retain their existing dimensions. Mobile resize lives in the header so
 its touch target cannot cover Send; a separate expand action restores the previous
 size and position. In short keyboard space, multiline input uses one compact row
 without changing the draft or its multiline editing mode.
+
+Version 2.4.0 also keeps ordinary portrait typing compact until explicitly
+expanded. Shared cards, forms, headers and navigation trim nested insets; settings
+controls use the available width when stacked. Short history layouts prioritize
+search results. Quick Chat retains its field, draft and selection on rotation,
+and mobile Return inserts a newline. Slider gestures wait for horizontal intent,
+so vertical page swipes cannot alter values. Mobile Code uses destination and
+document pickers, suppresses extra docked panes and gives short keyboard layouts
+back their document/status rows; Find places secondary options in a menu.
+Code, table and reasoning scroll areas account for keyboard-obstructed height.
+Settings categories retain live fields and their individual scroll positions.
+
+The Discord invitation is an app-owned optional modal. Automatic display requires
+five minutes since mounting and 30 seconds of idle time in a visible focused
+Chat/Home view, with no draft, focused field, other overlay, scrolled-back chat,
+keyboard or active request. Busy transitions and window focus changes reset idle
+time. Persisted cooldown is 14 days, with at most one display per loaded client.
+Dismissal keeps the cooldown; opting out or successfully copying the invite
+disables reminders. Manual menu access stays available. UI-free boot schedules
+nothing; screen destruction and runtime disposal release the watcher.
 
 Landscape is the primary touch layout. Ordinary typing stays in the compact
 composer, and explicit expansion provides more draft space. Mobile Enter inserts

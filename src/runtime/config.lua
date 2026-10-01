@@ -61,6 +61,7 @@ return function(env)
 			lastSeenVersion = "0.0.0",
 			-- Note revisions can change without changing the client version.
 			lastSeenChangelog = "",
+			communityInvite = { lastShown = 0, disabled = false },
 		},
 		agent = {
 			maxTurns = 60,

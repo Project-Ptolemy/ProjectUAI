@@ -16,6 +16,7 @@ modules["runtime/config"] = { get = function(_, default) return default end, cha
 modules["ui/responsive"] = {
 	viewport = h.dt.Vector2.new(1000, 800), changed = signal.new(), reduceMotion = true,
 	minTarget = function() return 28 end,
+	isMobile = function() return false end,
 }
 local markdown, theme = env.require("ui/markdown"), env.require("ui/theme")
 local util, renderer = env.require("runtime/util"), env.require("ui/chat/table")

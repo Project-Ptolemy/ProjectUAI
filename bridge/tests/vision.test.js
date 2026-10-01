@@ -47,7 +47,7 @@ test('browser upload and Lua-shaped relay requests deliver actual PNG, JPEG and 
   await post('/api/agent/events', { sessionId: 's1', state: { sessionId: 's1', imageInput: true } });
   const hello = await (await fetch(bridge.base + '/api/hello', { headers: auth })).json();
   assert.equal(hello.capabilities.pictures.mode, 'provider-image-content');
-  const samples = [['png', 'image/png', makePng(3, 4)], ['jpg', 'image/jpeg', makeJpeg(4, 5)], ['webp', 'image/webp', makeWebp(5, 6)]];
+  const samples = [['png', 'image/png', makePng(3, 4)], ['jpg', 'image/jpeg', makeJpeg(12, 9)], ['webp', 'image/webp', makeWebp(20, 16)]];
   for (const [extension, mediaType, bytes] of samples) {
     const id = 'pic_actual_' + extension;
     const staged = await fetch(bridge.base + '/api/pictures', { method: 'POST', headers: { ...auth, 'content-type': mediaType,

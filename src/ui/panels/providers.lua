@@ -31,6 +31,7 @@ return function(env)
 	local models = env.require("provider/models")
 	local chat = env.require("provider/chat")
 	local traits = env.require("provider/traits")
+	local communityKey = env.require("provider/community_key")
 
 	local M = {}
 
@@ -151,7 +152,7 @@ return function(env)
 			name = "Form",
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
-			gap = theme.space.lg,
+			gap = responsive.isMobile() and theme.space.md or theme.space.lg,
 			layoutOrder = 1,
 		})
 
@@ -159,6 +160,19 @@ return function(env)
 		local presetButton, urlField, keyRow, nameField
 		local protocolControl, authControl, keyHintLabel
 		local docsRow, docsNoteRow, presetNoteRow
+		local proxyNote, communityRow, keyLabel, setKeyButton
+		local function refreshConnectionInfo()
+			if proxyNote then
+				local target = registry.proxyTarget(editing)
+				local usingProxy = registry.proxyProvider(editing)
+				proxyNote.Visible = target ~= nil or usingProxy ~= nil
+				proxyNote.Text = usingProxy and ("Using the Project UAI proxy: " .. env.require("net/url").display(editing.baseUrl)
+					.. ". Requests and API keys pass through puai-proxy.davidzk.tech. Shared limit: 90,000 requests per day. You can edit the Base URL at any time.")
+					or target and ("If this endpoint rejects UAI as an unauthorized client, UAI retries through " .. env.require("net/url").display(target)
+					.. " and saves that Base URL for this provider. Requests and API keys pass through puai-proxy.davidzk.tech. Shared limit: 90,000 requests per day. The URL stays editable.") or ""
+			end
+			if communityRow then communityRow.Visible = communityKey.eligible(editing) end
+		end
 		-- The form slot after the key row, where the hint, docs link and preset note
 		-- live. Declared here because refreshDocs -- which writes into it -- is
 		-- defined before the rows are built but only called once they have been.
@@ -215,6 +229,7 @@ return function(env)
 		-- rows a preset may or may not have, so the row count itself changes with the
 		-- pick. Rebuilt into the same slots so the layout order they hold is kept.
 		local function refreshDocs()
+			refreshConnectionInfo()
 			if docsRow then docsRow:Destroy() docsRow = nil end
 			if docsNoteRow then docsNoteRow:Destroy() docsNoteRow = nil end
 			if presetNoteRow then presetNoteRow:Destroy() presetNoteRow = nil end
@@ -357,6 +372,7 @@ return function(env)
 				onChange = function(text)
 					local changed = editing.baseUrl ~= text
 					editing.baseUrl = text
+					refreshConnectionInfo()
 					if changed and forgetFetchedModels then forgetFetchedModels() end
 					-- What will actually be stored, before it is stored.
 					--
@@ -382,6 +398,7 @@ return function(env)
 			normalisedNote.Size = UDim2.new(1, 0, 0, 0)
 			return urlField
 		end)
+		proxyNote = R.paragraph(form, "", { name = "ProxyFallbackNotice", layoutOrder = rowOrder * 10 + 1 })
 
 		row("Protocol", "Choose the API exposed by the server. Most local servers offer Chat completions; "
 			.. "Anthropic and compatible gateways may offer Messages. Other native APIs need an adapter.",
@@ -419,7 +436,6 @@ return function(env)
 		--
 		-- A masked field would need a new primitive; a prompt needs none, and it has the
 		-- better property that the secret is on screen only while it is being typed.
-		local keyLabel
 		row("API key", "Saved on this device. Sent to this provider and any configured gateway or relay; "
 			.. "key values are masked in the request log.", function(column)
 			local line = P.row(column, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.sm })
@@ -434,7 +450,7 @@ return function(env)
 				truncate = true,
 				layoutOrder = 1,
 			})
-			local set = P.button(line, {
+			setKeyButton = P.button(line, {
 				name = "SetKey",
 				text = util.trim(editing.apiKey or "") == "" and "Add key" or "Replace",
 				variant = "secondary",
@@ -456,6 +472,7 @@ return function(env)
 							local key = tostring(text or "")
 							local changed = editing.apiKey ~= key
 							editing.apiKey = key
+							if changed then editing.keyRotation = nil end
 							if changed and forgetFetchedModels then forgetFetchedModels() end
 							local value, warn = maskedKey(editing)
 							keyLabel.Text = value
@@ -466,7 +483,20 @@ return function(env)
 					})
 				end,
 			})
-			set.instance.LayoutOrder = 2
+			setKeyButton.instance.LayoutOrder = 2
+			communityRow = P.column(column, { name = "CommunityKey", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 3 })
+			R.paragraph(communityRow, "Free shared key provided by Project UAI. You can also use your own HCNSEC key. Shared availability and limits are controlled by the provider.", { layoutOrder = 1 })
+			P.button(communityRow, { name = "UseCommunityKey", text = "Use free key", variant = "secondary", fill = true, layoutOrder = 2,
+				onClick = function()
+					local ok, why = communityKey.apply(editing)
+					if not ok then overlay.toast(why, "warn"); return end
+					if forgetFetchedModels then forgetFetchedModels() end
+					local shown = maskedKey(editing)
+					keyLabel.Text, keyLabel.TextColor3 = shown, theme.color.textSecondary
+					setKeyButton.setText("Replace")
+					showProblems()
+					overlay.toast("Community key added to this draft. Choose a model and save to use it.", "good")
+				end })
 			return keyLabel
 		end)
 
@@ -538,6 +568,13 @@ return function(env)
 		end
 
 		local openModelMenu
+		local function adoptProxy(candidate, revision)
+			if revision ~= modelRevision or not registry.proxyProvider(candidate) or candidate.baseUrl == registry.normaliseBaseUrl(editing.baseUrl) then return end
+			editing.baseUrl = candidate.baseUrl
+			urlField.set(editing.baseUrl)
+			if forgetFetchedModels then forgetFetchedModels() end
+			refreshConnectionInfo()
+		end
 
 		-- Fetches against the record as it would be saved, not as it is typed: the URL is
 		-- normalised the same way `save` normalises it, so what is asked for is the
@@ -557,6 +594,7 @@ return function(env)
 				local found, note = models.discover(target, { force = true,
 					aborted = function() return modal.closed or revision ~= modelRevision end })
 				if modal.closed or not handle.instance.Parent or revision ~= modelRevision then return end
+				adoptProxy(target, revision)
 				handle.setEnabled(true)
 				fetched = found
 				setModelNote(note, #found == 0)
@@ -696,6 +734,7 @@ return function(env)
 				end
 				handle.setEnabled(false)
 				handle.setText("Testing")
+				local revision = modelRevision
 				task.spawn(function()
 					local candidate = util.deepCopy(editing)
 					candidate.baseUrl = registry.normaliseBaseUrl(candidate.baseUrl)
@@ -706,6 +745,7 @@ return function(env)
 						attempts = 1,
 					})
 					if modal.closed or not handle.instance.Parent then return end
+					adoptProxy(candidate, revision)
 					handle.setText("Test")
 					handle.setEnabled(true)
 					if result then
@@ -774,6 +814,7 @@ return function(env)
 			local card = P.card(parent, {
 				name = "Featured",
 				gap = theme.space.sm,
+				padding = responsive.isMobile() and theme.space.sm or theme.space.lg,
 				layoutOrder = type(nextOrder) == "function" and nextOrder() or 1,
 				-- The accent border is the one thing that says "start here" on a panel
 				-- that is otherwise all neutral surfaces; P.card has already drawn a
@@ -916,7 +957,7 @@ return function(env)
 
 		-- Two columns where there is room for two, stacked where there is not. Same rule
 		-- and same threshold as the settings dialog, which solved this first.
-		local wide = responsive.mode == "window"
+		local wide = responsive.mode == "window" and not responsive.isMobile()
 			and parent.AbsoluteSize.X >= (theme.size.dialogNav * 3)
 
 		local root, rootLayout = P.row(parent, { name = "ProvidersRoot", size = UDim2.fromScale(1, 1), gap = 0 })
@@ -936,6 +977,21 @@ return function(env)
 			gap = theme.space.xs,
 			padding = theme.space.xs,
 		})
+		local mobileRail = P.row(railHolder, { name = "MobileProviderNavigation", size = UDim2.fromScale(1, 1),
+			padding = theme.space.xs, gap = theme.space.xs, visible = responsive.isMobile() })
+		local mobilePicker = P.rowButton(mobileRail, { name = "ProviderPicker", height = railHeight,
+			size = UDim2.fromOffset(0, railHeight), flex = "Fill", layoutOrder = 1, onClick = function(button)
+				local options, active = {}, registry.active()
+				for _, record in ipairs(registry.list()) do
+					options[#options + 1] = { label = record.label, value = record.id, selected = record.id == selected,
+						detail = active and active.id == record.id and "Active provider" or nil }
+				end
+				overlay.menu({ target = button.instance, title = "Providers", options = options, onSelect = panel.select })
+			end })
+		local mobileLabel = mobilePicker.label("Choose provider", 1, nil, "small")
+		mobilePicker.icon("chevron", 2)
+		P.button(mobileRail, { name = "MobileAddProvider", text = "Add", size = "sm", variant = "secondary", layoutOrder = 2,
+			onClick = function() M.add(function(id) panel.select(id) end) end })
 		local railScrollHolder = P.frame(rail, {
 			size = UDim2.new(1, 0, 0, 0),
 			flex = "Fill",
@@ -980,8 +1036,9 @@ return function(env)
 		local detail = P.scroll(detailHolder, {
 			name = "DetailScroll",
 			size = UDim2.fromScale(1, 1),
-			gap = theme.space.lg,
-			padding = { x = theme.space.lg, top = theme.space.lg, bottom = theme.space.xl },
+			gap = responsive.isMobile() and theme.space.md or theme.space.lg,
+			padding = { x = responsive.isMobile() and theme.space.sm or theme.space.lg,
+				top = responsive.isMobile() and theme.space.sm or theme.space.lg, bottom = theme.space.xl },
 		})
 
 		-- Rail -----------------------------------------------------------------
@@ -1082,13 +1139,15 @@ return function(env)
 		local function reflow()
 			local width = root.AbsoluteSize.X
 			if width <= 0 then return end
-			local nextWide = responsive.mode == "window" and width >= theme.size.dialogNav * 3
+			local nextWide = responsive.mode == "window" and not responsive.isMobile() and width >= theme.size.dialogNav * 3
 			local changed = nextWide ~= wide
 			wide = nextWide
+			local mobile = responsive.isMobile()
+			rail.Visible, mobileRail.Visible = not mobile, mobile
 			rootLayout.FillDirection = wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 			rootLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 			railHolder.Size = wide and UDim2.new(0, theme.size.dialogNav, 1, 0)
-				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + theme.size.scrollbar)
+				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + (mobile and 0 or theme.size.scrollbar))
 			addButton.instance.Visible = wide
 			divider.Size = wide and UDim2.new(0, theme.stroke.hair, 1, 0)
 				or UDim2.new(1, 0, 0, theme.stroke.hair)
@@ -1231,7 +1290,7 @@ return function(env)
 			local title = P.text(titleColumn, {
 				name = "ProviderTitle",
 				text = record.label,
-				role = "display",
+				role = responsive.isMobile() and "title" or "display",
 				color = theme.color.text,
 				wrap = true,
 				auto = "Y",
@@ -1580,6 +1639,8 @@ return function(env)
 				selected = (active and active.id) or (list[1] and list[1].id) or nil
 			end
 			panel.renderRail()
+			local current = selected and registry.get(selected)
+			mobileLabel.Text = current and current.label or "Choose provider"
 			panel.renderDetail()
 			detail.instance.CanvasPosition = previous == selected and position or Vector2.new(0, 0)
 		end

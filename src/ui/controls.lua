@@ -235,6 +235,7 @@ return function(env)
 
 		local dragging = false
 		local dragInput
+		local dragOrigin, pendingTouch, inputConnection
 		local alive = true
 
 		local function fromInput(input)
@@ -271,45 +272,83 @@ return function(env)
 		hit.MouseLeave:Connect(function() hovered = false; paintInteraction() end)
 		hit.SelectionGained:Connect(function() focused = true; paintInteraction() end)
 		hit.SelectionLost:Connect(function() focused = false; paintInteraction() end)
-		hit.InputBegan:Connect(function(input)
-			local kind = input.UserInputType
-			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
-			if dragging or not alive then return end
-			dragging = true
-			dragInput = input
-			fromInput(input)
+		local function clearDrag()
+			dragging, pendingTouch = false, false
+			dragInput, dragOrigin = nil, nil
+			if inputConnection then inputConnection:Disconnect(); inputConnection = nil end
 			paintInteraction()
-		end)
+		end
+		local function insideVerticalScroll()
+			local node = shell.Parent
+			while node do
+				if node:IsA("ScrollingFrame") and node.ScrollingEnabled
+					and node.ScrollingDirection ~= Enum.ScrollingDirection.X then return true end
+				node = node.Parent
+			end
+			return false
+		end
 
 		local function finishDrag(input)
 			local kind = input.UserInputType
 			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
-			if not dragging or not dragInput then return end
+			if not alive or not dragInput then return end
 			if kind ~= dragInput.UserInputType then return end
 			if kind == Enum.UserInputType.Touch and input ~= dragInput then return end
-			dragging = false
-			dragInput = nil
-			paintInteraction()
-			if props.onCommit then pcall(props.onCommit, handle.value) end
+			local cancelled = input.UserInputState == Enum.UserInputState.Cancel
+			if pendingTouch then
+				local delta = input.Position - dragOrigin
+				cancelled = cancelled or (math.abs(delta.Y) >= theme.space.xs and math.abs(delta.Y) > math.abs(delta.X))
+			end
+			-- A tap chooses the touched value; a vertical page swipe never does.
+			if pendingTouch and not cancelled then fromInput(input) end
+			clearDrag()
+			if alive and not cancelled and props.onCommit then pcall(props.onCommit, handle.value) end
 		end
+		hit.InputBegan:Connect(function(input)
+			local kind = input.UserInputType
+			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
+			if dragInput or not alive then return end
+			dragInput, dragOrigin = input, input.Position
+			pendingTouch = kind == Enum.UserInputType.Touch and insideVerticalScroll()
+			dragging = not pendingTouch
+			if input.Changed then
+				inputConnection = input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+						finishDrag(input)
+					end
+				end)
+			end
+			if not pendingTouch then fromInput(input) end
+			paintInteraction()
+		end)
 		hit.InputEnded:Connect(finishDrag)
 		local stopMove = dispose.connection(env.uis.InputChanged:Connect(function(input)
-			if not dragging or not dragInput then return end
+			if not dragInput then return end
 			local kind = input.UserInputType
 			if dragInput.UserInputType == Enum.UserInputType.Touch then
 				if input ~= dragInput then return end
 			elseif kind ~= Enum.UserInputType.MouseMovement then
 				return
 			end
+			if input.UserInputState == Enum.UserInputState.Cancel then clearDrag(); return end
+			if pendingTouch then
+				local delta = input.Position - dragOrigin
+				local x, y = math.abs(delta.X), math.abs(delta.Y)
+				if math.max(x, y) < theme.space.xs then return end
+				if y > x then clearDrag(); return end
+				pendingTouch, dragging = false, true
+				paintInteraction()
+			end
 			fromInput(input)
 		end), "slider drag")
 		local stopRelease = dispose.connection(env.uis.InputEnded:Connect(finishDrag), "slider release")
+		local stopFocus = dispose.connection(env.uis.WindowFocusReleased:Connect(clearDrag), "slider focus")
 		shell.Destroying:Connect(function()
 			alive = false
-			dragging = false
-			dragInput = nil
+			clearDrag()
 			stopMove()
 			stopRelease()
+			stopFocus()
 		end)
 
 		handle.value = quantise(handle.value)

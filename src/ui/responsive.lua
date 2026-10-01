@@ -161,6 +161,19 @@ return function(env)
 		return previousBreakpoint ~= M.breakpoint or previousMode ~= M.mode
 	end
 
+	local generation = 0
+	local revealScheduled = false
+	local function queueReveal()
+		if revealScheduled then return end
+		revealScheduled = true
+		local mine = generation
+		clock.delay(0.05, function()
+			if mine ~= generation then return end
+			revealScheduled = false
+			if M.ready then M.revealFocused() end
+		end)
+	end
+
 	-- Continuous changes fire `changed`; a real mode switch also fires
 	-- `modeChanged`, which is the only one that triggers a rebuild.
 	local function refresh(reason)
@@ -174,17 +187,17 @@ return function(env)
 			M.modeChanged:fire({ mode = M.mode, breakpoint = M.breakpoint })
 		end
 		if M.isMobile() and M.keyboardHeight > 0 then
-			clock.delay(0.05, function() if M.ready then M.revealFocused() end end)
+			queueReveal()
 		end
 	end
 
 	local debouncedRefresh
 	local releases = {}
 	local cameraRelease
-	local generation = 0
 
 	function M.destroy()
 		generation = generation + 1
+		revealScheduled = false
 		for _, release in ipairs(releases) do release() end
 		releases = {}
 		if cameraRelease then cameraRelease(); cameraRelease = nil end
@@ -246,9 +259,16 @@ return function(env)
 		end
 		pcall(function()
 			watch(env.uis.TextBoxFocused:Connect(function()
-				if M.isMobile() then clock.delay(0.05, function() if M.ready then M.revealFocused() end end) end
+				if M.isMobile() then queueReveal() end
 			end))
 		end)
+		-- A trackpad or keyboard can be attached after mounting. Re-sample input
+		-- capability changes so layout and touch targets reflect the current host.
+		for _, property in ipairs({ "TouchEnabled", "MouseEnabled", "GamepadEnabled" }) do
+			pcall(function()
+				watch(env.uis:GetPropertyChangedSignal(property):Connect(function() refresh("input") end))
+			end)
+		end
 
 		for _, property in ipairs({ "ReducedMotionEnabled", "PreferredTransparency" }) do
 			pcall(function()

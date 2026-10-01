@@ -20,6 +20,7 @@ return function(env)
 	local http = env.require("net/http")
 	local sse = env.require("net/sse")
 	local registry = env.require("provider/registry")
+	local proxy = env.require("provider/proxy")
 	local openai = env.require("provider/openai")
 	local traits = env.require("provider/traits")
 	local headerMap = env.require("net/headers")
@@ -510,6 +511,8 @@ return function(env)
 		local headers = rebuildHeaders()
 
 		local started = clock.ms()
+		local deadline = started + math.max(1, math.min(300, tonumber(requestTimeout(request)) or 120)) * 1000
+		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local lastRequestMs = 0
 		local rotationsLeft = math.max(#pool - 1, 0)
 		-- Same as the chat adapter: with a pool, a 429 is rotation's to answer, not
@@ -518,6 +521,7 @@ return function(env)
 
 		local function fire(payload)
 			if registry.compatibilityKey(record) ~= requestScope then return nil, "aborted" end
+			if clock.ms() >= deadline then return nil, "deadline: request budget expired" end
 			local requestStarted = clock.ms()
 			local res, err = http.send({
 				relay = env.require("runtime/images").hasReferences(request.messages)
@@ -537,9 +541,16 @@ return function(env)
 				-- Same reasoning as the chat adapter: a thinking model emits nothing
 				-- until it answers, so the wall has to outlast the think.
 				timeout = requestTimeout(request),
+				deadlineMs = deadline,
 			})
 			lastRequestMs = clock.since(requestStarted)
 			if request.aborted and request.aborted() then return nil, "aborted" end
+			if recovery.recover(res, err) then
+				requestScope = registry.compatibilityKey(record)
+				url = M.endpoint(record)
+				headers = rebuildHeaders()
+				return fire(payload)
+			end
 			return res, err
 		end
 

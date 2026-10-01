@@ -19,6 +19,29 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.4.0",
+			revision = "2026-10-01",
+			date = "October 1, 2026",
+			title = "Mobile spacing, touch workflows and provider recovery",
+			highlights = "More room for mobile chat and Code, reliable touch gestures, automatic recovery from supported unauthorized-client errors, and optional community access.",
+			sections = {
+				{ category = "improved", label = "Mobile interface", items = {
+					"Tighter card, form, header and navigation spacing keeps full touch targets. Ordinary typing stays compact in portrait and landscape; expand explicitly for longer drafts.",
+					"Short keyboard layouts prioritize conversation results. Code uses destination and document pickers, keeps editing full width, and fits Find into one mobile row.",
+					"Quick Chat preserves drafts and selections through rotation. Mobile Return inserts a newline, and vertical swipes over sliders scroll without changing settings.",
+					"Settings categories retain their forms and scroll positions. Code, tables and reasoning fit above the keyboard, with narrower insets and space reserved for Copy.",
+				} },
+				{ category = "fixed", label = "Provider connections", items = {
+					"An explicit unauthorized-client error from official OpenCode or AgentRouter endpoints switches to the Project UAI proxy and retries once. Saved providers retain the new Base URL; drafts change only when saved.",
+					"The proxy forwards requests and API keys and has a shared 90,000-request daily cap. Invalid keys and custom endpoints do not cause an automatic switch; cancellation and deadlines still apply.",
+				} },
+				{ category = "added", label = "Community", items = {
+					"HCNSEC setup offers Use free key for the shared community key. Choose it explicitly, fetch models or enter a model ID, then save; existing providers are preserved.",
+					"An optional Discord invitation waits for five minutes of use and an idle pause, with a two-week cooldown. Not now postpones it; Don't show again or copying the invite stops reminders. Join Discord stays in the menu.",
+				} },
+			},
+		},
+		{
 			version = "2.2.0",
 			revision = "2026-10-01",
 			date = "October 1, 2026",

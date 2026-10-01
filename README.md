@@ -4,17 +4,13 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.2.0 — October 1, 2026.** Modal and dialog cards keep their rounded
-corners at the footer and navigation edges, the agent names a conversation from
-your request without ever overriding a name you set, Files can delete workspace
-entries, a failed host decompiler falls back to luacid, the profile menu links
-the Project Ptolemy donation place and Ko-fi, and the provider model directory
-has been rebuilt from current price data. The 2.1.x releases brought long
-streamed replies that finish instead of being discarded, native mobile forms and
-navigation that keep their actions reachable above the keyboard, Universal or
-custom conversation folders, UI LIB v1.2.1 touch and layout improvements, and
-embedding SDK 1.0.0 with UI-free boot, owned integration scopes, and structured
-requests.
+**Version 2.4.0 — October 1, 2026.** A mobile-focused release with tighter spacing,
+compact typing in portrait and landscape, more room for history and Code, and
+forms that preserve drafts as the screen changes. Touch targets remain at least
+44px. OpenCode and AgentRouter can recover from an explicit unauthorized-client
+error through the Project UAI proxy. HCNSEC setup offers an optional shared free
+key, and the Discord invitation has a two-week cooldown and a permanent opt-out.
+UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua
@@ -98,6 +94,14 @@ starting points in the providers panel -- and "Custom endpoint" takes anything
 that speaks `/v1/chat/completions` -- a relay, a self-hosted vLLM, Ollama on
 localhost. Model lists are never guessed: they come from `GET /v1/models` or from
 you typing one in.
+
+For the shared HCNSEC key, open **Providers → Add → HCNSEC → Use free key**,
+fetch the current models or enter a model ID, then save. Your other providers and
+personal keys stay as configured. OpenCode and AgentRouter automatically recover
+from explicit unauthorized-client errors using the
+[Project UAI proxy](docs/PROVIDER_COMPATIBILITY.md#automatic-unauthorized-client-recovery).
+The proxy receives the provider key and request and has a shared limit of 90,000
+requests per day; the resulting Base URL remains editable.
 
 AgentRouter uses the Anthropic Messages API and always sends its required Claude
 Code identity. Registration requires a GitHub account at least one year old; its

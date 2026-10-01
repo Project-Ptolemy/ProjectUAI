@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.2.0**, October 1, 2026.
+Current native feature contract for **2.4.0**, October 1, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -8,6 +8,14 @@ Internal APIs are described in
 In-game release notes are under **App menu → What's new**, also available from
 **About → What's new**. Reload the updated native bundle to see the latest notes.
 Revised notes restore the unread marker even when the client version stays the same.
+
+The optional Discord invitation waits for five minutes of use and at least 30
+seconds without input. It appears only in visible idle Chat/Home, with no active
+request, unsent draft, focused field, keyboard, other dialog or scrolled-back chat.
+It appears at most once per client load and once per 14 days, with the cooldown
+saved in configuration. **Not now** keeps that cooldown. **Don't show again** and
+a successful **Copy invite** disable reminders; **Join Discord** in the menu
+still opens the invitation. UI-free SDK clients never schedule the modal.
 
 ## Script UI library
 
@@ -37,6 +45,18 @@ the keyboard restores the pinned actions. Focused fields account for the keyboar
 edge and clipping ancestors, without repeatedly scrolling nested panels. Short
 navigation layouts put New conversation and workspace actions after the history
 in its scroll region, keeping them available while the keyboard is open.
+
+Version 2.4.0 keeps ordinary mobile typing compact in both orientations; explicit
+expansion opens the longer draft editor. Mobile Return adds a newline in both
+Chat and Quick Chat. Smaller insets recover reading and editing width without
+shrinking tap targets. Code, tables and reasoning resize their nested scroll
+areas to the space above the keyboard. Source metadata yields to Copy in narrow
+headers. Vertical swipes over settings sliders scroll without changing values.
+
+Mobile Code uses destination and document pickers, with secondary actions under
+More. Short keyboard layouts give space back to source editing. Find adapts to
+the available width, and settings categories preserve their mounted drafts and
+scroll positions when revisited.
 
 Conversation history stays in the session while the view uses measured spacers
 for offscreen messages and mounts nearby Markdown chunks. Recently read chunks

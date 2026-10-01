@@ -44,6 +44,9 @@ return function(env)
 	function M.mount(layer)
 		if M.mounted and M.root and M.root.Parent then return M.root end
 		M.visible = false
+		local mobile = responsive.isMobile()
+		local pad = mobile and theme.space.sm or theme.space.md
+		local gap = mobile and theme.space.xxs or theme.space.sm
 
 		M.root = P.frame(layer, {
 			name = "QuickChat",
@@ -81,23 +84,24 @@ return function(env)
 		M.card = card
 		M.scale = Instance.new("UIScale", card)
 		M.scale.Scale = theme.scale.enter
-		local scroll = P.scroll(card, { name = "QuickBody", size = UDim2.fromScale(1, 1), padding = theme.space.md, gap = 0 })
+		local scroll = P.scroll(card, { name = "QuickBody", size = UDim2.fromScale(1, 1), padding = pad, gap = 0 })
 		local content, contentLayout = P.column(scroll.instance, {
-			name = "QuickContent", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.sm,
+			name = "QuickContent", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = gap,
 		})
 
 		local head = P.row(content, {
 			name = "QuickHeader",
 			size = UDim2.new(1, 0, 0, math.max(theme.size.controlSmall, responsive.minTarget())),
-			gap = theme.space.sm,
+			gap = mobile and theme.space.xxs or theme.space.sm,
 			layoutOrder = 1,
 		})
 		local mark = P.frame(head, {
 			name = "QuickBrand", size = UDim2.fromOffset(theme.size.iconLarge, theme.size.iconLarge), layoutOrder = 0,
+			visible = not mobile,
 		})
 		env.require("ui/brand").draw(mark, theme.size.iconLarge)
 		P.text(head, {
-			text = "A thought? A task?",
+			text = mobile and "Quick chat" or "A thought? A task?",
 			role = "heading",
 			size = UDim2.new(0, 0, 0, theme.text.heading.height),
 			flex = "Fill",
@@ -106,7 +110,7 @@ return function(env)
 		})
 		P.iconButton(head, {
 			name = "DismissQuickChat", icon = "close",
-			diameter = theme.size.controlSmall, layoutOrder = 2,
+			diameter = theme.size.controlSmall, layoutOrder = mobile and 4 or 2,
 			onClick = function() M.hide() end,
 		})
 
@@ -114,11 +118,12 @@ return function(env)
 			name = "QuickPrompt",
 			placeholder = "Tell your agent what you have in mind…",
 			bare = true,
-			height = theme.size.control,
+			height = math.max(theme.size.control, responsive.minTarget()),
+			multiline = mobile,
 			layoutOrder = 2,
 			onFocus = function() P.animate(outline, "hover", { Color = theme.color.accent }) end,
 			onBlur = function() P.animate(outline, "hover", { Color = theme.color.borderStrong }) end,
-			onSubmit = function(text) M.submit(text) end,
+			onSubmit = function(text) if not mobile then M.submit(text) end end,
 		})
 
 		local footer = P.row(content, {
@@ -127,17 +132,22 @@ return function(env)
 			auto = "Y",
 			gap = theme.space.md,
 			layoutOrder = 3,
+			visible = not mobile,
 		})
-		M.hint = P.text(footer, {
+		M.hint = P.text(mobile and content or footer, {
+			name = "QuickHint",
 			text = "",
 			role = "caption",
 			color = theme.color.textTertiary,
-			size = UDim2.new(0, 0, 0, theme.text.caption.height),
-			truncate = true,
-			flex = "Fill",
-			layoutOrder = 1,
+			size = UDim2.new(mobile and 1 or 0, 0, 0, theme.text.caption.height),
+			truncate = not mobile,
+			wrap = mobile,
+			auto = mobile and "Y" or nil,
+			flex = not mobile and "Fill" or nil,
+			visible = not mobile,
+			layoutOrder = mobile and 3 or 1,
 		})
-		P.iconButton(footer, {
+		P.iconButton(mobile and head or footer, {
 			name = "OpenFullChat", icon = "windowMaximize", diameter = theme.size.controlSmall, layoutOrder = 2,
 			onClick = function()
 				local text = M.field.get()
@@ -151,22 +161,22 @@ return function(env)
 				end
 			end,
 		})
-		P.button(footer, {
+		P.button(mobile and head or footer, {
 			name = "SendQuickChat", text = "Send", icon = "send",
 			variant = "primary", size = "sm", layoutOrder = 3,
 			onClick = function() M.submit(M.field.get()) end,
 		})
 		local function layoutCard()
-			local bounds = responsive.usableRect(layer, theme.space.md)
+			local bounds = responsive.usableRect(layer, mobile and theme.space.sm or theme.space.md)
 			local width = math.min(bounds.width,
 				math.max(responsive.viewport.X * 0.5, theme.size.modal), theme.size.reading * 0.6)
 			local measured = contentLayout.AbsoluteContentSize
 			-- Layout initially reports zero, including while hidden. Keep enough room
 			-- for the fixed controls until the first measured pass arrives.
-			local minimum = head.Size.Y.Offset + M.field.shell.Size.Y.Offset
-				+ math.max(theme.size.controlSmall, responsive.minTarget()) + theme.space.sm * 2
+			local minimum = head.Size.Y.Offset + M.field.shell.Size.Y.Offset + gap
+				+ (mobile and 0 or math.max(theme.size.controlSmall, responsive.minTarget()) + gap)
 			local wanted = math.max(minimum, measured and measured.Y or 0)
-			local height = math.max(1, math.min(bounds.height, wanted + theme.space.md * 2))
+			local height = math.max(1, math.min(bounds.height, wanted + pad * 2))
 			card.Size = UDim2.fromOffset(math.max(math.floor(width), 1), math.floor(height))
 			local half = height / 2
 			local y = util.clamp(bounds.height * 0.42, math.min(half, bounds.height / 2), math.max(bounds.height / 2, bounds.height - half))
@@ -191,7 +201,12 @@ return function(env)
 		end
 		local queueRebuild, cancelRebuild = clock.debounce(rebuild, theme.duration("fast"))
 		local stopTheme = dispose.add(theme.changed:connect(queueRebuild), "quick chat theme")
-		local stopMode = dispose.add(responsive.modeChanged:connect(queueRebuild), "quick chat mode")
+		local stopMode = dispose.add(responsive.modeChanged:connect(function()
+			-- Rotation changes the bounds, not the mobile input. Keeping the native
+			-- TextBox preserves selection, composition and the open keyboard.
+			if mobile and responsive.isMobile() then return end
+			queueRebuild()
+		end), "quick chat mode")
 		root.Destroying:Connect(function()
 			cancelRebuild()
 			stopTheme()
@@ -207,6 +222,7 @@ return function(env)
 		local providers = env.require("provider/registry")
 		local record = providers.active()
 		M.hint.TextColor3 = theme.color.textTertiary
+		M.hint.Visible = not responsive.isMobile() or not record
 		M.hint.Text = record
 			and string.format("%s  ·  Enter to send  ·  Esc to close",
 				tostring(record.label))
@@ -277,6 +293,7 @@ return function(env)
 			if M.hint then
 				M.hint.Text = tostring(reason)
 				M.hint.TextColor3 = theme.color.warn
+				M.hint.Visible = true
 			end
 			if M.visible and M.field then M.field.focus() end
 		end

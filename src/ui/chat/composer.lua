@@ -2,9 +2,8 @@
 --
 -- Send behaviour differs by platform on purpose. With a keyboard, Enter sends --
 -- that is what everyone expects and reaching for a button breaks the typing rhythm.
--- On touch there is no Enter worth the name, so the button is the primary action and
--- the field grows instead. The expand toggle switches to a multi-line field where
--- Enter inserts a newline and only the button sends.
+-- On touch Enter always inserts a newline and only the button sends. Normal
+-- typing keeps a compact row; explicit expansion gives a long draft more space.
 --
 -- Everything on the two rows around the field states something the client knows and
 -- changes something when pressed. That is worth saying because it was not true: the
@@ -62,7 +61,7 @@ return function(env)
 			zIndex = theme.z.raised,
 		})
 		local composer = { expanded = false, busy = false, attachments = {} }
-		local mobileFocused, contextRequested, extraHeight = false, false, 0
+		local contextRequested, extraHeight = false, 0
 		local draftId
 		local restoring = false
 		local destroyed = false
@@ -515,11 +514,9 @@ return function(env)
 
 		local function stackedInput()
 			if not mobile then return composer.expanded end
-			-- Landscape gaming needs its vertical reading space. A normal prompt
-			-- stays inline; explicit expansion gives longer drafts their own row.
-			if responsive.orientation == "landscape" and not composer.expanded then return false end
-			local editing = composer.expanded or mobileFocused or (composer.field and composer.field.get() ~= "")
-			return editing and parent.AbsoluteSize.Y >= extraHeight + controlHeight * 2
+			-- A focused single line must not double the chrome in portrait. Explicit
+			-- expansion is preserved when the keyboard temporarily needs one row.
+			return composer.expanded and parent.AbsoluteSize.Y >= extraHeight + controlHeight * 2
 				+ inset * 2 + topInset + bottomInset + theme.space.xs + theme.text.body.height * 2
 		end
 		local function promptHeight()
@@ -550,11 +547,9 @@ return function(env)
 				text = carried,
 				onFocus = function()
 					paintFocus(true)
-					if mobile then mobileFocused = true; if resizeComposer then resizeComposer() end end
 				end,
 				onBlur = function()
 					paintFocus(false)
-					if mobile then mobileFocused = false; if resizeComposer then resizeComposer() end end
 				end,
 				onChange = function(text)
 					if not alive() or type(text) ~= "string" then return end
@@ -652,7 +647,7 @@ return function(env)
 					{ label = "Permissions", detail = permissionLabel.Text, value = "permissions", icon = "sliders" },
 					{ label = (mobile and contextRequested or scopeScroll.instance.Visible) and "Hide context details" or "Show context details", value = "context", icon = "folder" },
 					{ label = "Context breakdown", detail = "What is filling the window", value = "context_inspect", icon = "folder" },
-					{ label = mobile and (composer.expanded and "Automatic input height" or "Expand input")
+					{ label = mobile and (composer.expanded and "Compact input" or "Expand input")
 						or (composer.expanded and "Single-line input" or "Multiline input"), value = "expand", icon = "code" },
 				}
 				if mobile then

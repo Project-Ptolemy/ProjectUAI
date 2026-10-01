@@ -189,4 +189,89 @@ case("an uncooperative old discovery cannot unlock or overwrite a newer fetch", 
 	f.healthy(); f.close()
 end)
 
+case("the community key is opt-in and confined to the official HCNSEC draft", function()
+	local f = fixture()
+	preset(f, "hcnsec")
+	check("official setup offers the free key", f.h.byName("CommunityKey").Visible)
+	check("opening setup preserves the supplied key", f.h.byName("KeyState").Text:find("-key", 1, true) ~= nil)
+	check("setup never creates a saved provider", f.env.require("provider/registry").count() == 0)
+	click(f, "UseCommunityKey")
+	check("the public key stays masked", f.h.byName("KeyState").Text:find("1luY", 1, true) ~= nil
+		and not f.h.textOf():find("sk-ysUaToxu", 1, true))
+	check("the original record stays unchanged until Save", f.original.apiKey == "fixture-key"
+		and f.env.require("provider/registry").count() == 0)
+	click(f, "SaveProvider")
+	check("saving opts in only this provider", f.saved and f.saved.preset == "hcnsec"
+		and f.saved.apiKey:sub(-4) == "1luY" and f.saved.apiKey ~= "fixture-key")
+	check("the model remains the user's selection", f.saved.model == "manual-model")
+	check("opting in never sends a request", f.h.http.requestCount == 0)
+	f.healthy(); f.close()
+end)
+
+case("community key action rechecks its endpoint and preserves existing providers", function()
+	local f = fixture("hcnsec")
+	local registry = f.env.require("provider/registry")
+	local existing = registry.blank("hcnsec")
+	existing.apiKey, existing.model, existing.models = "personal-key", "my-model", { "my-model" }
+	assert(registry.save(existing))
+	check("a custom URL never advertises the shared key", not f.h.byName("CommunityKey").Visible)
+	for _, value in ipairs({ "http://api.hcnsec.cn/v1", "https://api.hcnsec.cn.evil.test/v1", "https://api.hcnsec.cn:8443/v1", "https://api.hcnsec.cn/custom", "https://api.hcnsec.cn/v1?target=elsewhere" }) do
+		field(f, "BaseUrl", value)
+		check("the action is hidden for " .. value, not f.h.byName("CommunityKey").Visible)
+		click(f, "UseCommunityKey")
+		check("even a stale hidden action cannot install the key", f.h.byName("KeyState").Text:find("-key", 1, true) ~= nil)
+	end
+	check("a saved personal provider is untouched", registry.get(existing.id).apiKey == "personal-key")
+	check("no network traffic", f.h.http.requestCount == 0)
+	f.healthy(); f.close()
+end)
+
+case("choosing the community key replaces an entire key pool and its rotation state", function()
+	local f = F.ui(390, 700)
+	local registry = f.env.require("provider/registry")
+	local record = registry.blank("hcnsec")
+	record.apiKey, record.model, record.models = "first-personal-key\nsecond-personal-key", "my-model", { "my-model" }
+	record.keyRotation = { index = 2, cooldowns = { ["first-personal-key"] = 9999999999999 } }
+	f.env.require("ui/panels/providers").editor(record, function(id) f.saved = registry.get(id) end)
+	click(f, "UseCommunityKey"); click(f, "SaveProvider")
+	check("only the chosen community key remains in the pool", f.saved and #registry.keysOf(f.saved) == 1 and registry.nextKey(f.saved):sub(-4) == "1luY")
+	check("old rotation and cooldown state are discarded", f.saved.keyRotation == nil)
+	check("the source record retains its personal pool until explicit save", record.apiKey == "first-personal-key\nsecond-personal-key" and record.keyRotation.index == 2)
+	f.healthy(); f.close()
+end)
+
+case("discovery adopts its proxy into the current draft without saving it", function()
+	local f = fixture(); preset(f, "zen")
+	local proxy = "https://puai-proxy.davidzk.tech/opencode/v1"
+	f.h.http.handler = function(entry)
+		if entry.index == 1 then return { StatusCode = 403, Body = '{"error":{"code":"unauthorized_client","message":"Unauthorized client"}}' } end
+		check("discovery uses the designated proxy", entry.url == proxy .. "/models")
+		return response(f, "proxy-model", 0)
+	end
+	fetch(f)
+	check("the new URL is visible", f.h.byName("BaseUrl"):FindFirstChildOfClass("TextBox").Text == proxy)
+	check("the fetched models survive URL adoption", f.h.byName("Option_model:proxy-model") ~= nil)
+	check("draft migration cannot create a saved provider", f.env.require("provider/registry").count() == 0)
+	check("the proxy domain and cap are explained", f.h.byName("ProxyFallbackNotice").Text:find("90,000", 1, true) ~= nil)
+	closeMenu(f); click(f, "SaveProvider")
+	check("Save commits the displayed URL", f.saved and f.saved.baseUrl == proxy)
+	f.healthy(); f.close()
+end)
+
+case("a completed connection test cannot replace a newer endpoint edit", function()
+	local f = fixture(); preset(f, "zen")
+	f.env.require("provider/chat").complete = function(candidate)
+		f.h.sched.wait(3)
+		candidate.baseUrl = "https://puai-proxy.davidzk.tech/opencode/v1"
+		return { ms = 10 }
+	end
+	click(f, "TestConnection")
+	field(f, "BaseUrl", "https://new-choice.fixture/v1")
+	f.h.sched.advance(4)
+	check("the current field survives the late migration", f.h.byName("BaseUrl"):FindFirstChildOfClass("TextBox").Text == "https://new-choice.fixture/v1")
+	click(f, "SaveProvider")
+	check("the user choice is saved", f.saved and f.saved.baseUrl == "https://new-choice.fixture/v1")
+	f.healthy(); f.close()
+end)
+
 suite.finish()

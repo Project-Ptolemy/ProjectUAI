@@ -25,7 +25,7 @@ return function(env)
 			-- Featured: shown at the top of the providers panel as the recommended
 			-- place to start, so a first-run user has one obvious road.
 			featured = true,
-			note = "An OpenAI-compatible relay. Featured because it is the recommended starting point: create an account, paste the key, fetch models.",
+			note = "An OpenAI-compatible relay. Use the optional free community key in setup, or create an account and use your own key. Fetch the current models before choosing one.",
 		},
 		{
 			id = "agentrouter",

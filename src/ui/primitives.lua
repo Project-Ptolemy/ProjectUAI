@@ -762,9 +762,9 @@ return function(env)
 		-- is why the prompt field and the search field were the same height even though
 		-- one of them is the primary surface of the app. The platform floor still
 		-- applies: it is a minimum, not the value.
-		local height = multiline
+		local height = math.max(responsive.minTarget(), multiline
 			and (props.height or theme.size.control * 2)
-			or math.max(props.height or theme.size.control, responsive.minTarget())
+			or (props.height or theme.size.control))
 
 		local shell = P.frame(parent, {
 			name = props.name or "Field",
@@ -865,8 +865,8 @@ return function(env)
 			layoutOrder = props.layoutOrder,
 			bg = props.bg or theme.color.surfaceRaised,
 			radius = props.radius or theme.radius.lg,
-			gap = props.gap or theme.space.md,
-			padding = props.padding or theme.space.lg,
+			gap = props.gap or (responsive.isMobile() and theme.space.sm or theme.space.md),
+			padding = props.padding or (responsive.isMobile() and theme.space.md or theme.space.lg),
 			clip = props.clip,
 		})
 		if props.stroke ~= false then

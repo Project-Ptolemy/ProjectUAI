@@ -38,7 +38,7 @@ return function(env)
 		local block = assert(props.block, "table block required")
 		local columnCount = math.max(#block.header, block.columns or 0, 1)
 		for _, row in ipairs(block.rows) do columnCount = math.max(columnCount, #row) end
-		local padX, padY, hair = theme.space.md, theme.space.sm, theme.stroke.hair
+		local padX, padY, hair = responsive.isMobile() and theme.space.sm or theme.space.md, theme.space.sm, theme.stroke.hair
 		local bar = theme.size.scrollbar
 		local minWidth = math.max(theme.size.tableColumnMin or theme.size.keyColumn, padX * 2 + theme.text.body.size)
 		local maxWidth = math.max(minWidth, theme.size.tableColumnMax or theme.size.menuWide)
@@ -158,8 +158,9 @@ return function(env)
 				row.rule.Size = UDim2.fromOffset(totalWidth, hair)
 				y = y + height
 			end
+			local room = responsive.isMobile() and responsive.usableRect(env.root, 0).height or responsive.viewport.Y
 			local cap = math.max(theme.size.row + bar, math.min(props.maxHeight
-				or theme.size.tableViewport or theme.size.codeViewport, math.floor(responsive.viewport.Y / 2)))
+				or theme.size.tableViewport or theme.size.codeViewport, math.floor(room / 2)))
 			local height = math.min(y + bar, cap)
 			grid.Size = UDim2.fromOffset(totalWidth, y)
 			scroll.Size = UDim2.new(1, 0, 0, height)

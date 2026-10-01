@@ -6,6 +6,7 @@ return function(env)
 	local files = env.require("runtime/code_files")
 	local store = env.require("runtime/code_store")
 	local util = env.require("runtime/util")
+	local responsive = env.require("ui/responsive")
 	local M = {}
 	function M.saveDocument(doc, saveAs, done)
 		if not doc then return end
@@ -27,18 +28,26 @@ return function(env)
 		local handle = { root = root, alive = true, visible = true }
 		local bar = common.toolbar(root)
 		local list, refresh
-		local title = bar.add("Workspace", function(button)
-			common.menu(button, "Workspace files", { { label = "Collapse folders", value = "collapse" }, { label = "Reveal active file", value = "reveal" }, { label = "New folder", value = "folder" }, { label = "Open by path…", value = "path" } }, function(action)
+		local function fileMenu(button)
+			common.menu(button, "Workspace files", { { label = "New file", value = "new" }, { label = "New folder", value = "folder" },
+				{ label = "Refresh files", value = "refresh" }, { label = "Delete selected entry", value = "delete" },
+				{ label = "Collapse folders", value = "collapse" }, { label = "Reveal active file", value = "reveal" }, { label = "Open by path…", value = "path" } }, function(action)
 				if action == "collapse" then view.expanded = { [""] = true }; refresh()
 				elseif action == "reveal" then local binding = files.binding(store.activeId()); if binding then files.reveal(binding.path); refresh(); list.focusKey("file:" .. binding.path) end
 				elseif action == "folder" then handle.create(true)
+				elseif action == "new" then handle.create(false)
+				elseif action == "refresh" then view.pages = {}; refresh()
+				elseif action == "delete" then handle.deleteSelected()
 				else forms.form("Open workspace file", { { key = "path", label = "File under " .. files.root, required = true, default = "files/" } }, function(data) return handle.open(data.path) end, { submit = "Open" }) end
 			end)
-		end, { flex = true })
+		end
+		bar.add("Workspace", fileMenu, { flex = true })
 		bar.add("", function() handle.create(false) end, { icon = "plus", iconOnly = true, name = "NewWorkspaceFile" })
 		bar.add("", function() handle.deleteSelected() end, { icon = "trash", iconOnly = true, name = "DeleteWorkspaceEntry" })
 		bar.add("Refresh", function() view.pages = {}; refresh() end, { tight = true, name = "RefreshWorkspaceFiles" })
 		local filter = P.field(root, { name = "WorkspaceFileSearch", placeholder = "Filter loaded files", text = view.query or "", role = "small", onChange = function(text) view.query = text; if refresh then refresh() end end })
+		local compactMenu = common.button(root, { name = "CompactFileActions", text = "", icon = "ellipsis", tight = true, fill = true,
+			variant = "ghost", onClick = fileMenu, visible = false })
 		filter.shell.Position, filter.shell.Size = UDim2.fromOffset(8, common.barHeight() + 6), UDim2.new(1, -16, 0, common.barHeight())
 		local top = common.barHeight() * 2 + 12
 		local hint = P.text(root, { name = "WorkspaceFileStatus", text = "Click a folder to expand · click a file to open", role = "caption", color = theme.color.textSecondary, truncate = true, position = UDim2.new(0, 8, 1, -24), size = UDim2.new(1, -16, 0, 24) })
@@ -145,6 +154,18 @@ return function(env)
 			hint.Text = binding and (files.root .. "/" .. binding.path .. (files.dirty(store.activeId()) and " · unsaved changes" or "")) or "Click folders to expand · click files to open"
 		end
 		local off = store.changed:connect(function(event) if event.kind ~= "source" then refresh() end end)
+		local function layout()
+			local short = responsive.isMobile() and root.AbsoluteSize.Y < common.barHeight() * 4
+			local inset, gap, target = common.inset(), common.gap(), common.controlHeight()
+			bar.root.Visible, compactMenu.instance.Visible, hint.Visible = not short, short, not short
+			local fieldTop = short and gap or common.barHeight() + 6
+			filter.shell.Position = UDim2.fromOffset(inset, fieldTop)
+			filter.shell.Size = UDim2.new(1, -inset * 2 - (short and target + gap or 0), 0, short and target or common.barHeight())
+			compactMenu.instance.Position, compactMenu.instance.Size = UDim2.new(1, -inset - target, 0, fieldTop), UDim2.fromOffset(target, target)
+			local listTop = short and common.barHeight() or top
+			list.root.Position, list.root.Size = UDim2.fromOffset(0, listTop), UDim2.new(1, 0, 1, -listTop - (short and 0 or 24))
+		end
+		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
 		function handle.setVisible(visible)
 			if handle.visible == visible then return end
 			handle.visible, list.visible = visible, visible
@@ -152,7 +173,7 @@ return function(env)
 		end
 		function handle.destroy() handle.alive = false; view.y = list.root.CanvasPosition.Y; off(); root:Destroy() end
 		handle.list, handle.refresh = list, refresh
-		refresh(); list.root.CanvasPosition = Vector2.new(0, view.y or 0)
+		layout(); refresh(); list.root.CanvasPosition = Vector2.new(0, view.y or 0)
 		return handle
 	end
 	return M

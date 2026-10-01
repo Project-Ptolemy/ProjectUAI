@@ -1,6 +1,7 @@
 return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
+	local responsive = env.require("ui/responsive")
 	local common = env.require("ui/code/common")
 	local forms = env.require("ui/code/forms")
 	local tree = env.require("ui/code/value_tree")
@@ -35,7 +36,8 @@ return function(env)
 		local handle = { root = root, alive = true, visible = true }
 		local header = common.toolbar(root)
 		local statusButton, startButton, stopButton, menuButton, refresh, refreshDetail, layout, perform
-		local guardedRefresh
+		local guardedRefresh, showFilter, cataloguePage
+		local compact = false
 		local info = P.text(root, { name = "CaptureCoverage", text = "Capture is stopped", role = "caption", wrap = true })
 		local body = P.frame(root, { name = "CaptureBody" })
 		local listHost, detailHost = P.frame(body, { name = "Calls", clip = true }), P.frame(body, { name = "CallDetail", clip = true })
@@ -139,6 +141,21 @@ return function(env)
 		end
 		local function more(button)
 			local choices = { { label = "Capture settings / Start…", value = "start" }, { label = "Capture coverage", value = "coverage" }, { label = "Traffic rules…", value = "rules" }, { label = "Export retained calls", value = "export" }, { label = "Import offline capture…", value = "import" }, { label = "Clear retained calls", value = "clear" }, { label = "Show excluded remotes", value = "excluded" }, { label = "Reset admission filters", value = "filterReset" } }
+			if compact then
+				local current = state()
+				table.insert(choices, 1, { label = "Capture status", detail = info.Text, value = "coverage" })
+				for _, choice in ipairs({ { label = "Captured calls", value = "calls", selected = view.listMode == "calls" },
+					{ label = "Browse remotes", value = "remotes", selected = view.listMode == "remotes" },
+					{ label = "Filter retained calls", value = "viewFilter" }, { label = "Follow latest calls", value = "latest" } }) do choices[#choices + 1] = choice end
+				if current.status == "running" or current.status == "paused" then
+					table.insert(choices, 1, { label = current.status == "running" and "Pause capture" or "Resume capture", value = "pauseResume" })
+				end
+				if selected then
+					for _, section in ipairs(sectionTabs.items) do
+						choices[#choices + 1] = { label = "Inspect " .. section.label:lower(), value = "section:" .. section.id, selected = view.section == section.id }
+					end
+				end
+			end
 			if selected or view.remoteId then
 				for _, pair in ipairs({ { "Reveal remote in Explorer", "reveal" }, { "Exclude exact remote from recording", "exclude" }, { "Restore exact remote recording", "include" }, { "Copy reference", "reference" }, { "Ask AI about this", "ask" } }) do choices[#choices + 1] = { label = pair[1], value = pair[2] } end
 			end
@@ -158,6 +175,17 @@ return function(env)
 		perform = function(action, button)
 				local id = selected and selected.remoteId or view.remoteId
 				if action == "start" then configure()
+				elseif action == "pauseResume" then common.message(capture.control(capture.status == "paused" and "resume" or "pause", capture.sessionId, capture.revision))
+				elseif action == "viewFilter" then showFilter()
+				elseif action == "calls" or action == "remotes" or action == "latest" then
+					view.listMode, view.detail = action == "remotes" and "remotes" or "calls", false
+					if action == "latest" then view.follow, view.before = true, nil end
+					if action == "remotes" and not catalogue then cataloguePage() end
+					refresh(); layout()
+				elseif util.startsWith(action, "section:") then
+					view.section, view.detail = action:sub(9), true
+					if view.section == "draft" and selected then view.argumentDraft = view.argumentDraft or util.deepCopy(selected.arguments) end
+					refreshDetail(); layout()
 				elseif action == "coverage" then
 					overlay.code({ title = "Actual capture coverage", code = capture.coverageText() })
 				elseif action == "rules" then rules(button)
@@ -228,7 +256,7 @@ return function(env)
 			common.menu(button, "Capture direction", { { label = "Incoming and outgoing", value = "Incoming and outgoing" }, { label = "Outgoing calls", value = "Outgoing calls" }, { label = "Incoming events", value = "Incoming events" }, { label = "UAI calls only", value = "UAI calls" } }, function(value) view.mode = value; refresh() end)
 		end, { dropdown = true, name = "RemoteCaptureMode", tight = true })
 		configBar.add("", configure, { icon = "sliders", iconOnly = true, name = "RemoteCaptureSettings" })
-		local function showFilter()
+		showFilter = function()
 			local definitions = { { key = "name", label = "Remote name", default = view.filter } }
 			for _, item in ipairs({ { "direction", "Direction", { "All", "outgoing", "incoming" } }, { "method", "Method", { "All", "FireServer", "InvokeServer", "OnClientEvent" } }, { "origin", "Origin", { "All", "hooked_unknown", "unknown", "uai", "replay", "game", "executor", "server" } }, { "outcome", "Outcome", { "All", "pending", "forwarded", "returned", "received", "errored", "blocked", "completion_unobserved" } } }) do
 				definitions[#definitions + 1] = { key = item[1], label = item[2], type = "choice", choices = item[3], default = view.filters[item[1]] or "All" }
@@ -239,7 +267,7 @@ return function(env)
 				view.follow, view.before, view.listMode = true, nil, "calls"; refresh(); return true
 			end, { key = "calls-filter" })
 		end
-		local function cataloguePage(morePage)
+		cataloguePage = function(morePage)
 			catalogueGeneration = catalogueGeneration + 1; local generation = catalogueGeneration
 			catalogueBusy = true
 			local query = { kind = "remote", rootId = refs.id(game), name = view.filter, limit = 100, cursor = morePage and catalogue and catalogue.nextCursor or nil }
@@ -279,6 +307,9 @@ return function(env)
 		local filterSize, searchInset = common.controlHeight(), common.inset()
 		search.shell.Position, search.shell.Size = UDim2.fromOffset(searchInset, common.barHeight() + 4), UDim2.new(1, -searchInset * 2 - filterSize - common.gap(), 0, filterSize)
 		local filterButton = common.button(listHost, { name = "FilterRemoteCalls", text = "", icon = "sliders", tight = true, fill = true, variant = "ghost", onClick = showFilter })
+		local compactListMenu = common.button(listHost, { name = "CompactRemoteActions", text = "", icon = "ellipsis", fill = true, onClick = more })
+		local compactListStop = common.button(listHost, { name = "CompactStopRemoteCapture", text = "", icon = "stop", fill = true, variant = "danger",
+			onClick = function() capture.stop("Stopped by user") end })
 		filterButton.instance.Position, filterButton.instance.Size = UDim2.new(1, -searchInset - filterSize, 0, common.barHeight() + 4), UDim2.fromOffset(filterSize, filterSize)
 		local listTop = common.barHeight() * 2 + 8
 		local function selectRow(row)
@@ -315,6 +346,12 @@ return function(env)
 		local openButton = detailBar.add("Open", function() perform("source") end, { tight = true, name = "OpenRemoteCode" })
 		local replayButton = detailBar.add("Replay", review, { tight = true, name = "ReviewRemoteReplay" })
 		detailBar.add("", more, { icon = "ellipsis", iconOnly = true, name = "RemoteDetailActions" })
+		local compactDetail = common.toolbar(detailHost, { name = "CompactRemoteDetail" })
+		local compactBack = compactDetail.add("Back", function() view.detail = false; layout() end, { icon = "arrowLeft", tight = true })
+		local compactSection = compactDetail.add("Arguments", more, { flex = true })
+		local compactDetailStop = compactDetail.add("", function() capture.stop("Stopped by user") end,
+			{ name = "CompactDetailStopRemoteCapture", icon = "stop", iconOnly = true, variant = "danger" })
+		compactDetail.add("", more, { name = "CompactRemoteDetailActions", icon = "ellipsis", iconOnly = true })
 		sectionTabs = tabs.new(detailHost, { name = "RemoteDetailTabs", position = UDim2.fromOffset(0, common.barHeight()), size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(section)
 			view.section = section
 			if section == "draft" and selected then view.argumentDraft = view.argumentDraft or util.deepCopy(selected.arguments) end
@@ -336,14 +373,17 @@ return function(env)
 			local sections = { { id = "arguments", label = "Arguments" }, { id = "results", label = "Results" }, { id = "caller", label = "Caller" } }
 			if outgoing then sections[#sections + 1] = { id = "code", label = "Code" }; sections[#sections + 1] = { id = "draft", label = "Replay draft" } end
 			sectionTabs.set(sections, view.section)
+			for _, section in ipairs(sections) do if section.id == view.section then compactSection.setText(section.label) end end
 			copyButton.setText(outgoing and "Copy code" or "Copy record")
 			copyButton.setEnabled(selected ~= nil); openButton.setEnabled(outgoing); replayButton.setEnabled(outgoing)
 			if not selected then
 				local object = view.remoteId and refs.resolve(view.remoteId)
+				compactSection.setText(object and object.Name or "Remotes")
 				recordHeader.Text = object and (object.Name .. " · " .. object.ClassName .. "\n" .. refs.describe(object).displayPath) or "Select a call to inspect its arguments, code and results."
 				local title = object and "Ready to observe this remote" or "Remote spy"
-				P.text(valueHost, { text = title, role = "heading", position = UDim2.fromOffset(16, 20), size = UDim2.new(1, -32, 0, 30) })
-				P.text(valueHost, { text = object and "Selected remote is the capture scope. Press Start to begin recording." or "Choose a remote or an explicit subtree, then Start a 30-second observation. Capture settings enable outgoing hooks.", role = "small", wrap = true, position = UDim2.fromOffset(16, 58), size = UDim2.new(1, -32, 0, 90), color = theme.color.textSecondary })
+				local empty = P.scroll(valueHost, { name = "RemoteEmptyState", padding = theme.space.sm, gap = theme.space.sm })
+				P.text(empty.instance, { text = title, role = "heading", wrap = true, auto = "Y", layoutOrder = 1 })
+				P.text(empty.instance, { text = object and "Selected remote is the capture scope. Open capture settings to begin recording." or "Choose a remote or an explicit subtree, then start a 30-second observation from capture settings. Capture settings also enable outgoing hooks.", role = "small", wrap = true, auto = "Y", layoutOrder = 2, color = theme.color.textSecondary })
 				return
 			end
 			describeSelected()
@@ -358,7 +398,8 @@ return function(env)
 			if view.section == "draft" then view.argumentDraft = view.argumentDraft or util.deepCopy(selected.arguments) end
 			local graph = view.section == "draft" and view.argumentDraft or view.section == "results" and selected.results or selected.arguments
 			if view.section == "results" and not selected.results then
-				P.text(valueHost, { text = selected.error or (selected.outcome == "pending" and "Waiting for the call to return…" or "Return values were not observed for this call."), role = "small", wrap = true, position = UDim2.fromOffset(12, 12), size = UDim2.new(1, -24, 1, -24) }); return
+				local notice = P.scroll(valueHost, { name = "RemoteResultNotice", padding = theme.space.sm })
+				P.text(notice.instance, { text = selected.error or (selected.outcome == "pending" and "Waiting for the call to return…" or "Return values were not observed for this call."), role = "small", wrap = true, auto = "Y" }); return
 			end
 			valueView = tree.new(valueHost, { graph = graph, expanded = view.expanded, editable = view.section == "draft", key = selected.id, reveal = navigate, onChange = function(value) view.argumentDraft = value; saveDraft() end })
 		end
@@ -416,6 +457,7 @@ return function(env)
 			local unseen = math.max(0, current.newest - (view.lastSeen or current.newest))
 			newCalls.setText(view.follow and "Following" or unseen > 0 and ("Latest +" .. unseen) or "Follow paused · Latest")
 			layoutListHeader()
+			if layout then layout() end
 			if selected then
 				local live = records.get(selected.id)
 				if not live then recordHeader.Text = "This call expired or was cleared.\nIts replay draft is still available."
@@ -429,10 +471,13 @@ return function(env)
 			view.listWidth = math.max(240, math.min(body.AbsoluteSize.X - 280, position.X - body.AbsolutePosition.X)); layout()
 		end)
 		layout = function()
+			compact = responsive.isMobile() and root.AbsoluteSize.Y < common.barHeight() * 5 + common.controlHeight() * 2
 			local top = common.barHeight() * 2 + theme.text.caption.height * 2 + 8
-			info.Position, info.Size = UDim2.fromOffset(10, common.barHeight() * 2 + 4), UDim2.new(1, -20, 0, top - common.barHeight() * 2 - 4)
+			if compact then top = 0 end
+			header.root.Visible, configBar.root.Visible, info.Visible = not compact, not compact, not compact
+			info.Position, info.Size = UDim2.fromOffset(10, common.barHeight() * 2 + 4), UDim2.new(1, -20, 0, theme.text.caption.height * 2 + 4)
 			body.Position, body.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top)
-			local wide = root.AbsoluteSize.X >= 620
+			local wide = not responsive.isMobile() and root.AbsoluteSize.X >= 620
 			local width = math.max(240, math.min(root.AbsoluteSize.X - 280, view.listWidth or root.AbsoluteSize.X * 0.4))
 			listHost.Visible, detailHost.Visible = wide or not view.detail, wide or view.detail == true
 			listHost.Size = wide and UDim2.new(0, width, 1, 0) or UDim2.fromScale(1, 1)
@@ -440,6 +485,22 @@ return function(env)
 			detailHost.Position, detailHost.Size = UDim2.fromOffset(wide and width + 6 or 0, 0), UDim2.new(1, wide and -width - 6 or 0, 1, 0)
 			backButton.instance.Visible, divider.root.Visible = not wide, wide and handle.visible
 			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
+			local inset, control, bar = common.inset(), common.controlHeight(), common.barHeight()
+			local active = capture.status == "running" or capture.status == "paused" or capture.status == "starting" or #capture.rules > 0
+			listTabs.root.Visible, listBar.root.Visible, filterButton.instance.Visible = not compact, not compact, not compact
+			detailBar.root.Visible, sectionTabs.root.Visible, recordHeader.Visible = not compact, not compact, not compact
+			compactDetail.root.Visible, compactListMenu.instance.Visible = compact, compact
+			compactBack.instance.Visible = not wide
+			compactListStop.instance.Visible, compactDetailStop.instance.Visible = compact and active, compact and active
+			local stopWidth = compact and active and (control + common.gap()) or 0
+			search.shell.Position = UDim2.fromOffset(inset, (compact and 0 or bar) + theme.space.xxs)
+			search.shell.Size = UDim2.new(1, -inset * 2 - control - common.gap() - stopWidth, 0, control)
+			compactListMenu.instance.Position, compactListMenu.instance.Size = UDim2.new(1, -inset - control, 0, theme.space.xxs), UDim2.fromOffset(control, control)
+			compactListStop.instance.Position, compactListStop.instance.Size = UDim2.new(1, -inset - control * 2 - common.gap(), 0, theme.space.xxs), UDim2.fromOffset(control, control)
+			local callsTop, valuesTop = compact and bar or listTop, compact and bar or detailTop
+			local height = math.max(1, root.AbsoluteSize.Y - top)
+			list.root.Position, list.root.Size = UDim2.fromOffset(0, callsTop), UDim2.new(1, 0, 0, math.max(1, height - callsTop))
+			valueHost.Position, valueHost.Size = UDim2.fromOffset(0, valuesTop), UDim2.new(1, 0, 0, math.max(1, height - valuesTop))
 		end
 		-- A refresh that throws must not take the capture view down with it. It is
 		-- driven from the engine's own scheduled threads, where a host that drops

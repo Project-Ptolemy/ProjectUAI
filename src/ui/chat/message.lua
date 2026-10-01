@@ -164,8 +164,8 @@ return function(env)
 		-- sitting on the border. Both axes are one padding on the body row now, the bar
 		-- shares the horizontal one, and the gutter is only as wide as its digits plus the
 		-- gap to the code.
-		local padY = theme.space.md
-		local padX = theme.space.lg
+		local padY = responsive.isMobile() and theme.space.sm or theme.space.md
+		local padX = responsive.isMobile() and theme.space.sm or theme.space.lg
 
 		local card = P.column(parent, {
 			name = "Code",
@@ -195,7 +195,7 @@ return function(env)
 			padding = { left = padX, right = theme.space.xs },
 			layoutOrder = 1,
 		})
-		P.text(bar, {
+		local language = P.text(bar, {
 			name = "Language",
 			text = (props.label and (props.label .. " · ") or "")
 				.. (props.lang and props.lang:lower() or "code") .. (props.unterminated and " (incomplete)" or ""),
@@ -206,11 +206,12 @@ return function(env)
 			-- twelve pixels short on exactly the platform the minimum exists for.
 			size = UDim2.new(0, 0, 1, 0),
 			flex = "Fill",
+			truncate = true,
 			layoutOrder = 1,
 		})
 		-- What is in the block, on the right of its own bar. A line count is the one
 		-- fact about a block of code that is worth reading before the code itself.
-		P.text(bar, {
+		local meta = P.text(bar, {
 			name = "Meta",
 			text = props.meta or util.pluralise(#lines, "line"),
 			role = "caption",
@@ -220,8 +221,9 @@ return function(env)
 			layoutOrder = 2,
 		})
 
+		local copy
 		if caps.clipboard then
-			local copy = P.button(bar, {
+			copy = P.button(bar, {
 				name = "Copy",
 				icon = "copy",
 				text = "Copy",
@@ -242,6 +244,15 @@ return function(env)
 			})
 			copy.instance.LayoutOrder = 3
 		end
+		local function fitBar()
+			local copyWidth = copy and math.max(copy.instance.AbsoluteSize.X, responsive.minTarget()) or 0
+			local wanted = math.min(theme.size.keyColumn, P.measureText(language.Text, { role = "caption" }).X)
+				+ P.measureText(meta.Text, { role = "caption" }).X + copyWidth + padX + theme.space.xs * 3
+			meta.Visible = bar.AbsoluteSize.X >= wanted
+		end
+		bar:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitBar)
+		if copy then copy.instance:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitBar) end
+		fitBar()
 
 		-- Body. The gutter is outside the scroll so it stays put while the code moves,
 		-- which is the whole reason a sticky gutter is worth the extra frame.
@@ -337,7 +348,11 @@ return function(env)
 			end
 			local height = #shown * lineHeight
 			local fullHeight = height + padY * 2 + theme.size.scrollbar
-			local capHeight = math.max(lineHeight * 4, math.min(theme.size.codeViewport, responsive.viewport.Y * 0.45))
+			local mobile = responsive.isMobile()
+			local room = mobile and responsive.usableRect(env.root, 0).height or responsive.viewport.Y
+			local minHeight = mobile and (lineHeight * 2 + padY * 2 + theme.size.scrollbar) or lineHeight * 4
+			local capHeight = math.max(minHeight,
+				math.min(theme.size.codeViewport, room * 0.45))
 			local visibleHeight = math.min(fullHeight, capHeight)
 			bodyRow.Size = UDim2.new(1, 0, 0, visibleHeight)
 			bodyScroll.instance.Size = UDim2.new(1, 0, 0, visibleHeight)
@@ -889,8 +904,9 @@ return function(env)
 		local bodyRow = P.frame(card, { name = "Aside", size = UDim2.new(1, 0, 0, 0), layoutOrder = 2, visible = false })
 		P.frame(bodyRow, { name = "Rule", size = UDim2.new(0, theme.stroke.hair, 1, 0),
 			position = UDim2.fromOffset(theme.space.sm, 0), bg = theme.color.borderSubtle })
-		local viewport = P.scroll(bodyRow, { name = "ThoughtViewport", size = UDim2.new(1, -theme.space.xl, 0, 0),
-			position = UDim2.fromOffset(theme.space.xl, 0), gap = theme.space.sm,
+		local indent = responsive.isMobile() and theme.space.md or theme.space.xl
+		local viewport = P.scroll(bodyRow, { name = "ThoughtViewport", size = UDim2.new(1, -indent, 0, 0),
+			position = UDim2.fromOffset(indent, 0), gap = theme.space.sm,
 			padding = { right = theme.space.sm, y = theme.space.xxs } })
 		local body = P.text(viewport.instance, { name = "ThoughtText", text = markdown.inline(text), role = "small",
 			color = theme.color.textSecondary, rich = true, wrap = true, auto = "Y",
@@ -903,10 +919,11 @@ return function(env)
 			local width = math.max(1, viewport.instance.AbsoluteSize.X - theme.space.sm)
 			local measured = math.max(body.TextBounds.Y, body.AbsoluteSize.Y,
 				P.measureText(markdown.plain(text), { role = "small", width = width }).Y)
+			local room = responsive.isMobile() and responsive.usableRect(env.root, 0).height or responsive.viewport.Y
 			local height = math.min(math.max(theme.text.small.height, measured) + theme.space.xxs * 2,
-				math.max(theme.text.small.height * 2, math.min(theme.size.thinkingViewport, responsive.viewport.Y * 0.3)))
+				math.max(theme.text.small.height * 2, math.min(theme.size.thinkingViewport, room * 0.3)))
 			bodyRow.Size = UDim2.new(1, 0, 0, height)
-			viewport.instance.Size = UDim2.new(1, -theme.space.xl, 0, height)
+			viewport.instance.Size = UDim2.new(1, -indent, 0, height)
 			fitting = false
 		end
 		body:GetPropertyChangedSignal("TextBounds"):Connect(fit)

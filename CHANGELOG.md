@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.4.0 — October 1, 2026
+
+Mobile spacing, touch workflows, provider recovery, and community access.
+
+- Keep ordinary mobile typing in one compact composer row in either orientation;
+  expand explicitly for longer drafts. Reduce nested card, dialog, header and
+  navigation padding while preserving full touch targets. Return more space to
+  history results when a keyboard is open.
+- Keep Quick Chat drafts and selection through rotation; mobile Return inserts
+  a newline. Vertical swipes across sliders scroll the page without changing the
+  setting, and cancelled gestures release their input ownership.
+- Give mobile Code navigation and document selection dedicated pickers, retain
+  editing space above the keyboard, and adapt Find controls to narrow widths.
+  Settings categories retain their forms and scroll positions when revisited.
+- Tighten source-block and reasoning insets. Keep Copy reachable beside long
+  metadata, and resize nested code, table and reasoning viewports above keyboards.
+- Retry explicit unauthorized-client refusals from official OpenCode and
+  AgentRouter endpoints once through `puai-proxy.davidzk.tech`, then retain the
+  new Base URL. Requests and keys pass through the proxy, which has a shared
+  90,000-request daily limit. Invalid keys, unrelated errors and custom endpoints
+  do not cause a switch; cancellation and the request deadline still apply.
+- Offer an optional community HCNSEC key in provider setup, without replacing a
+  user's saved provider. Discover available models or enter an ID manually.
+- Add a Discord invitation after five minutes of use and an idle pause, at most
+  once per client load and every two weeks. It waits for a visible idle chat or
+  home screen, with no draft, keyboard, active request, reading position or other
+  dialog to interrupt. Not now keeps the cooldown; Don't show again or successful
+  Copy invite stops reminders. The menu remains available for manual access.
+
 ## 2.2.0 — October 1, 2026
 
 Modal polish, workspace cleanup, agent-named conversations, and donations.
