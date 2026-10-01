@@ -418,7 +418,7 @@ return function(env)
 			scroll.instance.CanvasPosition = Vector2.new(0, 0)
 			if mobile then
 				local setup = P.button(view.welcomeCard, { name = "MobileSetup", text = "Connect a provider", icon = "sliders",
-					variant = "secondary", layoutOrder = 5, onClick = function() env.require("ui/app").show("providers") end })
+					variant = "secondary", layoutOrder = 2, onClick = function() env.require("ui/app").show("providers") end })
 				setup.instance.Size = UDim2.new(1, 0, 0, responsive.minTarget())
 				local function syncSetup() setup.instance.Visible = providers.count() == 0 end
 				local unsubscribe = providers.changed:connect(syncSetup)

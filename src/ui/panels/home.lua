@@ -327,11 +327,75 @@ return function(env)
 		return holder
 	end
 
-	-- The card, and the greeting above it. `order` is the layout order inside whatever
-	-- column it is being dropped into -- the transcript, in practice.
+	-- Mobile starts with a short greeting and four compact actions. Activity opens
+	-- the existing Usage view instead of growing a dashboard inside the transcript.
+	local function mobileCard(parent, order, props)
+		local holder = P.column(parent, {
+			name = "Home", size = UDim2.new(1, 0, 0, 0), auto = "Y",
+			gap = theme.space.sm, padding = { bottom = theme.space.xs }, layoutOrder = order,
+		})
+		local heading = P.row(holder, {
+			name = "Greeting", size = UDim2.new(1, 0, 0, responsive.minTarget()),
+			gap = theme.space.sm, alignY = "Center", layoutOrder = 1,
+		})
+		P.text(heading, {
+			name = "GreetingText", text = "What will we create?", role = "title",
+			size = UDim2.new(0, 0, 0, theme.text.title.height), flex = "Fill", truncate = true,
+			layoutOrder = 1,
+		})
+		if config.get("ui.showActivity", true) == true then
+			P.button(heading, {
+				name = "ToggleActivity", text = "Activity", variant = "ghost", size = "sm",
+				tight = true, layoutOrder = 2,
+				onClick = function() env.require("ui/app").showSettingsDialog("usage") end,
+			})
+		end
+		if not props.onInsert then return holder end
+		local grid = P.frame(holder, {
+			name = "PromptStarters", size = UDim2.new(1, 0, 0, 0), layoutOrder = 3,
+		})
+		local cards, minWidth = {}, 0
+		for index, entry in ipairs(env.require("ui/chat/prompts").items) do
+			local label = entry.mobileLabel or entry.label
+			minWidth = math.max(minWidth, P.measureText(label, { role = "small" }).X + theme.space.sm * 2)
+			local card = P.rowButton(grid, {
+				name = "Starter_" .. entry.id, size = UDim2.fromOffset(0, responsive.minTarget()),
+				bg = theme.color.surfaceRaised, radius = theme.radius.md, stroke = true,
+				padding = { x = theme.space.sm }, alignY = "Center",
+				onClick = function() props.onInsert(entry.text) end,
+			})
+			P.text(card.row, {
+				text = label, role = "small", size = UDim2.new(0, 0, 0, theme.text.small.height),
+				flex = "Fill", truncate = true,
+			})
+			cards[index] = card.instance
+		end
+		local function fitStarters()
+			if not holder.Parent then return end
+			local gap = theme.space.xs
+			local columns = grid.AbsoluteSize.X >= minWidth * 2 + gap and 2 or 1
+			local height = math.max(responsive.minTarget(), theme.text.small.height + theme.space.xs * 2)
+			heading.Size = UDim2.new(1, 0, 0, math.max(responsive.minTarget(), theme.text.title.height))
+			for index, card in ipairs(cards) do
+				local col = (index - 1) % columns
+				local row = math.floor((index - 1) / columns)
+				card.Size = UDim2.new(1 / columns, -gap * (columns - 1) / columns, 0, height)
+				card.Position = UDim2.new(col / columns, col * gap / columns, 0, row * (height + gap))
+			end
+			grid.Size = UDim2.new(1, 0, 0, math.ceil(#cards / columns) * (height + gap) - gap)
+		end
+		grid:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitStarters)
+		local unsubscribe = responsive.changed:connect(fitStarters)
+		holder.Destroying:Connect(function() pcall(unsubscribe) end)
+		fitStarters()
+		return holder
+	end
+
+	-- The desktop card keeps the centered greeting and optional activity dashboard.
 	function M.card(parent, order, props)
 		props = props or {}
 		local mobile = responsive.isMobile()
+		if mobile then return mobileCard(parent, order, props) end
 		local name = "there"
 		local okName, display = pcall(function()
 			return env.plr and env.plr.DisplayName

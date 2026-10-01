@@ -335,15 +335,13 @@ return function(env)
 	function M.geometry()
 		local width, height = M.viewport.X, M.viewport.Y
 		if M.isMobile() then
-			-- Keep game space around the panel, with enough reading room on a phone.
-			-- Landscape is the primary touch layout, so it gets a wider column and more
-			-- height than before: the old 0.6x0.82 panel wrapped prose hard and showed
-			-- only a few lines at a time. Expand stays an explicit, reversible action,
-			-- and the keyboard/clamp logic still bounds this to the usable area.
+			-- Give touch layouts room for the conversation and provider controls. The
+			-- window still clamps this preferred size to its safe area and keyboard,
+			-- and keeps saved placement separate for each orientation.
 			local portrait = M.orientation == "portrait"
 			return {
-				width = math.floor(math.min(width * (portrait and 0.96 or 0.66), portrait and 600 or 620)),
-				height = math.floor(math.min(height * (portrait and 0.78 or 0.88), portrait and 700 or 740)),
+				width = math.floor(math.min(width * (portrait and 0.96 or 0.9), portrait and 640 or 900)),
+				height = math.floor(math.min(height * (portrait and 0.86 or 0.92), 900)),
 				anchored = portrait and "bottom" or "right",
 			}
 		end

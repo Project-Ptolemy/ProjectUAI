@@ -253,7 +253,8 @@ scenario("touch composer keeps its input, toolbar, and targets separated", funct
 	end
 	check("touch composer stays compact", composer.shell.Size.Y.Offset <= 80)
 	composer.setExpanded(true)
-	check("expanded touch input remains above toolbar", composer.field.shell.Size.Y.Offset <= toolbar.Position.Y.Offset)
+	check("expanded touch input keeps its controls on the same row",
+		toolbar.Parent == harness.byName("InputRow", composer.shell) and toolbar.Position.Y.Offset >= 0)
 	harness.services.UserInputService.OnScreenKeyboardVisible = true
 	harness.services.UserInputService.OnScreenKeyboardSize = harness.dt.Vector2.new(390, 300)
 	handle.env.require("ui/responsive").refresh("keyboard")

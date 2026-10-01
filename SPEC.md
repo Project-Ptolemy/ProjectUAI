@@ -740,8 +740,9 @@ device, 28px with a pointer, 48px on a console. Navigation is reachable in every
 mode: the sidebar in `window`, the app menu in the header everywhere else.
 
 Mobile chrome trims padding rather than touch targets: at default density its
-header is 48px and its collapsed composer is 56px. The welcome view uses compact
-prompt rows and omits the large decorative mark and subtitle. Desktop chrome and
+header and collapsed composer are each 48px. The welcome view uses a short heading,
+two-column text starters and an Activity shortcut; provider setup precedes the
+starters when needed. Desktop chrome and
 spacing retain their existing dimensions. Mobile resize uses a bottom-corner grip
 as on desktop; a separate header expand action toggles the maximised size and
 position. In short keyboard space, multiline input uses one compact row
@@ -768,13 +769,16 @@ disables reminders. Manual menu access stays available. UI-free boot schedules
 nothing; screen destruction and runtime disposal release the watcher.
 
 Landscape is the primary touch layout. Ordinary typing stays in the compact
-composer, and explicit expansion provides more draft space. Mobile Enter inserts
+composer, and explicit expansion grows only the draft beside the same controls,
+bounded by the available height. Context details open in a menu. Mobile Enter inserts
 a newline; only Send submits. Attachments occupy one horizontal scroll row, with
 management available from Message options when keyboard space hides their preview.
 Rotation relays out existing mobile views without replacing their text fields,
 selections or live forms. Mobile navigation pins conversation search above a
-scrollable history, opens conversations directly, and separates history actions
-from opening. Short keyboard layouts return footer space to the results. Settings
+full-width history, with workspace destinations on a separate Menu page. A
+conversation opens directly; its separate action menu handles rename, move and
+delete. New chat shares the folder row, which moves below results in short
+keyboard layouts. Settings
 use a category picker with the full width available to the active form. The mobile
 launcher is visible only while the main window is minimized.
 
@@ -792,6 +796,13 @@ landscape modes are both `panel`. A forced mobile `window` layout still uses mob
 geometry. Keyboard positioning uses the reported top edge when available, and
 focused mobile fields are revealed through their scrolling ancestors. Desktop
 geometry and pointer layouts retain their existing behavior.
+
+Mobile windows use wider defaults and a density-scaled 560px minimum width,
+clamped to the usable viewport even when restoring older narrow placements.
+Mobile panel bodies use the full window width. Providers lead with model, masked
+key and connection actions; long status facts and advanced settings expand in
+flat sections. In short mobile layouts the provider selector joins the detail
+scroll region so it cannot crowd out the focused form.
 
 When a mobile keyboard leaves too little height for a form, its footer actions
 join the body scroll region at their full touch size. Dismissal remains available;

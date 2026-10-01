@@ -339,6 +339,8 @@ return function(env)
 		modal = 380,
 		modalWide = 480,
 		modalMin = 260,
+		-- Readable mobile window width, clamped to the device's safe area.
+		mobilePanelMin = 560,
 		-- The reading column. Past roughly this width a line of prose becomes a single
 		-- sentence a foot long, which is unreadable however correct the layout is.
 		-- Overridden by the transcript-width setting, which is why the three widths it
