@@ -1,7 +1,8 @@
 # Project UAI UI LIB
 
-A standalone Roblox interface library for script-owned tools. It follows Project
-UAI's warm surfaces, cream primary actions, coral accent, and restrained typography.
+A standalone Roblox interface library for script-owned tools. Its workbench uses
+graphite or porcelain surfaces, an inset workspace, strong tab headings, cream
+primary actions in Dark mode, and Project UAI's warm coral accent.
 It does not replace or redesign the agent client's interface.
 
 The source is [ui-lib/](../ui-lib/), the public artifact is
@@ -250,6 +251,15 @@ the interface with UIScale. Navigation becomes a horizontal scrolling tab strip.
 On desktop, controls use a 40-pixel target, increasing with text scale.
 Rows stack their value below the label when space is tight.
 
+The visual refresh keeps the v1 constructors, methods, callbacks and configuration
+format compatible. Existing scripts receive the new appearance without changing
+their declarations. Each tab has a heading and a live control/section count; these
+scroll with the content so they do not take space from short keyboard layouts.
+Search updates the count and keeps its empty state clear. Sections use rounded
+surfaces, fields use inset backgrounds, and selected choices have an accent edge.
+Focus and validation states survive theme changes. Text remains native, with
+entrance motion settling to an exact scale of 1.
+
 `window:Tab({ Id?, Title })` creates a text-only tab. Legacy `Icon` options
 are ignored, and consumer scripts must not supply new icons. `tab:Select()`, `tab:SetVisible(bool)`,
 and `tab:Destroy()` manage it.
@@ -273,7 +283,8 @@ hover brightens them and gamepad selection adds a focus outline. The desktop
 resize grip stays in the bottom-right corner. Each window has independent theme and state. The footer
 remains pinned outside scrolling content. The sidebar profile stays below the
 scrolling tabs; compact and short layouts use the horizontal tabs and omit the
-profile to preserve room for controls. `GameName` overrides the automatic game
+profile to preserve room for controls. The profile places the game name on its
+own full-width line. `GameName` overrides the automatic game
 lookup when the script already knows its display name.
 
 Transitions cover window/tab entrances, controls, pickers, and notifications.

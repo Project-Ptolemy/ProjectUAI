@@ -55,11 +55,11 @@ return function(env)
 			assert(C.finite(value.alpha) and value.alpha >= 0 and value.alpha <= 1, "Invalid alpha")
 			return self._normalize({ Color = Color3.new(value.rgb[1], value.rgb[2], value.rgb[3]), Alpha = value.alpha })
 		end
-		local button, label, refresh = Controls.action(self, "")
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "ColorPicker"
 		label.Size, label.Position, label.TextXAlignment = UDim2.new(1, -48, 1, 0), UDim2.fromOffset(40, 0), Enum.TextXAlignment.Left
 		local swatch = C.node(self, "Frame", button, { Name = "Swatch", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5) })
-		C.corner(swatch, 4); C.stroke(self, swatch)
+		C.corner(swatch, 7); C.stroke(self, swatch, "Edge")
 		self._render = function()
 			label.Text = hex(self._value.Color)
 			swatch.BackgroundColor3, swatch.BackgroundTransparency = self._value.Color, 1 - self._value.Alpha
@@ -73,7 +73,7 @@ return function(env)
 			local painting, invalid, pending = false, false, nil
 			local fields = {}
 			local sv = C.node(panel, "TextButton", panel.Body, { Name = "SaturationBrightness", Size = UDim2.new(1, 0, 0, 200), ClipsDescendants = true, LayoutOrder = 0 })
-			C.corner(sv, 6)
+			C.corner(sv, 12)
 			local saturationLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1) })
 			C.node(panel, "UIGradient", saturationLayer, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
 			local valueLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0) })
@@ -93,27 +93,27 @@ return function(env)
 			C.text(panel, sample, "Current", "Caption", "Muted", { Size = UDim2.new(0.5, -4, 0, 20) })
 			C.text(panel, sample, "New", "Caption", "Muted", { Position = UDim2.new(0.5, 4, 0, 0), Size = UDim2.new(0.5, -4, 0, 20) })
 			local oldColor = C.node(panel, "Frame", sample, { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(0.5, -4, 0, 30), BackgroundColor3 = self._value.Color, BackgroundTransparency = 1 - self._value.Alpha })
-			C.corner(oldColor, 5)
+			C.corner(oldColor, 8)
 			local newColor = C.node(panel, "Frame", sample, { Position = UDim2.new(0.5, 4, 0, 24), Size = UDim2.new(0.5, -4, 0, 30) })
-			C.corner(newColor, 5)
-			local hexField = C.node(panel, "TextBox", panel.Body, { Name = "Hex", Text = hex(draft), PlaceholderText = "#RRGGBB", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 3 }, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted" })
-			C.corner(hexField); C.stroke(panel, hexField)
+			C.corner(newColor, 8)
+			local hexField = C.node(panel, "TextBox", panel.Body, { Name = "Hex", Text = hex(draft), PlaceholderText = "#RRGGBB", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 3 }, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted" })
+			C.corner(hexField); C.fieldBorder(panel, hexField)
 			C.bind(panel, hexField, { TextSize = function() return 14 * self._window.TextScale end })
 			local rgb = C.node(panel, "Frame", panel.Body, { Name = "RGB", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, self._window.Target + 22), LayoutOrder = 4 })
 			for index, name in ipairs({ "R", "G", "B" }) do
 				local cell = C.node(panel, "Frame", rgb, { BackgroundTransparency = 1, Position = UDim2.new((index - 1) / 3, (index - 1) * 3, 0, 0), Size = UDim2.new(1 / 3, -6, 1, 0) })
 				C.text(panel, cell, name, "Caption", "Muted", { Size = UDim2.new(1, 0, 0, 18) })
-				fields[index] = C.node(panel, "TextBox", cell, { Name = name, Text = "", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, self._window.Target) }, { BackgroundColor3 = "Raised", TextColor3 = "Text" })
-				C.corner(fields[index]); C.stroke(panel, fields[index])
+				fields[index] = C.node(panel, "TextBox", cell, { Name = name, Text = "", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, self._window.Target) }, { BackgroundColor3 = "Input", TextColor3 = "Text" })
+				C.corner(fields[index]); C.fieldBorder(panel, fields[index])
 				C.bind(panel, fields[index], { TextSize = function() return 14 * self._window.TextScale end })
 			end
 			local alphaFill, alphaLabel, alphaTrack, alphaHit
 			if showAlpha then
 				alphaHit = C.node(panel, "TextButton", panel.Body, { Name = "Alpha", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, self._window.Target + 18), LayoutOrder = 5 })
 				alphaLabel = C.text(panel, alphaHit, "", "Caption", "Secondary", { Size = UDim2.new(1, 0, 0, 18) })
-				alphaTrack = C.node(panel, "Frame", alphaHit, { Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 4) }, { BackgroundColor3 = "Border" })
+				alphaTrack = C.node(panel, "Frame", alphaHit, { Position = UDim2.fromOffset(0, 35), Size = UDim2.new(1, 0, 0, 6) }, { BackgroundColor3 = "Track" })
 				alphaFill = C.node(panel, "Frame", alphaTrack, { Size = UDim2.fromScale(alpha, 1) }, { BackgroundColor3 = "Accent" })
-				C.corner(alphaTrack, 2); C.corner(alphaFill, 2)
+				C.corner(alphaTrack, 3); C.corner(alphaFill, 3)
 			end
 			local errorLabel = C.text(panel, panel.Body, "", "Caption", "Danger", { Name = "Validation", Size = UDim2.new(1, 0, 0, 34), Visible = false, LayoutOrder = 6 })
 			local function render()

@@ -1,6 +1,7 @@
 # Project UAI UI LIB
 
-An independent, responsive Roblox UI library with Project UAI's visual language.
+An independent, responsive Roblox UI library with a graphite-and-porcelain
+workbench, inset fields, strong typography, and Project UAI's coral accent.
 
 ```lua
 local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua"))()
@@ -22,6 +23,11 @@ The library owns layout, input, state, cleanup, and the permanent
 draws its own brand mark and window-control glyphs. A pinned sidebar profile shows
 the local player and game; Roblox supplies the headshot. Owned transitions support
 reduced motion. Scripts own application logic.
+
+The visual refresh preserves the v1 API and saved configuration format. Existing
+scripts receive the updated window, navigation, controls, pickers and dialogs
+without migration. Tab headings and live counts scroll with the content; the
+window keeps its touch targets and keyboard-safe layout.
 
 Use the library independently for a script UI, or pass it into a view factory
 alongside a live UAI client. `Parent` chooses the owned ScreenGui's parent; it

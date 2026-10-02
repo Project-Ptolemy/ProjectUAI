@@ -152,6 +152,23 @@ return function(env)
 		local node = M.node(owner, "UIStroke", parent, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, { Color = color or "Border" })
 		return node
 	end
+	function M.fieldBorder(owner, field, invalid)
+		local editing = false
+		local border = M.stroke(owner, field, "Edge")
+		local function color(theme)
+			if invalid and invalid() then return theme.Danger end
+			return editing and theme.Accent or theme.Edge
+		end
+		M.bind(owner, border, { Color = color })
+		local function refresh()
+			if not owner._scope.alive then return end
+			border.Thickness = editing and 2 or 1
+			env.require("motion").to(owner, border, { Color = color(owner._window.Theme) })
+		end
+		owner._scope:Connect(field.Focused, function() editing = true; refresh() end)
+		owner._scope:Connect(field.FocusLost, function() editing = false; refresh() end)
+		return border, refresh
+	end
 	function M.pad(parent, x, y)
 		local node = Instance.new("UIPadding")
 		node.PaddingLeft, node.PaddingRight = UDim.new(0, x), UDim.new(0, x)
@@ -167,13 +184,13 @@ return function(env)
 		node.Parent = parent
 		return node
 	end
-	local font, strong = Enum.Font.Gotham, Enum.Font.GothamMedium
-	pcall(function() font, strong = Enum.Font.BuilderSans, Enum.Font.BuilderSansMedium end)
+	local font, strong, display = Enum.Font.Gotham, Enum.Font.GothamMedium, Enum.Font.GothamBold
+	pcall(function() font, strong, display = Enum.Font.BuilderSans, Enum.Font.BuilderSansMedium, Enum.Font.BuilderSansBold end)
 	M.Font = font
 	function M.text(owner, parent, text, role, color, props)
 		local config = {
 			BackgroundTransparency = 1, Text = tostring(text or ""), RichText = false,
-			Font = (role == "Title" or role == "Heading") and strong or font,
+			Font = role == "Display" and display or (role == "Title" or role == "Heading" or role == "Eyebrow") and strong or font,
 			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
 			TextWrapped = true, TextSize = tokens.Type[role or "Body"] or tokens.Type.Body,
 			Size = UDim2.new(1, 0, 0, 20),
@@ -185,14 +202,14 @@ return function(env)
 		})
 		pcall(function()
 			local base = Font.fromEnum(config.Font)
-			node.FontFace = Font.new(base.Family, (role == "Title" or role == "Heading") and Enum.FontWeight.Medium or Enum.FontWeight.Regular)
+			node.FontFace = Font.new(base.Family, role == "Display" and Enum.FontWeight.Bold or (role == "Title" or role == "Heading" or role == "Eyebrow") and Enum.FontWeight.Medium or Enum.FontWeight.Regular)
 		end)
 		return node
 	end
-	function M.measure(text, size, width)
+	function M.measure(text, size, width, textFont)
 		width = math.max(1, width)
 		local ok, bounds = pcall(function()
-			return env.services.TextService:GetTextSize(tostring(text), size, font, Vector2.new(width, 100000))
+			return env.services.TextService:GetTextSize(tostring(text), size, textFont or font, Vector2.new(width, 100000))
 		end)
 		return ok and math.ceil(bounds.Y) or math.ceil(math.max(1, #tostring(text) * size * 0.55 / width)) * math.ceil(size * 1.3)
 	end
@@ -268,11 +285,17 @@ return function(env)
 		local stroke = M.node(owner, "UIStroke", button, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
 		local function paint(theme)
 			local active = not enabled or enabled()
-			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Subtle
+			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Edge
 			stroke.Thickness = selected and 2 or 1
-			if style == "Primary" then return active and theme.Primary or theme.Raised end
-			if style == "Danger" then return active and theme.Danger or theme.Raised end
-			return active and pressed and theme.Pressed or active and hovered and theme.Hover or theme.Raised
+			stroke.Transparency = (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
+			if style == "Primary" or style == "Danger" then
+				if not active then return theme.Raised end
+				local base = style == "Primary" and theme.Primary or theme.Danger
+				if pressed then return base:Lerp(theme.OnPrimary, 0.16) end
+				if hovered then return base:Lerp(style == "Primary" and theme.Accent or theme.Text, 0.1) end
+				return base
+			end
+			return active and pressed and theme.Pressed or active and hovered and theme.Hover or style == "Field" and theme.Input or theme.Raised
 		end
 		M.bind(owner, button, { BackgroundColor3 = paint })
 		local function refresh()
@@ -289,6 +312,30 @@ return function(env)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
 				or input.KeyCode == Enum.KeyCode.ButtonA or input.KeyCode == Enum.KeyCode.Return then pressed = true; refresh() end
 		end)
+		return refresh
+	end
+	-- Choice rows share a stateful focus/hover treatment without changing values.
+	function M.selection(owner, button, chosen, enabled)
+		local hovered, focused = false, false
+		local edge = M.stroke(owner, button, "Accent")
+		local function background(theme)
+			if chosen() then return theme.Selected end
+			return hovered and (not enabled or enabled()) and theme.Hover or theme.Input
+		end
+		local function opacity()
+			return focused and 0 or chosen() and 0.6 or 1
+		end
+		M.bind(owner, button, { BackgroundColor3 = background })
+		M.bind(owner, edge, { Transparency = opacity })
+		local function refresh()
+			local motion = env.require("motion")
+			motion.to(owner, button, { BackgroundColor3 = background(owner._window.Theme) })
+			motion.to(owner, edge, { Transparency = opacity() })
+		end
+		owner._scope:Connect(button.MouseEnter, function() hovered = true; refresh() end)
+		owner._scope:Connect(button.MouseLeave, function() hovered = false; refresh() end)
+		owner._scope:Connect(button.SelectionGained, function() focused = true; refresh() end)
+		owner._scope:Connect(button.SelectionLost, function() focused = false; refresh() end)
 		return refresh
 	end
 	function M.releaseFocus(window, root)
@@ -371,8 +418,7 @@ return function(env)
 		local footer = M.node(owner, "Frame", parent, {
 			Name = "ProjectUAI_Footer", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 			Size = UDim2.new(1, 0, 0, tokens.Size.Footer),
-		}, { BackgroundColor3 = "Sidebar" })
-		M.node(owner, "Frame", footer, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
+		}, { BackgroundColor3 = "Chrome" })
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
 			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
 		})

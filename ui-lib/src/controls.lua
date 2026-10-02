@@ -80,6 +80,7 @@ return function(env)
 		self._scope:Destroy()
 		self._listeners = {}
 		self.Frame:Destroy()
+		if self._window.Alive then self._window:_Filter() end
 	end
 	function M.base(section, kind, options, mode, slotWidth)
 		assert(section.Alive and section._window.Alive, "Section is destroyed")
@@ -103,7 +104,7 @@ return function(env)
 		})
 		self._scope:Connect(self.Frame.Destroying, function() self:Destroy() end)
 		if #section.Controls > 0 then
-			C.node(self, "Frame", self.Frame, { Name = "RowRule", Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
+			C.node(self, "Frame", self.Frame, { Name = "RowRule", BackgroundTransparency = 0.35, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		end
 		self._label = C.text(self, self.Frame, self.Text, "Body", "Text", { Name = "Label", TextYAlignment = Enum.TextYAlignment.Top })
 		C.bind(self, self._label, { TextColor3 = function(theme) return self.Disabled and theme.Muted or theme.Text end })
@@ -189,20 +190,21 @@ return function(env)
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Toggle", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 		local track = C.node(self, "Frame", hit, {
 			Name = "Track", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(checkbox and 44 or 38, 22),
+			Size = UDim2.fromOffset(checkbox and 44 or 46, 26),
 		})
-		C.corner(track, checkbox and 5 or 11)
-		C.stroke(self, track)
-		C.bind(self, track, { BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Raised end })
+		C.corner(track, checkbox and 8 or 13)
+		local edge = C.stroke(self, track, "Edge")
+		C.bind(self, edge, { Color = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Edge end })
+		C.bind(self, track, { BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Input end })
 		local thumb
 		if checkbox then
 			thumb = C.text(self, track, "Off", "Small", "Secondary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 			C.bind(self, thumb, { TextColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end })
 		else
-			thumb = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(16, 16) }, {
+			thumb = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(18, 18) }, {
 				BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end,
 			})
-			C.corner(thumb, 8)
+			C.corner(thumb, 9)
 		end
 		local initialized = false
 		self._render = function()
@@ -211,10 +213,11 @@ return function(env)
 				thumb.Text = self._value and "On" or "Off"
 				motion.to(self, thumb, { TextColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			else
-				motion.to(self, thumb, { Position = UDim2.new(0, self._value and 19 or 3, 0.5, 0),
+				motion.to(self, thumb, { Position = UDim2.new(0, self._value and 24 or 4, 0.5, 0),
 					BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			end
-			motion.to(self, track, { BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Raised }, duration)
+			motion.to(self, track, { BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Input }, duration)
+			motion.to(self, edge, { Color = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Edge }, duration)
 			initialized = true
 		end
 		local focus = C.stroke(self, hit, "Accent")
@@ -242,18 +245,21 @@ return function(env)
 			return tonumber(string.format("%.10g", result))
 		end
 		self._value = self._normalize(options.Default == nil and minimum or options.Default)
-		local value = C.text(self, self.Frame, "", "Caption", "Secondary", { Name = "Readout", TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local value = C.text(self, self.Frame, "", "Caption", "Text", { Name = "Readout", BackgroundTransparency = 0, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.bind(self, value, { BackgroundColor3 = "Input" }); C.corner(value, 6); C.pad(value, 6, 0)
 		self._afterLayout = function(width)
 			value.Position = UDim2.new(1, -112, 0, 14)
 			value.Size = UDim2.fromOffset(96, 20 * self._window.TextScale)
 		end
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Slider", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-		local track = C.node(self, "Frame", hit, { Name = "Track", Position = UDim2.new(0, 8, 0.5, -2), Size = UDim2.new(1, -16, 0, 4) }, { BackgroundColor3 = "Border" })
-		C.corner(track, 2)
+		local track = C.node(self, "Frame", hit, { Name = "Track", Position = UDim2.new(0, 10, 0.5, -3), Size = UDim2.new(1, -20, 0, 6) }, { BackgroundColor3 = "Track" })
+		C.corner(track, 3)
 		local fill = C.node(self, "Frame", track, { Name = "Fill", Size = UDim2.fromScale(0, 1) }, { BackgroundColor3 = function(theme) return self.Disabled and theme.Muted or theme.Accent end })
-		C.corner(fill, 2)
-		local knob = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(16, 16), Position = UDim2.fromScale(0, 0.5) }, { BackgroundColor3 = "Text" })
-		C.corner(knob, 8); C.stroke(self, knob, "Subtle")
+		C.corner(fill, 3)
+		local knob = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(18, 18), Position = UDim2.fromScale(0, 0.5) }, { BackgroundColor3 = "Primary" })
+		C.corner(knob, 9); C.stroke(self, knob, "Edge")
+		local centre = C.node(self, "Frame", knob, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(4, 4) }, { BackgroundColor3 = "OnPrimary" })
+		C.corner(centre, 2)
 		local focus = C.stroke(self, hit, "Accent"); focus.Transparency = 1; C.corner(hit)
 		self._scope:Connect(hit.SelectionGained, function() focus.Transparency = 0 end)
 		self._scope:Connect(hit.SelectionLost, function() focus.Transparency = 1 end)
@@ -310,11 +316,11 @@ return function(env)
 			TextXAlignment = Enum.TextXAlignment.Left, MultiLine = options.MultiLine == true,
 			TextWrapped = options.MultiLine == true, TextYAlignment = options.MultiLine and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		})
-		C.bind(self, field, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self._window.TextScale end })
+		C.bind(self, field, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self._window.TextScale + 0.5) end })
 		C.corner(field); C.pad(field, 12, options.MultiLine and 10 or 0)
-		local border = C.stroke(self, field)
+		local border, refreshBorder = C.fieldBorder(self, field, function() return self._error ~= nil end)
 		local errorLabel = C.text(self, self._slot, "", "Caption", "Danger", { Name = "Validation", Visible = false })
-		local editing, painting = false, false
+		local painting = false
 		self._error = nil
 		self._slotHeight = function() return self._window.Target * (options.MultiLine and C.number(options.Lines, 3, 2, 8) or 1) + (self._error and 24 or 0) end
 		self._afterLayout = function(_, height)
@@ -324,7 +330,7 @@ return function(env)
 		self._render = function(preserveDraft)
 			if not preserveDraft then painting = true; field.Text = tostring(self._value); painting = false end
 			self._error, errorLabel.Visible = nil, false
-			border.Color = editing and self._window.Theme.Accent or self._window.Theme.Border
+			refreshBorder()
 			self._layout()
 		end
 		local function commit(live)
@@ -334,6 +340,7 @@ return function(env)
 			if not ok then
 				self._error = options.Numeric and "Enter a valid number." or tostring(value)
 				errorLabel.Text, errorLabel.Visible, border.Color = self._error, true, self._window.Theme.Danger
+				refreshBorder()
 				self._layout()
 				return
 			end
@@ -347,11 +354,9 @@ return function(env)
 			else self:Set(value) end
 			if self.Alive then C.call(self._window, options.OnCommit, self:Get()) end
 		end
-		self._scope:Connect(field.Focused, function() editing = true; border.Color = self._window.Theme.Accent end)
 		self._scope:Connect(field.FocusLost, function()
-			editing = false
 			commit()
-			if self.Alive then border.Color = self._error and self._window.Theme.Danger or self._window.Theme.Border end
+			refreshBorder()
 		end)
 		self._scope:Connect(field:GetPropertyChangedSignal("Text"), function()
 			if painting then return end
@@ -381,8 +386,9 @@ return function(env)
 		local self = M.base(section, "Badge", options, "inline", 120)
 		self._normalize = function(value) assert(type(value) == "string", "Badge value must be a string"); return value end
 		self._value = self._normalize(options.Default or options.Value or "Ready")
-		local badge = C.node(self, "Frame", self._slot, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(1, 0, 0, 28) }, { BackgroundColor3 = "Raised" })
-		C.corner(badge, 5)
+		local tone = options.Kind or "Secondary"
+		local badge = C.node(self, "Frame", self._slot, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(1, 0, 0, 28) }, { BackgroundColor3 = function(theme) return theme.Surface:Lerp(theme[tone], 0.12) end })
+		C.corner(badge, 14)
 		self._afterLayout = function(width)
 			badge.AnchorPoint = Vector2.new(self._stacked and 0 or 1, 0.5)
 			badge.Position = UDim2.fromScale(self._stacked and 0 or 1, 0.5)
@@ -400,10 +406,10 @@ return function(env)
 		self._normalize = function(value) assert(C.finite(value), "Progress expects a finite number"); return C.clamp(value, minimum, maximum) end
 		self._value = self._normalize(options.Default or options.Value or minimum)
 		self._slotHeight = function() return 12 end
-		local track = C.node(self, "Frame", self._slot, { Size = UDim2.new(1, 0, 0, 4), Position = UDim2.fromOffset(0, 4) }, { BackgroundColor3 = "Border" })
-		C.corner(track, 2)
+		local track = C.node(self, "Frame", self._slot, { Size = UDim2.new(1, 0, 0, 8), Position = UDim2.fromOffset(0, 2) }, { BackgroundColor3 = "Track" })
+		C.corner(track, 4)
 		local fill = C.node(self, "Frame", track, { Size = UDim2.fromScale(0, 1) }, { BackgroundColor3 = "Accent" })
-		C.corner(fill, 2)
+		C.corner(fill, 4)
 		local value = C.text(self, self.Frame, "", "Caption", "Secondary", { Position = UDim2.new(1, -96, 0, 14), Size = UDim2.fromOffset(80, 20), TextXAlignment = Enum.TextXAlignment.Right })
 		self._labelReserve = 96
 		self._render = function()

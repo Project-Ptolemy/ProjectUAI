@@ -124,7 +124,7 @@ return function(env)
 	function M.Dropdown(section, options)
 		local self = Controls.base(section, "Dropdown", options, "stack")
 		configure(self, options)
-		local button, label, refresh = Controls.action(self, "", nil)
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "Dropdown"
 		label.TextXAlignment, label.Size = Enum.TextXAlignment.Left, UDim2.new(1, -96, 1, 0)
 		label.Position = UDim2.fromOffset(12, 0)
@@ -170,17 +170,16 @@ return function(env)
 			local search = C.node(panel, "TextBox", panel.Body, {
 				Name = "SearchOptions", Text = "", PlaceholderText = "Search options", Font = C.Font, TextSize = 14,
 				ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 0,
-			}, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self._window.TextScale end })
-			C.corner(search); C.pad(search, 12, 0); C.stroke(panel, search)
+			}, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self._window.TextScale + 0.5) end })
+			C.corner(search); C.pad(search, 12, 0); C.fieldBorder(panel, search)
 			search.Visible = options.Searchable ~= false
 			local rows = {}
 			for index, option in ipairs(self.Options) do
 				local row = C.node(panel, "TextButton", panel.Body, { Name = "Option_" .. index, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = index, Selectable = not option.Disabled })
 				C.corner(row)
-				C.bind(panel, row, { BackgroundColor3 = function(theme)
-					local selected = self.Multi and has(self._value, option.Value) or (not self.Multi and self._value == option.Value)
-					return selected and theme.Selected or theme.Surface
-				end })
+				local refreshRow = C.selection(panel, row, function()
+					return self.Multi and has(self._value, option.Value) or (not self.Multi and self._value == option.Value)
+				end, function() return not option.Disabled end)
 				local labelLeft = 12
 				if option.Image then
 					local rowAvatar = math.min(28, self._window.Target - 12)
@@ -195,7 +194,7 @@ return function(env)
 				})
 				local check = C.text(panel, row, "Selected", "Small", "Accent", { Size = UDim2.fromOffset(72, 24), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 				check.Position, check.AnchorPoint = UDim2.new(1, -12, 0.5, 0), Vector2.new(1, 0.5)
-				rows[#rows + 1] = { row = row, check = check, option = option, label = rowLabel, labelLeft = labelLeft }
+				rows[#rows + 1] = { row = row, check = check, option = option, label = rowLabel, labelLeft = labelLeft, refresh = refreshRow }
 				panel._scope:Connect(row.Activated, function()
 					if option.Disabled or not self.Alive then return end
 					if self.Multi then
@@ -229,7 +228,7 @@ return function(env)
 					if item.row.Visible then count = count + 1 end
 					local selected = self.Multi and has(self._value, item.option.Value) or (not self.Multi and self._value == item.option.Value)
 					item.check.Visible = selected
-					item.row.BackgroundColor3 = selected and self._window.Theme.Selected or self._window.Theme.Surface
+					item.refresh()
 				end
 				empty.Visible = count == 0
 				layoutRows()
@@ -276,23 +275,25 @@ return function(env)
 			for _, option in ipairs(self.Options) do if not option.Disabled then self._value = option.Value; break end end
 		end
 		local rows, childScope = {}, nil
+		C.bind(self, self._slot, { BackgroundColor3 = "Input" })
+		self._slot.BackgroundTransparency = 0
+		C.corner(self._slot, 12)
 		self._render = function()
 			for _, item in ipairs(rows) do
-				item.button.BackgroundColor3 = item.option.Value == self._value and self._window.Theme.Selected or self._window.Theme.Raised
-				item.stroke.Color = item.option.Value == self._value and self._window.Theme.Accent or self._window.Theme.Subtle
+				item.refresh()
 			end
 		end
 		self._slotHeight = function()
 			local width = math.max(1, self._window._contentWidth - self._window._contentPad * 2 - 32)
 			local columns = math.max(1, math.min(#rows, math.floor(width / (100 * self._window.TextScale))))
-			return math.ceil(#rows / columns) * (self._window.Target + 6) - 6
+			return math.ceil(#rows / columns) * (self._window.Target + 6) + 2
 		end
 		self._afterLayout = function(width)
 			local columns = math.max(1, math.min(#rows, math.floor(width / (100 * self._window.TextScale))))
-			local cellWidth = (width - (columns - 1) * 6) / columns
+			local cellWidth = (width - 8 - (columns - 1) * 6) / columns
 			for index, item in ipairs(rows) do
 				item.button.Size = UDim2.fromOffset(cellWidth, self._window.Target)
-				item.button.Position = UDim2.fromOffset(((index - 1) % columns) * (cellWidth + 6), math.floor((index - 1) / columns) * (self._window.Target + 6))
+				item.button.Position = UDim2.fromOffset(4 + ((index - 1) % columns) * (cellWidth + 6), 4 + math.floor((index - 1) / columns) * (self._window.Target + 6))
 			end
 		end
 		self._rebuild = function()
@@ -303,12 +304,10 @@ return function(env)
 			for index, option in ipairs(self.Options) do
 				local button = Controls.input(self, "TextButton", self._slot, { Name = "Segment_" .. index })
 				C.corner(button)
-				local stroke = C.stroke(childScope, button, "Subtle")
-				C.bind(childScope, button, { BackgroundColor3 = function(theme) return option.Value == self._value and theme.Selected or theme.Raised end })
-				C.bind(childScope, stroke, { Color = function(theme) return option.Value == self._value and theme.Accent or theme.Subtle end })
-				C.text(childScope, button, option.Label, "Body", option.Disabled and "Muted" or "Text", { Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
+				local refreshChoice = C.selection(childScope, button, function() return option.Value == self._value end, function() return not self.Disabled and not option.Disabled end)
+				C.text(childScope, button, option.Label, "Body", function(theme) return (self.Disabled or option.Disabled) and theme.Muted or theme.Text end, { Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
 				childScope._scope:Connect(button.Activated, function() if self:_Interactive() and not option.Disabled then self:Set(option.Value) end end)
-				rows[#rows + 1] = { button = button, stroke = stroke, option = option }
+				rows[#rows + 1] = { button = button, option = option, refresh = refreshChoice }
 			end
 			self._layout(); self._render(); self:SetDisabled(self.Disabled)
 		end
@@ -341,7 +340,7 @@ return function(env)
 		self._value = self._normalize(options.Default)
 		self._encode = function() return self._value and self._value.Name or false end
 		self._decode = self._normalize
-		local button, label, refresh = Controls.action(self, "")
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "Keybind"
 		local capture, pressed
 		self._render = function() label.Text = capture and "Press a key…" or (self._value and self._value.Name or "Not set"); refresh() end
@@ -475,11 +474,11 @@ return function(env)
 			assert(C.finite(value.alpha) and value.alpha >= 0 and value.alpha <= 1, "Invalid alpha")
 			return self._normalize({ Color = Color3.new(value.rgb[1], value.rgb[2], value.rgb[3]), Alpha = value.alpha })
 		end
-		local button, label, refresh = Controls.action(self, "")
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "ColorPicker"
 		label.Size, label.Position, label.TextXAlignment = UDim2.new(1, -48, 1, 0), UDim2.fromOffset(40, 0), Enum.TextXAlignment.Left
 		local swatch = C.node(self, "Frame", button, { Name = "Swatch", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(0, 10, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5) })
-		C.corner(swatch, 4); C.stroke(self, swatch)
+		C.corner(swatch, 7); C.stroke(self, swatch, "Edge")
 		self._render = function()
 			label.Text = hex(self._value.Color)
 			swatch.BackgroundColor3, swatch.BackgroundTransparency = self._value.Color, 1 - self._value.Alpha
@@ -493,7 +492,7 @@ return function(env)
 			local painting, invalid, pending = false, false, nil
 			local fields = {}
 			local sv = C.node(panel, "TextButton", panel.Body, { Name = "SaturationBrightness", Size = UDim2.new(1, 0, 0, 200), ClipsDescendants = true, LayoutOrder = 0 })
-			C.corner(sv, 6)
+			C.corner(sv, 12)
 			local saturationLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1) })
 			C.node(panel, "UIGradient", saturationLayer, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
 			local valueLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0) })
@@ -513,27 +512,27 @@ return function(env)
 			C.text(panel, sample, "Current", "Caption", "Muted", { Size = UDim2.new(0.5, -4, 0, 20) })
 			C.text(panel, sample, "New", "Caption", "Muted", { Position = UDim2.new(0.5, 4, 0, 0), Size = UDim2.new(0.5, -4, 0, 20) })
 			local oldColor = C.node(panel, "Frame", sample, { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(0.5, -4, 0, 30), BackgroundColor3 = self._value.Color, BackgroundTransparency = 1 - self._value.Alpha })
-			C.corner(oldColor, 5)
+			C.corner(oldColor, 8)
 			local newColor = C.node(panel, "Frame", sample, { Position = UDim2.new(0.5, 4, 0, 24), Size = UDim2.new(0.5, -4, 0, 30) })
-			C.corner(newColor, 5)
-			local hexField = C.node(panel, "TextBox", panel.Body, { Name = "Hex", Text = hex(draft), PlaceholderText = "#RRGGBB", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 3 }, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted" })
-			C.corner(hexField); C.stroke(panel, hexField)
+			C.corner(newColor, 8)
+			local hexField = C.node(panel, "TextBox", panel.Body, { Name = "Hex", Text = hex(draft), PlaceholderText = "#RRGGBB", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 3 }, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted" })
+			C.corner(hexField); C.fieldBorder(panel, hexField)
 			C.bind(panel, hexField, { TextSize = function() return 14 * self._window.TextScale end })
 			local rgb = C.node(panel, "Frame", panel.Body, { Name = "RGB", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, self._window.Target + 22), LayoutOrder = 4 })
 			for index, name in ipairs({ "R", "G", "B" }) do
 				local cell = C.node(panel, "Frame", rgb, { BackgroundTransparency = 1, Position = UDim2.new((index - 1) / 3, (index - 1) * 3, 0, 0), Size = UDim2.new(1 / 3, -6, 1, 0) })
 				C.text(panel, cell, name, "Caption", "Muted", { Size = UDim2.new(1, 0, 0, 18) })
-				fields[index] = C.node(panel, "TextBox", cell, { Name = name, Text = "", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, self._window.Target) }, { BackgroundColor3 = "Raised", TextColor3 = "Text" })
-				C.corner(fields[index]); C.stroke(panel, fields[index])
+				fields[index] = C.node(panel, "TextBox", cell, { Name = name, Text = "", ClearTextOnFocus = false, Font = Enum.Font.Code, TextSize = 14, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, self._window.Target) }, { BackgroundColor3 = "Input", TextColor3 = "Text" })
+				C.corner(fields[index]); C.fieldBorder(panel, fields[index])
 				C.bind(panel, fields[index], { TextSize = function() return 14 * self._window.TextScale end })
 			end
 			local alphaFill, alphaLabel, alphaTrack, alphaHit
 			if showAlpha then
 				alphaHit = C.node(panel, "TextButton", panel.Body, { Name = "Alpha", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, self._window.Target + 18), LayoutOrder = 5 })
 				alphaLabel = C.text(panel, alphaHit, "", "Caption", "Secondary", { Size = UDim2.new(1, 0, 0, 18) })
-				alphaTrack = C.node(panel, "Frame", alphaHit, { Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 4) }, { BackgroundColor3 = "Border" })
+				alphaTrack = C.node(panel, "Frame", alphaHit, { Position = UDim2.fromOffset(0, 35), Size = UDim2.new(1, 0, 0, 6) }, { BackgroundColor3 = "Track" })
 				alphaFill = C.node(panel, "Frame", alphaTrack, { Size = UDim2.fromScale(alpha, 1) }, { BackgroundColor3 = "Accent" })
-				C.corner(alphaTrack, 2); C.corner(alphaFill, 2)
+				C.corner(alphaTrack, 3); C.corner(alphaFill, 3)
 			end
 			local errorLabel = C.text(panel, panel.Body, "", "Caption", "Danger", { Name = "Validation", Size = UDim2.new(1, 0, 0, 34), Visible = false, LayoutOrder = 6 })
 			local function render()
@@ -769,16 +768,35 @@ return function(env)
 			padding.PaddingTop, padding.PaddingBottom = UDim.new(0, window._contentPad), UDim.new(0, window._contentPad)
 		end)
 		C.list(tab.Frame, false, 20)
+		local intro = C.node(tab, "Frame", tab.Frame, {
+			Name = "TabHeading", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 76), LayoutOrder = 0,
+		})
+		tab._intro = intro
+		local eyebrow = C.text(tab, intro, "WORKSPACE", "Eyebrow", "Accent", { Size = UDim2.new(1, 0, 0, 14), TextWrapped = false })
+		local heading = C.text(tab, intro, title, "Display", "Text", { Position = UDim2.fromOffset(0, 20), TextYAlignment = Enum.TextYAlignment.Top })
+		tab._summary = C.text(tab, intro, "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.reflow(tab, function()
+			local width = math.max(1, window._contentWidth - window._contentPad * 2)
+			local titleTop = math.ceil(20 * window.TextScale)
+			local titleHeight = C.measure(title, math.floor(C.tokens.Type.Display * window.TextScale + 0.5), width, heading.Font)
+			local detailHeight = math.ceil(18 * window.TextScale)
+			eyebrow.Size = UDim2.new(1, 0, 0, math.ceil(14 * window.TextScale))
+			heading.Position, heading.Size = UDim2.fromOffset(0, titleTop), UDim2.new(1, 0, 0, titleHeight)
+			tab._summary.Position = UDim2.fromOffset(0, titleTop + titleHeight + 6)
+			tab._summary.Size = UDim2.new(1, 0, 0, detailHeight)
+			intro.Size = UDim2.new(1, 0, 0, titleTop + titleHeight + detailHeight + 8)
+		end)
 		tab._button = C.node(tab, "TextButton", window._nav, { Name = "Tab_" .. id, LayoutOrder = #window.Tabs + 1 })
 		C.corner(tab._button)
-		C.bind(tab, tab._button, { BackgroundColor3 = function(theme) return window._activeTab == tab and theme.Selected or theme.Sidebar end })
-		local indicator = C.node(tab, "Frame", tab._button, { Size = UDim2.new(0, 2, 0.5, 0), Position = UDim2.fromScale(0, 0.25) }, {
+		local selected, hovered = false, false
+		local edge = C.stroke(tab, tab._button, "Accent")
+		C.bind(tab, edge, { Transparency = function() return selected and 0 or window._activeTab == tab and 0.72 or 1 end })
+		local indicator = C.node(tab, "Frame", tab._button, { Name = "ActiveIndicator", Size = UDim2.fromOffset(3, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) }, {
 			BackgroundColor3 = "Accent", BackgroundTransparency = function() return window._activeTab == tab and 0 or 1 end,
 		})
 		C.corner(indicator, 1)
 		-- Legacy Icon options are ignored. Navigation is always readable text.
-		C.text(tab, tab._button, title, "Body", "Text", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		local hovered = false
+		C.text(tab, tab._button, title, "Body", function(theme) return window._activeTab == tab and theme.Text or theme.Secondary end, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		C.bind(tab, tab._button, { BackgroundColor3 = function(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end })
 		local function hover(value)
 			hovered = value
@@ -786,6 +804,8 @@ return function(env)
 		end
 		tab._scope:Connect(tab._button.MouseEnter, function() hover(true) end)
 		tab._scope:Connect(tab._button.MouseLeave, function() hover(false) end)
+		tab._scope:Connect(tab._button.SelectionGained, function() selected = true; edge.Transparency = 0 end)
+		tab._scope:Connect(tab._button.SelectionLost, function() selected = false; edge.Transparency = window._activeTab == tab and 0.72 or 1 end)
 		tab._scope:Connect(tab._button.Activated, function() window:SelectTab(tab) end)
 		window.Tabs[#window.Tabs + 1] = tab
 		window:_Layout()
@@ -840,12 +860,12 @@ return function(env)
 		section._body = C.node(section, "Frame", section.Frame, {
 			Name = "Rows", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Visible = not section.Collapsed,
 		}, { BackgroundColor3 = "Surface" })
-		C.corner(section._body, 8); C.stroke(section, section._body, "Subtle")
+		C.corner(section._body, 12); C.stroke(section, section._body, "Subtle")
 		C.list(section._body, false, 0); C.pad(section._body, 0, 4)
 		C.reflow(section, function()
 			local width = math.max(1, window._contentWidth - window._contentPad * 2)
 			local reserve = options.Collapsible and 72 or 0
-			local headingHeight = window.Touch and C.measure(section.Title, 15 * window.TextScale, width - reserve) or 22 * window.TextScale
+			local headingHeight = C.measure(section.Title, math.floor(15 * window.TextScale + 0.5), width - reserve, section._heading.Font)
 			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - reserve) or 0
 			section._header.Visible = section.Title ~= "" or section.Description ~= ""
 			section._header.Size = UDim2.new(1, 0, 0, math.max(options.Collapsible and window.Target or 0, headingHeight + (descriptionHeight > 0 and descriptionHeight + 4 or 0)))
@@ -856,6 +876,7 @@ return function(env)
 			section._description.Visible = descriptionHeight > 0
 		end)
 		self.Sections[#self.Sections + 1] = section
+		window:_Filter()
 		return section
 	end
 	function Section:SetCollapsed(collapsed)
@@ -877,6 +898,7 @@ return function(env)
 		for index, section in ipairs(self._tab.Sections) do if section == self then table.remove(self._tab.Sections, index); break end end
 		self._scope:Destroy()
 		self.Frame:Destroy()
+		if self._window.Alive then self._window:_Filter() end
 	end
 	for _, kind in ipairs({ "Button", "Toggle", "Checkbox", "Slider", "Input", "Dropdown", "Segmented", "Keybind", "ColorPicker", "Label", "Paragraph", "Divider", "Badge", "Progress" }) do
 		Section[kind] = function(section, options)
@@ -971,6 +993,7 @@ return function(env)
 		self._scope:Destroy()
 		self._listeners = {}
 		self.Frame:Destroy()
+		if self._window.Alive then self._window:_Filter() end
 	end
 	function M.base(section, kind, options, mode, slotWidth)
 		assert(section.Alive and section._window.Alive, "Section is destroyed")
@@ -994,7 +1017,7 @@ return function(env)
 		})
 		self._scope:Connect(self.Frame.Destroying, function() self:Destroy() end)
 		if #section.Controls > 0 then
-			C.node(self, "Frame", self.Frame, { Name = "RowRule", Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
+			C.node(self, "Frame", self.Frame, { Name = "RowRule", BackgroundTransparency = 0.35, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		end
 		self._label = C.text(self, self.Frame, self.Text, "Body", "Text", { Name = "Label", TextYAlignment = Enum.TextYAlignment.Top })
 		C.bind(self, self._label, { TextColor3 = function(theme) return self.Disabled and theme.Muted or theme.Text end })
@@ -1080,20 +1103,21 @@ return function(env)
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Toggle", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 		local track = C.node(self, "Frame", hit, {
 			Name = "Track", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(checkbox and 44 or 38, 22),
+			Size = UDim2.fromOffset(checkbox and 44 or 46, 26),
 		})
-		C.corner(track, checkbox and 5 or 11)
-		C.stroke(self, track)
-		C.bind(self, track, { BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Raised end })
+		C.corner(track, checkbox and 8 or 13)
+		local edge = C.stroke(self, track, "Edge")
+		C.bind(self, edge, { Color = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Edge end })
+		C.bind(self, track, { BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.Accent or theme.Input end })
 		local thumb
 		if checkbox then
 			thumb = C.text(self, track, "Off", "Small", "Secondary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 			C.bind(self, thumb, { TextColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end })
 		else
-			thumb = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(16, 16) }, {
+			thumb = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(18, 18) }, {
 				BackgroundColor3 = function(theme) return self._value and not self.Disabled and theme.OnAccent or theme.Secondary end,
 			})
-			C.corner(thumb, 8)
+			C.corner(thumb, 9)
 		end
 		local initialized = false
 		self._render = function()
@@ -1102,10 +1126,11 @@ return function(env)
 				thumb.Text = self._value and "On" or "Off"
 				motion.to(self, thumb, { TextColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			else
-				motion.to(self, thumb, { Position = UDim2.new(0, self._value and 19 or 3, 0.5, 0),
+				motion.to(self, thumb, { Position = UDim2.new(0, self._value and 24 or 4, 0.5, 0),
 					BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.OnAccent or self._window.Theme.Secondary }, duration)
 			end
-			motion.to(self, track, { BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Raised }, duration)
+			motion.to(self, track, { BackgroundColor3 = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Input }, duration)
+			motion.to(self, edge, { Color = self._value and not self.Disabled and self._window.Theme.Accent or self._window.Theme.Edge }, duration)
 			initialized = true
 		end
 		local focus = C.stroke(self, hit, "Accent")
@@ -1133,18 +1158,21 @@ return function(env)
 			return tonumber(string.format("%.10g", result))
 		end
 		self._value = self._normalize(options.Default == nil and minimum or options.Default)
-		local value = C.text(self, self.Frame, "", "Caption", "Secondary", { Name = "Readout", TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local value = C.text(self, self.Frame, "", "Caption", "Text", { Name = "Readout", BackgroundTransparency = 0, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.bind(self, value, { BackgroundColor3 = "Input" }); C.corner(value, 6); C.pad(value, 6, 0)
 		self._afterLayout = function(width)
 			value.Position = UDim2.new(1, -112, 0, 14)
 			value.Size = UDim2.fromOffset(96, 20 * self._window.TextScale)
 		end
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Slider", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-		local track = C.node(self, "Frame", hit, { Name = "Track", Position = UDim2.new(0, 8, 0.5, -2), Size = UDim2.new(1, -16, 0, 4) }, { BackgroundColor3 = "Border" })
-		C.corner(track, 2)
+		local track = C.node(self, "Frame", hit, { Name = "Track", Position = UDim2.new(0, 10, 0.5, -3), Size = UDim2.new(1, -20, 0, 6) }, { BackgroundColor3 = "Track" })
+		C.corner(track, 3)
 		local fill = C.node(self, "Frame", track, { Name = "Fill", Size = UDim2.fromScale(0, 1) }, { BackgroundColor3 = function(theme) return self.Disabled and theme.Muted or theme.Accent end })
-		C.corner(fill, 2)
-		local knob = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(16, 16), Position = UDim2.fromScale(0, 0.5) }, { BackgroundColor3 = "Text" })
-		C.corner(knob, 8); C.stroke(self, knob, "Subtle")
+		C.corner(fill, 3)
+		local knob = C.node(self, "Frame", track, { Name = "Thumb", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(18, 18), Position = UDim2.fromScale(0, 0.5) }, { BackgroundColor3 = "Primary" })
+		C.corner(knob, 9); C.stroke(self, knob, "Edge")
+		local centre = C.node(self, "Frame", knob, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(4, 4) }, { BackgroundColor3 = "OnPrimary" })
+		C.corner(centre, 2)
 		local focus = C.stroke(self, hit, "Accent"); focus.Transparency = 1; C.corner(hit)
 		self._scope:Connect(hit.SelectionGained, function() focus.Transparency = 0 end)
 		self._scope:Connect(hit.SelectionLost, function() focus.Transparency = 1 end)
@@ -1201,11 +1229,11 @@ return function(env)
 			TextXAlignment = Enum.TextXAlignment.Left, MultiLine = options.MultiLine == true,
 			TextWrapped = options.MultiLine == true, TextYAlignment = options.MultiLine and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		})
-		C.bind(self, field, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self._window.TextScale end })
+		C.bind(self, field, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self._window.TextScale + 0.5) end })
 		C.corner(field); C.pad(field, 12, options.MultiLine and 10 or 0)
-		local border = C.stroke(self, field)
+		local border, refreshBorder = C.fieldBorder(self, field, function() return self._error ~= nil end)
 		local errorLabel = C.text(self, self._slot, "", "Caption", "Danger", { Name = "Validation", Visible = false })
-		local editing, painting = false, false
+		local painting = false
 		self._error = nil
 		self._slotHeight = function() return self._window.Target * (options.MultiLine and C.number(options.Lines, 3, 2, 8) or 1) + (self._error and 24 or 0) end
 		self._afterLayout = function(_, height)
@@ -1215,7 +1243,7 @@ return function(env)
 		self._render = function(preserveDraft)
 			if not preserveDraft then painting = true; field.Text = tostring(self._value); painting = false end
 			self._error, errorLabel.Visible = nil, false
-			border.Color = editing and self._window.Theme.Accent or self._window.Theme.Border
+			refreshBorder()
 			self._layout()
 		end
 		local function commit(live)
@@ -1225,6 +1253,7 @@ return function(env)
 			if not ok then
 				self._error = options.Numeric and "Enter a valid number." or tostring(value)
 				errorLabel.Text, errorLabel.Visible, border.Color = self._error, true, self._window.Theme.Danger
+				refreshBorder()
 				self._layout()
 				return
 			end
@@ -1238,11 +1267,9 @@ return function(env)
 			else self:Set(value) end
 			if self.Alive then C.call(self._window, options.OnCommit, self:Get()) end
 		end
-		self._scope:Connect(field.Focused, function() editing = true; border.Color = self._window.Theme.Accent end)
 		self._scope:Connect(field.FocusLost, function()
-			editing = false
 			commit()
-			if self.Alive then border.Color = self._error and self._window.Theme.Danger or self._window.Theme.Border end
+			refreshBorder()
 		end)
 		self._scope:Connect(field:GetPropertyChangedSignal("Text"), function()
 			if painting then return end
@@ -1272,8 +1299,9 @@ return function(env)
 		local self = M.base(section, "Badge", options, "inline", 120)
 		self._normalize = function(value) assert(type(value) == "string", "Badge value must be a string"); return value end
 		self._value = self._normalize(options.Default or options.Value or "Ready")
-		local badge = C.node(self, "Frame", self._slot, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(1, 0, 0, 28) }, { BackgroundColor3 = "Raised" })
-		C.corner(badge, 5)
+		local tone = options.Kind or "Secondary"
+		local badge = C.node(self, "Frame", self._slot, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(1, 0, 0, 28) }, { BackgroundColor3 = function(theme) return theme.Surface:Lerp(theme[tone], 0.12) end })
+		C.corner(badge, 14)
 		self._afterLayout = function(width)
 			badge.AnchorPoint = Vector2.new(self._stacked and 0 or 1, 0.5)
 			badge.Position = UDim2.fromScale(self._stacked and 0 or 1, 0.5)
@@ -1291,10 +1319,10 @@ return function(env)
 		self._normalize = function(value) assert(C.finite(value), "Progress expects a finite number"); return C.clamp(value, minimum, maximum) end
 		self._value = self._normalize(options.Default or options.Value or minimum)
 		self._slotHeight = function() return 12 end
-		local track = C.node(self, "Frame", self._slot, { Size = UDim2.new(1, 0, 0, 4), Position = UDim2.fromOffset(0, 4) }, { BackgroundColor3 = "Border" })
-		C.corner(track, 2)
+		local track = C.node(self, "Frame", self._slot, { Size = UDim2.new(1, 0, 0, 8), Position = UDim2.fromOffset(0, 2) }, { BackgroundColor3 = "Track" })
+		C.corner(track, 4)
 		local fill = C.node(self, "Frame", track, { Size = UDim2.fromScale(0, 1) }, { BackgroundColor3 = "Accent" })
-		C.corner(fill, 2)
+		C.corner(fill, 4)
 		local value = C.text(self, self.Frame, "", "Caption", "Secondary", { Position = UDim2.new(1, -96, 0, 14), Size = UDim2.fromOffset(80, 20), TextXAlignment = Enum.TextXAlignment.Right })
 		self._labelReserve = 96
 		self._render = function()
@@ -1482,6 +1510,23 @@ return function(env)
 		local node = M.node(owner, "UIStroke", parent, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, { Color = color or "Border" })
 		return node
 	end
+	function M.fieldBorder(owner, field, invalid)
+		local editing = false
+		local border = M.stroke(owner, field, "Edge")
+		local function color(theme)
+			if invalid and invalid() then return theme.Danger end
+			return editing and theme.Accent or theme.Edge
+		end
+		M.bind(owner, border, { Color = color })
+		local function refresh()
+			if not owner._scope.alive then return end
+			border.Thickness = editing and 2 or 1
+			env.require("motion").to(owner, border, { Color = color(owner._window.Theme) })
+		end
+		owner._scope:Connect(field.Focused, function() editing = true; refresh() end)
+		owner._scope:Connect(field.FocusLost, function() editing = false; refresh() end)
+		return border, refresh
+	end
 	function M.pad(parent, x, y)
 		local node = Instance.new("UIPadding")
 		node.PaddingLeft, node.PaddingRight = UDim.new(0, x), UDim.new(0, x)
@@ -1497,13 +1542,13 @@ return function(env)
 		node.Parent = parent
 		return node
 	end
-	local font, strong = Enum.Font.Gotham, Enum.Font.GothamMedium
-	pcall(function() font, strong = Enum.Font.BuilderSans, Enum.Font.BuilderSansMedium end)
+	local font, strong, display = Enum.Font.Gotham, Enum.Font.GothamMedium, Enum.Font.GothamBold
+	pcall(function() font, strong, display = Enum.Font.BuilderSans, Enum.Font.BuilderSansMedium, Enum.Font.BuilderSansBold end)
 	M.Font = font
 	function M.text(owner, parent, text, role, color, props)
 		local config = {
 			BackgroundTransparency = 1, Text = tostring(text or ""), RichText = false,
-			Font = (role == "Title" or role == "Heading") and strong or font,
+			Font = role == "Display" and display or (role == "Title" or role == "Heading" or role == "Eyebrow") and strong or font,
 			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
 			TextWrapped = true, TextSize = tokens.Type[role or "Body"] or tokens.Type.Body,
 			Size = UDim2.new(1, 0, 0, 20),
@@ -1515,14 +1560,14 @@ return function(env)
 		})
 		pcall(function()
 			local base = Font.fromEnum(config.Font)
-			node.FontFace = Font.new(base.Family, (role == "Title" or role == "Heading") and Enum.FontWeight.Medium or Enum.FontWeight.Regular)
+			node.FontFace = Font.new(base.Family, role == "Display" and Enum.FontWeight.Bold or (role == "Title" or role == "Heading" or role == "Eyebrow") and Enum.FontWeight.Medium or Enum.FontWeight.Regular)
 		end)
 		return node
 	end
-	function M.measure(text, size, width)
+	function M.measure(text, size, width, textFont)
 		width = math.max(1, width)
 		local ok, bounds = pcall(function()
-			return env.services.TextService:GetTextSize(tostring(text), size, font, Vector2.new(width, 100000))
+			return env.services.TextService:GetTextSize(tostring(text), size, textFont or font, Vector2.new(width, 100000))
 		end)
 		return ok and math.ceil(bounds.Y) or math.ceil(math.max(1, #tostring(text) * size * 0.55 / width)) * math.ceil(size * 1.3)
 	end
@@ -1598,11 +1643,17 @@ return function(env)
 		local stroke = M.node(owner, "UIStroke", button, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
 		local function paint(theme)
 			local active = not enabled or enabled()
-			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Subtle
+			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Edge
 			stroke.Thickness = selected and 2 or 1
-			if style == "Primary" then return active and theme.Primary or theme.Raised end
-			if style == "Danger" then return active and theme.Danger or theme.Raised end
-			return active and pressed and theme.Pressed or active and hovered and theme.Hover or theme.Raised
+			stroke.Transparency = (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
+			if style == "Primary" or style == "Danger" then
+				if not active then return theme.Raised end
+				local base = style == "Primary" and theme.Primary or theme.Danger
+				if pressed then return base:Lerp(theme.OnPrimary, 0.16) end
+				if hovered then return base:Lerp(style == "Primary" and theme.Accent or theme.Text, 0.1) end
+				return base
+			end
+			return active and pressed and theme.Pressed or active and hovered and theme.Hover or style == "Field" and theme.Input or theme.Raised
 		end
 		M.bind(owner, button, { BackgroundColor3 = paint })
 		local function refresh()
@@ -1619,6 +1670,30 @@ return function(env)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
 				or input.KeyCode == Enum.KeyCode.ButtonA or input.KeyCode == Enum.KeyCode.Return then pressed = true; refresh() end
 		end)
+		return refresh
+	end
+	-- Choice rows share a stateful focus/hover treatment without changing values.
+	function M.selection(owner, button, chosen, enabled)
+		local hovered, focused = false, false
+		local edge = M.stroke(owner, button, "Accent")
+		local function background(theme)
+			if chosen() then return theme.Selected end
+			return hovered and (not enabled or enabled()) and theme.Hover or theme.Input
+		end
+		local function opacity()
+			return focused and 0 or chosen() and 0.6 or 1
+		end
+		M.bind(owner, button, { BackgroundColor3 = background })
+		M.bind(owner, edge, { Transparency = opacity })
+		local function refresh()
+			local motion = env.require("motion")
+			motion.to(owner, button, { BackgroundColor3 = background(owner._window.Theme) })
+			motion.to(owner, edge, { Transparency = opacity() })
+		end
+		owner._scope:Connect(button.MouseEnter, function() hovered = true; refresh() end)
+		owner._scope:Connect(button.MouseLeave, function() hovered = false; refresh() end)
+		owner._scope:Connect(button.SelectionGained, function() focused = true; refresh() end)
+		owner._scope:Connect(button.SelectionLost, function() focused = false; refresh() end)
 		return refresh
 	end
 	function M.releaseFocus(window, root)
@@ -1701,8 +1776,7 @@ return function(env)
 		local footer = M.node(owner, "Frame", parent, {
 			Name = "ProjectUAI_Footer", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 			Size = UDim2.new(1, 0, 0, tokens.Size.Footer),
-		}, { BackgroundColor3 = "Sidebar" })
-		M.node(owner, "Frame", footer, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
+		}, { BackgroundColor3 = "Chrome" })
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
 			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
 		})
@@ -1819,8 +1893,11 @@ return function(env)
 			Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 100,
 		})
 		local scrim = C.node(panel, "TextButton", panel.Root, { Name = "Backdrop", Size = UDim2.fromScale(1, 1), BackgroundTransparency = options.Anchor and 1 or 0.4, Selectable = false, Modal = true }, { BackgroundColor3 = "Scrim" })
-		panel.Frame = C.node(panel, "Frame", panel.Root, { Name = "Panel", Active = true, ClipsDescendants = true, ZIndex = 2 }, { BackgroundColor3 = "Canvas" })
-		C.corner(panel.Frame, 10); C.stroke(panel, panel.Frame)
+		panel.Frame = C.node(panel, "Frame", panel.Root, { Name = "Panel", Active = true, ClipsDescendants = true, ZIndex = 2 }, { BackgroundColor3 = "Surface" })
+		C.corner(panel.Frame, C.tokens.Size.Radius); C.stroke(panel, panel.Frame, "Edge")
+		local headerSurface = C.node(panel, "Frame", panel.Frame, { Name = "PanelHeader", Size = UDim2.new(1, 0, 0, 54) }, { BackgroundColor3 = "Chrome" })
+		C.corner(headerSurface, C.tokens.Size.Radius)
+		C.node(panel, "Frame", headerSurface, { Position = UDim2.fromOffset(20, 0), Size = UDim2.fromOffset(40, 2) }, { BackgroundColor3 = "Accent" })
 		pcall(function()
 			panel.Frame.SelectionGroup = true
 			panel.Frame.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
@@ -1828,12 +1905,13 @@ return function(env)
 			panel.Frame.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
 			panel.Frame.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		end)
-		local title = C.text(panel, panel.Frame, options.Title or "", "Heading", "Text", {
+		local title = C.text(panel, panel.Frame, options.Title or "", "Title", "Text", {
 			Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -40 - math.max(window.Target, 64 * window.TextScale), 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
+		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
 		close.Size = UDim2.fromOffset(math.max(window.Target, 64 * window.TextScale), window.Target)
-		C.text(panel, close, "Close", "Caption", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		C.corner(close); C.feedback(panel, close)
+		C.text(panel, close, "Close", "Caption", "Secondary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		panel.Body = C.scroll(panel, panel.Frame, "Body")
 		C.pad(panel.Body, 20, 8); C.list(panel.Body, false, 12)
 		panel.Actions = C.scroll(panel, panel.Frame, "Actions")
@@ -1865,6 +1943,7 @@ return function(env)
 			local width = math.min(C.number(options.Width, 440, 160, 1200), rect.width)
 			local height = math.min(C.number(options.Height, 320, 120, 1200), rect.height)
 			local header = math.max(54, window.Target + 12)
+			headerSurface.Size = UDim2.new(1, 0, 0, header)
 			local actionHeight = options.Actions and window.Target or 0
 			if panel.LayoutActions then actionHeight = panel.LayoutActions(width) end
 			if window.Touch and actionHeight > window.Target then
@@ -1966,10 +2045,11 @@ return function(env)
 		toast.Closed = false
 		toast._scope:Add(function() toast.Closed = true end)
 		toast.Frame = C.node(toast, "Frame", window._toastHost, { Name = "Notification", ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 100), LayoutOrder = #window._toasts + 1 }, { BackgroundColor3 = "Surface" })
-		C.corner(toast.Frame, 8); C.stroke(toast, toast.Frame)
+		C.corner(toast.Frame, 14); C.stroke(toast, toast.Frame, "Edge")
 		local kind = ({ Success = "Success", Warning = "Warning", Danger = "Danger", Info = "Accent" })[options.Kind] or "Accent"
-		C.node(toast, "Frame", toast.Frame, { Position = UDim2.fromOffset(0, 12), Size = UDim2.new(0, 3, 1, -24) }, { BackgroundColor3 = kind })
-		local title = C.text(toast, toast.Frame, C.truncate(tostring(options.Title or "Project UAI"), 240), "Heading", "Text", { Position = UDim2.fromOffset(16, 12), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local status = C.node(toast, "Frame", toast.Frame, { Position = UDim2.fromOffset(16, 19), Size = UDim2.fromOffset(6, 6) }, { BackgroundColor3 = kind })
+		C.corner(status, 3)
+		local title = C.text(toast, toast.Frame, C.truncate(tostring(options.Title or "Project UAI"), 240), "Heading", "Text", { Position = UDim2.fromOffset(32, 12), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		local body = C.text(toast, toast.Frame, C.truncate(tostring(options.Content or ""), 800), "Caption", "Secondary", { Name = "Message", Position = UDim2.fromOffset(16, 40), Size = UDim2.new(1, -32, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
 		local close = C.node(toast, "TextButton", toast.Frame, { Name = "Dismiss", BackgroundTransparency = 1, Position = UDim2.new(1, -window.Target, 0, 2), Size = UDim2.fromOffset(window.Target, window.Target) })
 		C.text(toast, close, "Dismiss", "Small", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
@@ -1998,12 +2078,13 @@ return function(env)
 		C.reflow(toast, function()
 			local width, available = window._toastHost.Size.X.Offset, window._toastHost.Size.Y.Offset
 			local titleHeight = math.ceil(20 * window.TextScale)
+			status.Position = UDim2.fromOffset(16, 12 + math.floor((titleHeight - 6) / 2))
 			local headerHeight = math.max(titleHeight + 32, window.Target + 4)
 			local actionHeight = action and window.Target + 12 or 0
 			if headerHeight + actionHeight > available then actionHeight = 0 end
 			local bodyHeight = body.Text == "" and 0 or math.min(120, math.max(0, available - headerHeight - actionHeight), C.measure(body.Text, 12 * window.TextScale, width - 32))
 			local dismissWidth = math.max(window.Target, 64 * window.TextScale)
-			title.Size = UDim2.new(1, -dismissWidth - 24, 0, titleHeight)
+			title.Size = UDim2.new(1, -dismissWidth - 40, 0, titleHeight)
 			body.Position = UDim2.fromOffset(16, headerHeight - 14)
 			body.Size = UDim2.new(1, -32, 0, bodyHeight)
 			body.Visible = bodyHeight > 0
@@ -2050,7 +2131,8 @@ return function(env)
 		local username = player and player.Name or "Local player"
 		local displayName = player and player.DisplayName or username
 		self.Frame = C.node(self, "Frame", parent, { Name = "Profile", ClipsDescendants = true }, { BackgroundColor3 = "Sidebar" })
-		C.node(self, "Frame", self.Frame, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
+		local card = C.node(self, "Frame", self.Frame, { Name = "ProfileCard", Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 1, -12) }, { BackgroundColor3 = "Chrome" })
+		C.corner(card, 12); C.stroke(self, card, "Subtle")
 		local avatar = C.node(self, "Frame", self.Frame, { Name = "Avatar", Size = UDim2.fromOffset(T.Size.Avatar, T.Size.Avatar) }, { BackgroundColor3 = "Raised" })
 		C.corner(avatar, T.Size.Avatar / 2)
 		local initial = C.text(self, avatar, displayName:match("^.[\128-\191]*") or "?", "Heading", "Text", { Name = "Initial", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
@@ -2076,12 +2158,13 @@ return function(env)
 		if not gameName then listeners[update] = true; self._scope:Add(function() listeners[update] = nil end); resolvePlace() end
 		function self.Layout(width)
 			local line = math.ceil(18 * window.TextScale)
-			local height = math.max(T.Size.Avatar, line * 3) + 28
-			local left = 12 + T.Size.Avatar + 10
-			avatar.Position = UDim2.fromOffset(12, 14)
-			name.Position, name.Size = UDim2.fromOffset(left, 14), UDim2.fromOffset(math.max(1, width - left - 12), line)
-			account.Position, account.Size = UDim2.fromOffset(left, 14 + line), UDim2.fromOffset(math.max(1, width - left - 12), line)
-			place.Position, place.Size = UDim2.fromOffset(left, 14 + line * 2), UDim2.fromOffset(math.max(1, width - left - 12), line)
+			local identityHeight = math.max(T.Size.Avatar, line * 2)
+			local height = identityHeight + line + 42
+			local left = 20 + T.Size.Avatar + 10
+			avatar.Position = UDim2.fromOffset(20, 16)
+			name.Position, name.Size = UDim2.fromOffset(left, 16), UDim2.fromOffset(math.max(1, width - left - 20), line)
+			account.Position, account.Size = UDim2.fromOffset(left, 16 + line), UDim2.fromOffset(math.max(1, width - left - 20), line)
+			place.Position, place.Size = UDim2.fromOffset(20, 24 + identityHeight), UDim2.fromOffset(math.max(1, width - 40), line)
 			self.Frame.Size = UDim2.fromOffset(width, height)
 			return height
 		end
@@ -2093,43 +2176,43 @@ end)()
 
 -- theme
 __UI_MODULES["theme"] = (function()
--- The public library follows the application's warm neutral palette. Tokens
--- live here; script authors choose content and behavior, never row geometry.
+-- Graphite chrome, inset surfaces and a warm signal color. Window surfaces use
+-- opaque native UI; consumer scripts continue to own only content and behavior.
 return function(env)
 	local rgb = Color3.fromRGB
 	local M = {}
 	M.Dark = {
-		Canvas = rgb(30, 30, 28), Sidebar = rgb(23, 23, 22),
-		Surface = rgb(35, 35, 33), Raised = rgb(42, 42, 39),
-		Hover = rgb(50, 50, 46), Pressed = rgb(62, 62, 57),
-		Border = rgb(74, 74, 71), Subtle = rgb(62, 62, 57),
-		Text = rgb(245, 244, 238), Secondary = rgb(194, 191, 181),
-		Muted = rgb(163, 161, 152), Disabled = rgb(108, 107, 102),
-		Accent = rgb(217, 119, 87), OnAccent = rgb(23, 23, 22),
-		Primary = rgb(245, 244, 238), OnPrimary = rgb(23, 23, 22),
-		Success = rgb(135, 203, 160), Warning = rgb(237, 189, 111),
-		Danger = rgb(245, 145, 143), Scrim = rgb(12, 12, 11),
+		Canvas = rgb(23, 25, 29), Sidebar = rgb(17, 19, 22), Chrome = rgb(20, 22, 26),
+		Surface = rgb(30, 33, 38), Raised = rgb(39, 43, 49), Input = rgb(22, 25, 29),
+		Hover = rgb(48, 52, 59), Pressed = rgb(59, 64, 72), Track = rgb(47, 52, 61),
+		Border = rgb(79, 85, 95), Subtle = rgb(46, 51, 59), Edge = rgb(61, 67, 77),
+		Text = rgb(242, 243, 245), Secondary = rgb(193, 198, 207),
+		Muted = rgb(153, 161, 174), Disabled = rgb(106, 113, 124),
+		Accent = rgb(235, 148, 117), OnAccent = rgb(22, 24, 28),
+		Primary = rgb(244, 240, 232), OnPrimary = rgb(22, 24, 28),
+		Success = rgb(125, 211, 167), Warning = rgb(237, 193, 119),
+		Danger = rgb(247, 145, 151), Scrim = rgb(7, 9, 12),
 	}
 	M.Light = {
-		Canvas = rgb(247, 246, 242), Sidebar = rgb(238, 236, 230),
-		Surface = rgb(255, 254, 251), Raised = rgb(240, 238, 232),
-		Hover = rgb(229, 226, 218), Pressed = rgb(216, 213, 204),
-		Border = rgb(148, 145, 135), Subtle = rgb(199, 195, 184),
-		Text = rgb(35, 35, 32), Secondary = rgb(73, 72, 65),
-		Muted = rgb(100, 98, 88), Disabled = rgb(133, 130, 121),
-		Accent = rgb(157, 68, 43), OnAccent = rgb(255, 254, 251),
-		Primary = rgb(35, 35, 32), OnPrimary = rgb(255, 254, 251),
-		Success = rgb(34, 108, 68), Warning = rgb(132, 83, 18),
-		Danger = rgb(166, 47, 48), Scrim = rgb(12, 12, 11),
+		Canvas = rgb(246, 247, 249), Sidebar = rgb(236, 238, 242), Chrome = rgb(241, 243, 246),
+		Surface = rgb(255, 255, 255), Raised = rgb(233, 236, 241), Input = rgb(246, 247, 249),
+		Hover = rgb(226, 230, 237), Pressed = rgb(212, 218, 228), Track = rgb(221, 226, 234),
+		Border = rgb(157, 166, 181), Subtle = rgb(221, 226, 234), Edge = rgb(203, 210, 221),
+		Text = rgb(28, 33, 42), Secondary = rgb(65, 75, 91),
+		Muted = rgb(98, 108, 125), Disabled = rgb(139, 148, 163),
+		Accent = rgb(167, 69, 44), OnAccent = rgb(255, 255, 255),
+		Primary = rgb(31, 37, 47), OnPrimary = rgb(255, 255, 255),
+		Success = rgb(26, 117, 76), Warning = rgb(136, 87, 21),
+		Danger = rgb(179, 49, 65), Scrim = rgb(7, 9, 12),
 	}
 	M.Size = {
 		Target = 40, TouchTarget = 44, TouchSlop = 8, Gap = 12, Pad = 20, MobilePad = 12,
-		Header = 76, Footer = 30, Sidebar = 208, Tabs = 52, Avatar = 36,
-		Radius = 10, FieldRadius = 6, Scrollbar = 3,
+		Header = 80, Footer = 30, Sidebar = 196, Tabs = 52, Avatar = 36,
+		Radius = 18, FieldRadius = 10, Scrollbar = 3,
 		Width = 780, Height = 580, Compact = 640,
 	}
-	M.Type = { Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11 }
-	M.Motion = { Fast = 0.14, Enter = 0.2, Toggle = 0.18, EntranceScale = 0.985 }
+	M.Type = { Display = 26, Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11, Eyebrow = 10 }
+	M.Motion = { Fast = 0.12, Enter = 0.22, Toggle = 0.18, EntranceScale = 0.99 }
 	function M.resolve(name, accent)
 		assert(name == nil or name == "Dark" or name == "Light", "Theme must be Dark or Light")
 		local result = {}
@@ -2141,6 +2224,7 @@ return function(env)
 			result.OnAccent = luminance > 0.5 and rgb(23, 23, 22) or rgb(255, 254, 251)
 		end
 		result.Selected = result.Raised:Lerp(result.Accent, 0.16)
+		result.AccentSoft = result.Surface:Lerp(result.Accent, 0.12)
 		return result
 	end
 	return M
@@ -2338,6 +2422,7 @@ return function(env)
 		local query = string.lower(self._search and self._search.Text or "")
 		local count = 0
 		for _, tab in ipairs(self.Tabs) do
+			local tabCount, sectionCount = 0, 0
 			for _, section in ipairs(tab.Sections) do
 				local matches = 0
 				for _, control in ipairs(section.Controls) do
@@ -2348,7 +2433,16 @@ return function(env)
 				end
 				section.Frame.Visible = section.Visible and (matches > 0 or query == "")
 				section._body.Visible = not section.Collapsed or query ~= ""
-				if section.Visible and tab == self._activeTab then count = count + matches end
+				if section.Visible then
+					tabCount = tabCount + matches
+					if section.Frame.Visible then sectionCount = sectionCount + 1 end
+				end
+			end
+			if tab == self._activeTab then count = tabCount end
+			if tab._summary then
+				tab._intro.Visible = query == "" or tabCount > 0
+				tab._summary.Text = query ~= "" and string.format("%d matching control%s", tabCount, tabCount == 1 and "" or "s")
+					or string.format("%d control%s  /  %d section%s", tabCount, tabCount == 1 and "" or "s", sectionCount, sectionCount == 1 and "" or "s")
 			end
 		end
 		self._empty.Visible = query ~= "" and count == 0
@@ -2421,6 +2515,7 @@ return function(env)
 		local header = short and math.max(52, self.Target + 8) or math.max(T.Size.Header, 14 + titleHeight + 3 + subtitleHeight + 12)
 		local nav = self._compact and math.max(T.Size.Tabs, self.Target + 8) or 0
 		local sidebar = self._compact and 0 or math.floor(T.Size.Sidebar * math.min(1.28, self.TextScale))
+		local railHeading = self._compact and 0 or 32
 		local searchFocused = self._search and uis:GetFocusedTextBox() == self._search
 		local searchVisible = self._search and (searchFocused or (height >= 300 and not (self.Touch and keyboardVisible)))
 		local search = searchVisible and self.Target + 12 or 0
@@ -2436,9 +2531,12 @@ return function(env)
 		-- narrow layouts lose the logo before they lose their name.
 		local brand = math.min(22, math.max(14, math.floor(18 * self.TextScale)))
 		self._brand.Size = UDim2.fromOffset(brand, brand)
-		self._brand.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2))
+		self._brand.Position = UDim2.fromOffset(26, math.floor((header - brand) / 2))
 		self._brand.Visible = header > 0 and width >= 300
-		local titleInset = self._brand.Visible and (18 + brand + 10) or 20
+		self._brandTile.Visible = self._brand.Visible
+		self._brandTile.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2) - 8)
+		self._brandTile.Size = UDim2.fromOffset(brand + 16, brand + 16)
+		local titleInset = self._brand.Visible and (26 + brand + 20) or 20
 		self._title.Position = UDim2.fromOffset(titleInset, short and 12 or 14)
 		self._title.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, titleHeight)
 		self._subtitle.Visible = not short and self._subtitle.Text ~= ""
@@ -2454,26 +2552,35 @@ return function(env)
 			self._profile.Frame.Position = UDim2.new(0, 0, 1, -footer - profileHeight)
 			if self._compact then profileHeight = 0 end
 		end
-		self._nav.Position = UDim2.fromOffset(0, header)
+		self._rail.Position = UDim2.fromOffset(0, header)
+		self._rail.Size = UDim2.fromOffset(sidebar, math.max(0, height - header - footer))
+		self._rail.Visible = not self._compact
+		self._navCaption.Position = UDim2.fromOffset(20, header + 12)
+		self._navCaption.Size = UDim2.fromOffset(math.max(0, sidebar - 40), 14 * self.TextScale)
+		self._navCaption.Visible = not self._compact
+		self._nav.Position = UDim2.fromOffset(0, header + railHeading)
 		self._nav.Visible = not self._compact or nav > 0
-		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - footer - profileHeight)
+		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - railHeading - footer - profileHeight)
 		self._navLayout.FillDirection = self._compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 		self._nav.ScrollingDirection = self._compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
 		self._nav.AutomaticCanvasSize = self._compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
 		self._nav.ScrollBarThickness = self._compact and 0 or T.Size.Scrollbar
-		self._navPad.PaddingTop = UDim.new(0, self._compact and 4 or 14)
+		self._navPad.PaddingTop = UDim.new(0, self._compact and 4 or 10)
 		for _, tab in ipairs(self.Tabs) do
 			local tabWidth = self._compact and math.max(80, math.min(220, #tab.Title * 8 * self.TextScale + 28)) or sidebar - 24
 			tab._button.Size = UDim2.fromOffset(tabWidth, self.Target)
 		end
 		local top = header + nav
-		self._contentWidth = math.max(1, width - sidebar)
-		self._content.Position = UDim2.fromOffset(sidebar, top + search)
-		self._content.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - search - footer))
+		local inset = self._compact and 6 or 10
+		self._contentWidth = math.max(1, width - sidebar - inset * 2)
+		self._workspace.Position = UDim2.fromOffset(sidebar + inset, top + 6)
+		self._workspace.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - footer - 12))
+		self._content.Position = UDim2.fromOffset(sidebar + inset, top + 6 + search)
+		self._content.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - search - footer - 12))
 		if self._search then
 			self._search.Visible = searchVisible == true
-			self._search.Position = UDim2.fromOffset(sidebar + self._contentPad, top + 6)
-			self._search.Size = UDim2.new(1, -sidebar - self._contentPad * 2, 0, self.Target)
+			self._search.Position = UDim2.fromOffset(sidebar + inset + self._contentPad, top + 14)
+			self._search.Size = UDim2.fromOffset(math.max(1, self._contentWidth - self._contentPad * 2), self.Target)
 		end
 		self._resize.Visible = not self.Touch
 		-- The restore pill: title and a status line over the permanent
@@ -2546,14 +2653,16 @@ return function(env)
 		local ok, why = pcall(parentScreen, self.ScreenGui, options.Parent)
 		if not ok then self.ScreenGui:Destroy(); error(why, 0) end
 		self._viewport = C.node(self, "Frame", self.ScreenGui, { Name = "SafeViewport", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-		self.Frame = C.node(self, "Frame", self._viewport, { Name = "Window", Active = true, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
+		self.Frame = C.node(self, "Frame", self._viewport, { Name = "Window", Active = true, ClipsDescendants = true }, { BackgroundColor3 = "Chrome" })
 		C.corner(self.Frame, T.Size.Radius)
-		C.stroke(self, self.Frame, "Border")
+		C.stroke(self, self.Frame, "Edge")
 		self._header = C.node(self, "Frame", self.Frame, { Name = "Header", BackgroundTransparency = 1, Active = true })
+		self._brandTile = C.node(self, "Frame", self._header, { Name = "BrandTile" }, { BackgroundColor3 = "AccentSoft" })
+		C.corner(self._brandTile, 12)
+		C.stroke(self, self._brandTile, "Subtle")
 		self._brand = C.mark(self, self._header, 18)
 		self._title = C.text(self, self._header, self.Title, "Title", "Text", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._subtitle = C.text(self, self._header, options.Subtitle or "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.node(self, "Frame", self._header, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		self._headerActions = C.node(self, "Frame", self._header, { BackgroundTransparency = 1 })
 		C.list(self._headerActions, true, 4)
 		-- Window controls sit directly on the header with no resting fill: the
@@ -2588,20 +2697,25 @@ return function(env)
 		end
 		self._minimize = headerButton("Minimize", "minus", function() self:Minimize() end)
 		self._close = headerButton("Close", "close", function() self:Destroy() end, "Danger")
+		self._rail = C.node(self, "Frame", self.Frame, { Name = "NavigationRail" }, { BackgroundColor3 = "Sidebar" })
+		self._navCaption = C.text(self, self.Frame, "NAVIGATION", "Eyebrow", "Muted", { TextWrapped = false })
 		self._nav = C.scroll(self, self.Frame, "Tabs")
 		C.bind(self, self._nav, { BackgroundColor3 = "Sidebar" })
 		self._nav.BackgroundTransparency = 0
 		self._navLayout = C.list(self._nav, false, 6)
 		self._navPad = C.pad(self._nav, 12, 14)
 		self._profile = env.require("profile").new(self, self.Frame, options.GameName)
+		self._workspace = C.node(self, "Frame", self.Frame, { Name = "Workspace", Active = false }, { BackgroundColor3 = "Canvas" })
+		C.corner(self._workspace, 14); C.stroke(self, self._workspace, "Subtle")
 		self._content = C.node(self, "Frame", self.Frame, { Name = "Content", BackgroundTransparency = 1, ClipsDescendants = true })
 		self._empty = C.text(self, self._content, "No matching controls", "Body", "Muted", { Name = "EmptySearch", Visible = false, Position = UDim2.fromOffset(20, 28), Size = UDim2.new(1, -40, 0, 40) })
 		if options.Search ~= false then
 			self._search = C.node(self, "TextBox", self.Frame, {
 				Name = "Search", Text = "", PlaceholderText = "Search this tab", ClearTextOnFocus = false,
 				Font = C.Font, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
-			}, { BackgroundColor3 = "Surface", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self.TextScale end })
-			C.corner(self._search); C.pad(self._search, 12, 0); C.stroke(self, self._search)
+			}, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self.TextScale + 0.5) end })
+			C.corner(self._search); C.pad(self._search, 14, 0)
+			C.fieldBorder(self, self._search)
 			self._scope:Connect(self._search:GetPropertyChangedSignal("Text"), function()
 				self:_Filter()
 				if self._activeTab then self._activeTab.Frame.CanvasPosition = Vector2.new(0, 0) end
@@ -2619,7 +2733,7 @@ return function(env)
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
-		C.corner(self._launcher, 10)
+		C.corner(self._launcher, T.Size.Radius)
 		local launcherHover, launcherDragged = false, false
 		C.bind(self, self._launcher, {
 			BackgroundColor3 = function(theme) return launcherHover and theme.Hover or theme.Canvas end,

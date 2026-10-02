@@ -126,8 +126,17 @@ check("text limits preserve UTF-8 boundaries", text:Get() == "😀a")
 local numericField = node("Input", numeric.Frame)
 numericField.Text = "invalid"; numericField.FocusLost:Fire()
 check("invalid numeric draft preserves the last valid value", numeric:Get() == 4 and node("Validation", numeric.Frame).Visible)
+window:SetTheme("Light")
+check("changing theme preserves validation and its visual state", numeric:Get() == 4 and numericField.Text == "invalid"
+	and numericField:FindFirstChildOfClass("UIStroke").Color == window.Theme.Danger)
+window:SetTheme("Dark")
 numericField.Text = "7"; numericField.FocusLost:Fire()
 check("numeric draft commits after correction", numeric:Get() == 7 and not node("Validation", numeric.Frame).Visible)
+numericField.Focused:Fire()
+window:SetTheme("Light", dt.Color3.fromRGB(60, 110, 190))
+check("focused fields follow custom accents without losing their value", numeric:Get() == 7 and numericField.Text == "7"
+	and numericField:FindFirstChildOfClass("UIStroke").Color == window.Theme.Accent)
+numericField.FocusLost:Fire(); window:SetTheme("Dark")
 local live = section:Input({ Text = "Live amount", Numeric = true, Live = true, Default = 1 })
 local liveField = node("Input", live.Frame)
 liveField.Focused:Fire(); liveField.Text = "1."
@@ -285,14 +294,22 @@ check("config releases active holds after restoring all values, even when cleanu
 
 window._search.Text = "no matching label"
 check("search has an empty state", node("EmptySearch").Visible)
+check("empty search hides the heading instead of overlapping its message", not tab._intro.Visible)
 window._search.Text = "Amount"
 check("search filters by control label", slider.Frame.Visible and not toggle.Frame.Visible and not node("EmptySearch").Visible)
+check("search updates the active workspace count", tab._intro.Visible and tab._summary.Text == "1 matching control")
 window._search.Text = ""
 section:SetCollapsed(true)
 check("collapsing a section hides its body", not section._body.Visible)
 window._search.Text = "Amount"
 check("search reveals a matching collapsed section", section._body.Visible)
 window._search.Text = ""; section:SetCollapsed(false)
+local countBefore = tab._summary.Text
+local countedSection = tab:Section("Temporary group")
+local countedControl = countedSection:Label("Temporary control")
+check("adding sections and controls updates the workspace summary", tab._summary.Text ~= countBefore)
+countedControl:Destroy(); countedSection:Destroy()
+check("destroying dynamic content restores the workspace summary", tab._summary.Text == countBefore)
 
 for _, viewport in ipairs({ { 1280, 720, false }, { 390, 844, true }, { 844, 390, true }, { 320, 568, true } }) do
 	uis.TouchEnabled = viewport[3]
@@ -320,6 +337,9 @@ window:SetTheme("Dark")
 
 -- Observe cancellation and final values without relying on the mock to interpolate.
 local thumb = node("Thumb", toggle.Frame)
+local toggleTrack = node("Track", toggle.Frame)
+local offPosition = (toggleTrack.Size.Y.Offset - thumb.Size.Y.Offset) / 2
+local onPosition = toggleTrack.Size.X.Offset - thumb.Size.X.Offset - offPosition
 toggle:Set(false, true); h.settle(0.3)
 toggle:Set(true, true)
 local forward = assert(window._motions[thumb])
@@ -327,16 +347,16 @@ thumb.Position = dt.UDim2.new(0, 11, 0.5, 0)
 toggle:Set(false, true)
 check("reversing a toggle cancels the previous transition and releases its listener", forward.tween.PlaybackState == "Cancelled" and forward.tween.Completed:Count() == 0)
 h.settle(0.3)
-check("the reversed toggle settles at its exact final position", thumb.Position.X.Offset == 3 and window._motions[thumb] == nil)
+check("the reversed toggle settles at its exact final position", thumb.Position.X.Offset == offPosition and window._motions[thumb] == nil)
 toggle:Set(true, true); window:SetReducedMotion(true)
-check("reduced motion finishes all active transitions immediately", count(window._motions) == 0 and thumb.Position.X.Offset == 19)
+check("reduced motion finishes all active transitions immediately", count(window._motions) == 0 and thumb.Position.X.Offset == onPosition)
 toggle:Set(false, true)
-check("reduced-motion controls update without scheduling new transitions", count(window._motions) == 0 and thumb.Position.X.Offset == 3)
+check("reduced-motion controls update without scheduling new transitions", count(window._motions) == 0 and thumb.Position.X.Offset == offPosition)
 window:SetReducedMotion(false)
 toggle:Set(true, true); uis.WindowFocusReleased:Fire()
-check("losing focus settles transitions and releases motion ownership", count(window._motions) == 0 and thumb.Position.X.Offset == 19)
+check("losing focus settles transitions and releases motion ownership", count(window._motions) == 0 and thumb.Position.X.Offset == onPosition)
 toggle:Set(false, true); window:Hide()
-check("hiding settles controls before the window is released", count(window._motions) == 0 and thumb.Position.X.Offset == 3)
+check("hiding settles controls before the window is released", count(window._motions) == 0 and thumb.Position.X.Offset == offPosition)
 window:Show(); h.settle(0.3)
 local reflows = 0
 local observeReflow = function() reflows = reflows + 1 end

@@ -21,7 +21,8 @@ return function(env)
 		local username = player and player.Name or "Local player"
 		local displayName = player and player.DisplayName or username
 		self.Frame = C.node(self, "Frame", parent, { Name = "Profile", ClipsDescendants = true }, { BackgroundColor3 = "Sidebar" })
-		C.node(self, "Frame", self.Frame, { Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
+		local card = C.node(self, "Frame", self.Frame, { Name = "ProfileCard", Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 1, -12) }, { BackgroundColor3 = "Chrome" })
+		C.corner(card, 12); C.stroke(self, card, "Subtle")
 		local avatar = C.node(self, "Frame", self.Frame, { Name = "Avatar", Size = UDim2.fromOffset(T.Size.Avatar, T.Size.Avatar) }, { BackgroundColor3 = "Raised" })
 		C.corner(avatar, T.Size.Avatar / 2)
 		local initial = C.text(self, avatar, displayName:match("^.[\128-\191]*") or "?", "Heading", "Text", { Name = "Initial", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
@@ -47,12 +48,13 @@ return function(env)
 		if not gameName then listeners[update] = true; self._scope:Add(function() listeners[update] = nil end); resolvePlace() end
 		function self.Layout(width)
 			local line = math.ceil(18 * window.TextScale)
-			local height = math.max(T.Size.Avatar, line * 3) + 28
-			local left = 12 + T.Size.Avatar + 10
-			avatar.Position = UDim2.fromOffset(12, 14)
-			name.Position, name.Size = UDim2.fromOffset(left, 14), UDim2.fromOffset(math.max(1, width - left - 12), line)
-			account.Position, account.Size = UDim2.fromOffset(left, 14 + line), UDim2.fromOffset(math.max(1, width - left - 12), line)
-			place.Position, place.Size = UDim2.fromOffset(left, 14 + line * 2), UDim2.fromOffset(math.max(1, width - left - 12), line)
+			local identityHeight = math.max(T.Size.Avatar, line * 2)
+			local height = identityHeight + line + 42
+			local left = 20 + T.Size.Avatar + 10
+			avatar.Position = UDim2.fromOffset(20, 16)
+			name.Position, name.Size = UDim2.fromOffset(left, 16), UDim2.fromOffset(math.max(1, width - left - 20), line)
+			account.Position, account.Size = UDim2.fromOffset(left, 16 + line), UDim2.fromOffset(math.max(1, width - left - 20), line)
+			place.Position, place.Size = UDim2.fromOffset(20, 24 + identityHeight), UDim2.fromOffset(math.max(1, width - 40), line)
 			self.Frame.Size = UDim2.fromOffset(width, height)
 			return height
 		end

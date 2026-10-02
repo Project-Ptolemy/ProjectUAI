@@ -16,8 +16,11 @@ return function(env)
 			Name = "Overlay", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 100,
 		})
 		local scrim = C.node(panel, "TextButton", panel.Root, { Name = "Backdrop", Size = UDim2.fromScale(1, 1), BackgroundTransparency = options.Anchor and 1 or 0.4, Selectable = false, Modal = true }, { BackgroundColor3 = "Scrim" })
-		panel.Frame = C.node(panel, "Frame", panel.Root, { Name = "Panel", Active = true, ClipsDescendants = true, ZIndex = 2 }, { BackgroundColor3 = "Canvas" })
-		C.corner(panel.Frame, 10); C.stroke(panel, panel.Frame)
+		panel.Frame = C.node(panel, "Frame", panel.Root, { Name = "Panel", Active = true, ClipsDescendants = true, ZIndex = 2 }, { BackgroundColor3 = "Surface" })
+		C.corner(panel.Frame, C.tokens.Size.Radius); C.stroke(panel, panel.Frame, "Edge")
+		local headerSurface = C.node(panel, "Frame", panel.Frame, { Name = "PanelHeader", Size = UDim2.new(1, 0, 0, 54) }, { BackgroundColor3 = "Chrome" })
+		C.corner(headerSurface, C.tokens.Size.Radius)
+		C.node(panel, "Frame", headerSurface, { Position = UDim2.fromOffset(20, 0), Size = UDim2.fromOffset(40, 2) }, { BackgroundColor3 = "Accent" })
 		pcall(function()
 			panel.Frame.SelectionGroup = true
 			panel.Frame.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
@@ -25,12 +28,13 @@ return function(env)
 			panel.Frame.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
 			panel.Frame.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		end)
-		local title = C.text(panel, panel.Frame, options.Title or "", "Heading", "Text", {
+		local title = C.text(panel, panel.Frame, options.Title or "", "Title", "Text", {
 			Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -40 - math.max(window.Target, 64 * window.TextScale), 0, 32), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
+		local close = C.node(panel, "TextButton", panel.Frame, { Name = "Dismiss", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(window.Target, window.Target), Visible = panel.Dismissible })
 		close.Size = UDim2.fromOffset(math.max(window.Target, 64 * window.TextScale), window.Target)
-		C.text(panel, close, "Close", "Caption", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		C.corner(close); C.feedback(panel, close)
+		C.text(panel, close, "Close", "Caption", "Secondary", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		panel.Body = C.scroll(panel, panel.Frame, "Body")
 		C.pad(panel.Body, 20, 8); C.list(panel.Body, false, 12)
 		panel.Actions = C.scroll(panel, panel.Frame, "Actions")
@@ -62,6 +66,7 @@ return function(env)
 			local width = math.min(C.number(options.Width, 440, 160, 1200), rect.width)
 			local height = math.min(C.number(options.Height, 320, 120, 1200), rect.height)
 			local header = math.max(54, window.Target + 12)
+			headerSurface.Size = UDim2.new(1, 0, 0, header)
 			local actionHeight = options.Actions and window.Target or 0
 			if panel.LayoutActions then actionHeight = panel.LayoutActions(width) end
 			if window.Touch and actionHeight > window.Target then
@@ -163,10 +168,11 @@ return function(env)
 		toast.Closed = false
 		toast._scope:Add(function() toast.Closed = true end)
 		toast.Frame = C.node(toast, "Frame", window._toastHost, { Name = "Notification", ClipsDescendants = true, Size = UDim2.new(1, 0, 0, 100), LayoutOrder = #window._toasts + 1 }, { BackgroundColor3 = "Surface" })
-		C.corner(toast.Frame, 8); C.stroke(toast, toast.Frame)
+		C.corner(toast.Frame, 14); C.stroke(toast, toast.Frame, "Edge")
 		local kind = ({ Success = "Success", Warning = "Warning", Danger = "Danger", Info = "Accent" })[options.Kind] or "Accent"
-		C.node(toast, "Frame", toast.Frame, { Position = UDim2.fromOffset(0, 12), Size = UDim2.new(0, 3, 1, -24) }, { BackgroundColor3 = kind })
-		local title = C.text(toast, toast.Frame, C.truncate(tostring(options.Title or "Project UAI"), 240), "Heading", "Text", { Position = UDim2.fromOffset(16, 12), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local status = C.node(toast, "Frame", toast.Frame, { Position = UDim2.fromOffset(16, 19), Size = UDim2.fromOffset(6, 6) }, { BackgroundColor3 = kind })
+		C.corner(status, 3)
+		local title = C.text(toast, toast.Frame, C.truncate(tostring(options.Title or "Project UAI"), 240), "Heading", "Text", { Position = UDim2.fromOffset(32, 12), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		local body = C.text(toast, toast.Frame, C.truncate(tostring(options.Content or ""), 800), "Caption", "Secondary", { Name = "Message", Position = UDim2.fromOffset(16, 40), Size = UDim2.new(1, -32, 0, 36), TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
 		local close = C.node(toast, "TextButton", toast.Frame, { Name = "Dismiss", BackgroundTransparency = 1, Position = UDim2.new(1, -window.Target, 0, 2), Size = UDim2.fromOffset(window.Target, window.Target) })
 		C.text(toast, close, "Dismiss", "Small", "Muted", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
@@ -195,12 +201,13 @@ return function(env)
 		C.reflow(toast, function()
 			local width, available = window._toastHost.Size.X.Offset, window._toastHost.Size.Y.Offset
 			local titleHeight = math.ceil(20 * window.TextScale)
+			status.Position = UDim2.fromOffset(16, 12 + math.floor((titleHeight - 6) / 2))
 			local headerHeight = math.max(titleHeight + 32, window.Target + 4)
 			local actionHeight = action and window.Target + 12 or 0
 			if headerHeight + actionHeight > available then actionHeight = 0 end
 			local bodyHeight = body.Text == "" and 0 or math.min(120, math.max(0, available - headerHeight - actionHeight), C.measure(body.Text, 12 * window.TextScale, width - 32))
 			local dismissWidth = math.max(window.Target, 64 * window.TextScale)
-			title.Size = UDim2.new(1, -dismissWidth - 24, 0, titleHeight)
+			title.Size = UDim2.new(1, -dismissWidth - 40, 0, titleHeight)
 			body.Position = UDim2.fromOffset(16, headerHeight - 14)
 			body.Size = UDim2.new(1, -32, 0, bodyHeight)
 			body.Visible = bodyHeight > 0

@@ -115,7 +115,7 @@ return function(env)
 	function M.Dropdown(section, options)
 		local self = Controls.base(section, "Dropdown", options, "stack")
 		configure(self, options)
-		local button, label, refresh = Controls.action(self, "", nil)
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "Dropdown"
 		label.TextXAlignment, label.Size = Enum.TextXAlignment.Left, UDim2.new(1, -96, 1, 0)
 		label.Position = UDim2.fromOffset(12, 0)
@@ -161,17 +161,16 @@ return function(env)
 			local search = C.node(panel, "TextBox", panel.Body, {
 				Name = "SearchOptions", Text = "", PlaceholderText = "Search options", Font = C.Font, TextSize = 14,
 				ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = 0,
-			}, { BackgroundColor3 = "Raised", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self._window.TextScale end })
-			C.corner(search); C.pad(search, 12, 0); C.stroke(panel, search)
+			}, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self._window.TextScale + 0.5) end })
+			C.corner(search); C.pad(search, 12, 0); C.fieldBorder(panel, search)
 			search.Visible = options.Searchable ~= false
 			local rows = {}
 			for index, option in ipairs(self.Options) do
 				local row = C.node(panel, "TextButton", panel.Body, { Name = "Option_" .. index, Size = UDim2.new(1, 0, 0, self._window.Target), LayoutOrder = index, Selectable = not option.Disabled })
 				C.corner(row)
-				C.bind(panel, row, { BackgroundColor3 = function(theme)
-					local selected = self.Multi and has(self._value, option.Value) or (not self.Multi and self._value == option.Value)
-					return selected and theme.Selected or theme.Surface
-				end })
+				local refreshRow = C.selection(panel, row, function()
+					return self.Multi and has(self._value, option.Value) or (not self.Multi and self._value == option.Value)
+				end, function() return not option.Disabled end)
 				local labelLeft = 12
 				if option.Image then
 					local rowAvatar = math.min(28, self._window.Target - 12)
@@ -186,7 +185,7 @@ return function(env)
 				})
 				local check = C.text(panel, row, "Selected", "Small", "Accent", { Size = UDim2.fromOffset(72, 24), TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 				check.Position, check.AnchorPoint = UDim2.new(1, -12, 0.5, 0), Vector2.new(1, 0.5)
-				rows[#rows + 1] = { row = row, check = check, option = option, label = rowLabel, labelLeft = labelLeft }
+				rows[#rows + 1] = { row = row, check = check, option = option, label = rowLabel, labelLeft = labelLeft, refresh = refreshRow }
 				panel._scope:Connect(row.Activated, function()
 					if option.Disabled or not self.Alive then return end
 					if self.Multi then
@@ -220,7 +219,7 @@ return function(env)
 					if item.row.Visible then count = count + 1 end
 					local selected = self.Multi and has(self._value, item.option.Value) or (not self.Multi and self._value == item.option.Value)
 					item.check.Visible = selected
-					item.row.BackgroundColor3 = selected and self._window.Theme.Selected or self._window.Theme.Surface
+					item.refresh()
 				end
 				empty.Visible = count == 0
 				layoutRows()
@@ -267,23 +266,25 @@ return function(env)
 			for _, option in ipairs(self.Options) do if not option.Disabled then self._value = option.Value; break end end
 		end
 		local rows, childScope = {}, nil
+		C.bind(self, self._slot, { BackgroundColor3 = "Input" })
+		self._slot.BackgroundTransparency = 0
+		C.corner(self._slot, 12)
 		self._render = function()
 			for _, item in ipairs(rows) do
-				item.button.BackgroundColor3 = item.option.Value == self._value and self._window.Theme.Selected or self._window.Theme.Raised
-				item.stroke.Color = item.option.Value == self._value and self._window.Theme.Accent or self._window.Theme.Subtle
+				item.refresh()
 			end
 		end
 		self._slotHeight = function()
 			local width = math.max(1, self._window._contentWidth - self._window._contentPad * 2 - 32)
 			local columns = math.max(1, math.min(#rows, math.floor(width / (100 * self._window.TextScale))))
-			return math.ceil(#rows / columns) * (self._window.Target + 6) - 6
+			return math.ceil(#rows / columns) * (self._window.Target + 6) + 2
 		end
 		self._afterLayout = function(width)
 			local columns = math.max(1, math.min(#rows, math.floor(width / (100 * self._window.TextScale))))
-			local cellWidth = (width - (columns - 1) * 6) / columns
+			local cellWidth = (width - 8 - (columns - 1) * 6) / columns
 			for index, item in ipairs(rows) do
 				item.button.Size = UDim2.fromOffset(cellWidth, self._window.Target)
-				item.button.Position = UDim2.fromOffset(((index - 1) % columns) * (cellWidth + 6), math.floor((index - 1) / columns) * (self._window.Target + 6))
+				item.button.Position = UDim2.fromOffset(4 + ((index - 1) % columns) * (cellWidth + 6), 4 + math.floor((index - 1) / columns) * (self._window.Target + 6))
 			end
 		end
 		self._rebuild = function()
@@ -294,12 +295,10 @@ return function(env)
 			for index, option in ipairs(self.Options) do
 				local button = Controls.input(self, "TextButton", self._slot, { Name = "Segment_" .. index })
 				C.corner(button)
-				local stroke = C.stroke(childScope, button, "Subtle")
-				C.bind(childScope, button, { BackgroundColor3 = function(theme) return option.Value == self._value and theme.Selected or theme.Raised end })
-				C.bind(childScope, stroke, { Color = function(theme) return option.Value == self._value and theme.Accent or theme.Subtle end })
-				C.text(childScope, button, option.Label, "Body", option.Disabled and "Muted" or "Text", { Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
+				local refreshChoice = C.selection(childScope, button, function() return option.Value == self._value end, function() return not self.Disabled and not option.Disabled end)
+				C.text(childScope, button, option.Label, "Body", function(theme) return (self.Disabled or option.Disabled) and theme.Muted or theme.Text end, { Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
 				childScope._scope:Connect(button.Activated, function() if self:_Interactive() and not option.Disabled then self:Set(option.Value) end end)
-				rows[#rows + 1] = { button = button, stroke = stroke, option = option }
+				rows[#rows + 1] = { button = button, option = option, refresh = refreshChoice }
 			end
 			self._layout(); self._render(); self:SetDisabled(self.Disabled)
 		end
@@ -332,7 +331,7 @@ return function(env)
 		self._value = self._normalize(options.Default)
 		self._encode = function() return self._value and self._value.Name or false end
 		self._decode = self._normalize
-		local button, label, refresh = Controls.action(self, "")
+		local button, label, refresh = Controls.action(self, "", "Field")
 		button.Name = "Keybind"
 		local capture, pressed
 		self._render = function() label.Text = capture and "Press a key…" or (self._value and self._value.Name or "Not set"); refresh() end

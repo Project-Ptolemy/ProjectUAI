@@ -187,6 +187,7 @@ return function(env)
 		local query = string.lower(self._search and self._search.Text or "")
 		local count = 0
 		for _, tab in ipairs(self.Tabs) do
+			local tabCount, sectionCount = 0, 0
 			for _, section in ipairs(tab.Sections) do
 				local matches = 0
 				for _, control in ipairs(section.Controls) do
@@ -197,7 +198,16 @@ return function(env)
 				end
 				section.Frame.Visible = section.Visible and (matches > 0 or query == "")
 				section._body.Visible = not section.Collapsed or query ~= ""
-				if section.Visible and tab == self._activeTab then count = count + matches end
+				if section.Visible then
+					tabCount = tabCount + matches
+					if section.Frame.Visible then sectionCount = sectionCount + 1 end
+				end
+			end
+			if tab == self._activeTab then count = tabCount end
+			if tab._summary then
+				tab._intro.Visible = query == "" or tabCount > 0
+				tab._summary.Text = query ~= "" and string.format("%d matching control%s", tabCount, tabCount == 1 and "" or "s")
+					or string.format("%d control%s  /  %d section%s", tabCount, tabCount == 1 and "" or "s", sectionCount, sectionCount == 1 and "" or "s")
 			end
 		end
 		self._empty.Visible = query ~= "" and count == 0
@@ -270,6 +280,7 @@ return function(env)
 		local header = short and math.max(52, self.Target + 8) or math.max(T.Size.Header, 14 + titleHeight + 3 + subtitleHeight + 12)
 		local nav = self._compact and math.max(T.Size.Tabs, self.Target + 8) or 0
 		local sidebar = self._compact and 0 or math.floor(T.Size.Sidebar * math.min(1.28, self.TextScale))
+		local railHeading = self._compact and 0 or 32
 		local searchFocused = self._search and uis:GetFocusedTextBox() == self._search
 		local searchVisible = self._search and (searchFocused or (height >= 300 and not (self.Touch and keyboardVisible)))
 		local search = searchVisible and self.Target + 12 or 0
@@ -285,9 +296,12 @@ return function(env)
 		-- narrow layouts lose the logo before they lose their name.
 		local brand = math.min(22, math.max(14, math.floor(18 * self.TextScale)))
 		self._brand.Size = UDim2.fromOffset(brand, brand)
-		self._brand.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2))
+		self._brand.Position = UDim2.fromOffset(26, math.floor((header - brand) / 2))
 		self._brand.Visible = header > 0 and width >= 300
-		local titleInset = self._brand.Visible and (18 + brand + 10) or 20
+		self._brandTile.Visible = self._brand.Visible
+		self._brandTile.Position = UDim2.fromOffset(18, math.floor((header - brand) / 2) - 8)
+		self._brandTile.Size = UDim2.fromOffset(brand + 16, brand + 16)
+		local titleInset = self._brand.Visible and (26 + brand + 20) or 20
 		self._title.Position = UDim2.fromOffset(titleInset, short and 12 or 14)
 		self._title.Size = UDim2.new(1, -(titleInset + self.Target * 2 + 32), 0, titleHeight)
 		self._subtitle.Visible = not short and self._subtitle.Text ~= ""
@@ -303,26 +317,35 @@ return function(env)
 			self._profile.Frame.Position = UDim2.new(0, 0, 1, -footer - profileHeight)
 			if self._compact then profileHeight = 0 end
 		end
-		self._nav.Position = UDim2.fromOffset(0, header)
+		self._rail.Position = UDim2.fromOffset(0, header)
+		self._rail.Size = UDim2.fromOffset(sidebar, math.max(0, height - header - footer))
+		self._rail.Visible = not self._compact
+		self._navCaption.Position = UDim2.fromOffset(20, header + 12)
+		self._navCaption.Size = UDim2.fromOffset(math.max(0, sidebar - 40), 14 * self.TextScale)
+		self._navCaption.Visible = not self._compact
+		self._nav.Position = UDim2.fromOffset(0, header + railHeading)
 		self._nav.Visible = not self._compact or nav > 0
-		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - footer - profileHeight)
+		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - railHeading - footer - profileHeight)
 		self._navLayout.FillDirection = self._compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 		self._nav.ScrollingDirection = self._compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
 		self._nav.AutomaticCanvasSize = self._compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
 		self._nav.ScrollBarThickness = self._compact and 0 or T.Size.Scrollbar
-		self._navPad.PaddingTop = UDim.new(0, self._compact and 4 or 14)
+		self._navPad.PaddingTop = UDim.new(0, self._compact and 4 or 10)
 		for _, tab in ipairs(self.Tabs) do
 			local tabWidth = self._compact and math.max(80, math.min(220, #tab.Title * 8 * self.TextScale + 28)) or sidebar - 24
 			tab._button.Size = UDim2.fromOffset(tabWidth, self.Target)
 		end
 		local top = header + nav
-		self._contentWidth = math.max(1, width - sidebar)
-		self._content.Position = UDim2.fromOffset(sidebar, top + search)
-		self._content.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - search - footer))
+		local inset = self._compact and 6 or 10
+		self._contentWidth = math.max(1, width - sidebar - inset * 2)
+		self._workspace.Position = UDim2.fromOffset(sidebar + inset, top + 6)
+		self._workspace.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - footer - 12))
+		self._content.Position = UDim2.fromOffset(sidebar + inset, top + 6 + search)
+		self._content.Size = UDim2.fromOffset(self._contentWidth, math.max(0, height - top - search - footer - 12))
 		if self._search then
 			self._search.Visible = searchVisible == true
-			self._search.Position = UDim2.fromOffset(sidebar + self._contentPad, top + 6)
-			self._search.Size = UDim2.new(1, -sidebar - self._contentPad * 2, 0, self.Target)
+			self._search.Position = UDim2.fromOffset(sidebar + inset + self._contentPad, top + 14)
+			self._search.Size = UDim2.fromOffset(math.max(1, self._contentWidth - self._contentPad * 2), self.Target)
 		end
 		self._resize.Visible = not self.Touch
 		-- The restore pill: title and a status line over the permanent
@@ -395,14 +418,16 @@ return function(env)
 		local ok, why = pcall(parentScreen, self.ScreenGui, options.Parent)
 		if not ok then self.ScreenGui:Destroy(); error(why, 0) end
 		self._viewport = C.node(self, "Frame", self.ScreenGui, { Name = "SafeViewport", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-		self.Frame = C.node(self, "Frame", self._viewport, { Name = "Window", Active = true, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
+		self.Frame = C.node(self, "Frame", self._viewport, { Name = "Window", Active = true, ClipsDescendants = true }, { BackgroundColor3 = "Chrome" })
 		C.corner(self.Frame, T.Size.Radius)
-		C.stroke(self, self.Frame, "Border")
+		C.stroke(self, self.Frame, "Edge")
 		self._header = C.node(self, "Frame", self.Frame, { Name = "Header", BackgroundTransparency = 1, Active = true })
+		self._brandTile = C.node(self, "Frame", self._header, { Name = "BrandTile" }, { BackgroundColor3 = "AccentSoft" })
+		C.corner(self._brandTile, 12)
+		C.stroke(self, self._brandTile, "Subtle")
 		self._brand = C.mark(self, self._header, 18)
 		self._title = C.text(self, self._header, self.Title, "Title", "Text", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		self._subtitle = C.text(self, self._header, options.Subtitle or "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.node(self, "Frame", self._header, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		self._headerActions = C.node(self, "Frame", self._header, { BackgroundTransparency = 1 })
 		C.list(self._headerActions, true, 4)
 		-- Window controls sit directly on the header with no resting fill: the
@@ -437,20 +462,25 @@ return function(env)
 		end
 		self._minimize = headerButton("Minimize", "minus", function() self:Minimize() end)
 		self._close = headerButton("Close", "close", function() self:Destroy() end, "Danger")
+		self._rail = C.node(self, "Frame", self.Frame, { Name = "NavigationRail" }, { BackgroundColor3 = "Sidebar" })
+		self._navCaption = C.text(self, self.Frame, "NAVIGATION", "Eyebrow", "Muted", { TextWrapped = false })
 		self._nav = C.scroll(self, self.Frame, "Tabs")
 		C.bind(self, self._nav, { BackgroundColor3 = "Sidebar" })
 		self._nav.BackgroundTransparency = 0
 		self._navLayout = C.list(self._nav, false, 6)
 		self._navPad = C.pad(self._nav, 12, 14)
 		self._profile = env.require("profile").new(self, self.Frame, options.GameName)
+		self._workspace = C.node(self, "Frame", self.Frame, { Name = "Workspace", Active = false }, { BackgroundColor3 = "Canvas" })
+		C.corner(self._workspace, 14); C.stroke(self, self._workspace, "Subtle")
 		self._content = C.node(self, "Frame", self.Frame, { Name = "Content", BackgroundTransparency = 1, ClipsDescendants = true })
 		self._empty = C.text(self, self._content, "No matching controls", "Body", "Muted", { Name = "EmptySearch", Visible = false, Position = UDim2.fromOffset(20, 28), Size = UDim2.new(1, -40, 0, 40) })
 		if options.Search ~= false then
 			self._search = C.node(self, "TextBox", self.Frame, {
 				Name = "Search", Text = "", PlaceholderText = "Search this tab", ClearTextOnFocus = false,
 				Font = C.Font, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
-			}, { BackgroundColor3 = "Surface", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return 14 * self.TextScale end })
-			C.corner(self._search); C.pad(self._search, 12, 0); C.stroke(self, self._search)
+			}, { BackgroundColor3 = "Input", TextColor3 = "Text", PlaceholderColor3 = "Muted", TextSize = function() return math.floor(14 * self.TextScale + 0.5) end })
+			C.corner(self._search); C.pad(self._search, 14, 0)
+			C.fieldBorder(self, self._search)
 			self._scope:Connect(self._search:GetPropertyChangedSignal("Text"), function()
 				self:_Filter()
 				if self._activeTab then self._activeTab.Frame.CanvasPosition = Vector2.new(0, 0) end
@@ -468,7 +498,7 @@ return function(env)
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
-		C.corner(self._launcher, 10)
+		C.corner(self._launcher, T.Size.Radius)
 		local launcherHover, launcherDragged = false, false
 		C.bind(self, self._launcher, {
 			BackgroundColor3 = function(theme) return launcherHover and theme.Hover or theme.Canvas end,
