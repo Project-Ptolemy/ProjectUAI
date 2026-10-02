@@ -177,7 +177,12 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } 
 		local grip = h.byName("ResizeGrip", window.root)
 		check("resize is a corner grip on the panel like desktop", grip.Parent == window.root
 			and grip.AnchorPoint.X == 1 and grip.AnchorPoint.Y == 1)
-		check("starters share the desktop card at reduced height", h.byName("Starter_explore", window.root).Size.Y.Offset < 60)
+		local starter = h.byName("Starter_explore", window.root)
+		local content = starter:FindFirstChild("Content")
+		local padding = content:FindFirstChildOfClass("UIPadding")
+		check("the shared starter card fits its readable content", starter.Size.Y.Offset >= theme.size.promptCard
+			and content.AbsoluteSize.Y + 1 >= content:FindFirstChildOfClass("UIListLayout").AbsoluteContentSize.Y
+				+ padding.PaddingTop.Offset + padding.PaddingBottom.Offset)
 		h.click(h.byName("Starter_explore", window.root))
 		check("compact starter still inserts its prompt", composer.field.get():find("Explore this game", 1, true) ~= nil)
 		h.click(h.byName("ComposerOptions", window.root))
@@ -187,12 +192,12 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } 
 	end)
 end
 
-scenario("handheld uses uniformly reduced desktop metrics and the same component ownership", function()
+scenario("handheld keeps compact desktop geometry with readable text and icons", function()
 	local desktopHarness, desktop = boot(false, 1280, 720)
 	local h, app = boot(true, 390, 844)
 	local desktopTheme, theme = desktop.env.require("ui/theme"), app.env.require("ui/theme")
 	for _, entry in ipairs({
-		{ "size", "header" }, { "size", "sidebar" }, { "size", "control" }, { "size", "icon" },
+		{ "size", "header" }, { "size", "sidebar" }, { "size", "control" },
 		{ "size", "codeWide" }, { "space", "sm" }, { "space", "lg" }, { "space", "xl" },
 		{ "radius", "md" }, { "radius", "lg" },
 	}) do
@@ -200,8 +205,12 @@ scenario("handheld uses uniformly reduced desktop metrics and the same component
 			math.abs(theme[entry[1]][entry[2]] - desktopTheme[entry[1]][entry[2]] * 0.55) <= 1)
 	end
 	for _, role in ipairs({ "body", "caption", "title", "mono" }) do
-		check(role .. " text follows the same uniform scale", math.abs(theme.text[role].size - desktopTheme.text[role].size * 0.55) <= 1)
+		check(role .. " text stays small without falling below the reading floor", theme.text[role].size >= 10
+			and theme.text[role].size < desktopTheme.text[role].size)
 	end
+	check("standard icons retain a full-pixel artwork stroke", theme.size.icon >= 12 and theme.size.iconLarge >= 12)
+	check("native title and input use the readable type sizes", app.app.titleLabel.TextSize >= 10
+		and app.app.chatPanel.composer.field.instance.TextSize >= 10)
 	check("native header height follows the desktop proportion", math.abs(app.app.window.headerHeight - desktop.app.window.headerHeight * 0.55) <= 1)
 	check("native composer height follows the desktop proportion", math.abs(app.app.chatPanel.composer.shell.Size.Y.Offset - desktop.app.chatPanel.composer.shell.Size.Y.Offset * 0.55) <= 3)
 	for _, name in ipairs({ "HeaderBrand", "TitleDetail", "Minimize", "Maximise", "Close", "HomeBrand", "GreetingSubtitle", "AddContext", "ComposerOptions" }) do
@@ -219,6 +228,10 @@ scenario("handheld uses uniformly reduced desktop metrics and the same component
 	check("the shared minimize control exposes the launcher", not window.visible and app.app.launcher.Visible)
 	h.click(app.app.launcher)
 	check("restore keeps the same mounted draft", window.visible and app.app.chatPanel.composer.field.instance == field and composer.field.get() == "Keep the shared draft")
+	local oldCaption = theme.text.caption.size
+	app.config.set("ui.fontScale", 1.2); h.settle(0.5)
+	check("text scale still enlarges the smallest text", theme.text.caption.size > oldCaption)
+	check("text scaling retains the draft", app.app.chatPanel.composer.field.get() == "Keep the shared draft")
 	healthy(h); healthy(desktopHarness); app.unload(); desktop.unload()
 end)
 

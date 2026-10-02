@@ -737,8 +737,10 @@ Breakpoints: `xs < 520`, `sm < 900`, `md < 1280`, `lg < 1700`, `xl`. Layout mode
 `sheet` (xs), `panel` (sm, touch-only input, and any portrait orientation), `window` (md+), plus `tv`
 when `GuiService:IsTenFootInterface()`. These modes control placement and bounds;
 phones use the same application components and navigation as desktop. Handheld
-metrics uniformly use 55% of desktop dimensions, spacing, text and radii before
-user density and text settings. Controls have a 15px minimum on handhelds, 28px
+layout metrics use 55% of desktop dimensions, spacing and radii before user
+density settings. Handheld text has a 10px baseline minimum before the user's
+text scale; standard icons have a 12px minimum to retain their strokes.
+Controls have a 15px minimum on handhelds, 28px
 with a pointer and 48px on a console. Native dimensions are reduced directly;
 the application is not resampled through a UIScale.
 
@@ -788,7 +790,11 @@ and each gesture continues to follow only the input that began it.
 
 Mobile geometry is keyed by orientation, including tablets whose portrait and
 landscape modes are both `panel`. A forced mobile `window` layout still uses mobile
-geometry. Keyboard positioning uses the reported top edge when available, and
+geometry. Auto retains its compact placement; explicit Sheet, Panel and Window
+use bottom, right and centred placement, respectively. Explicit mode placements
+are stored under `ui.mobileSheet.layouts.<mode>` or
+`ui.mobilePanel.layouts.<mode>` for the current orientation, keeping Auto and
+desktop placements intact. Keyboard positioning uses the reported top edge when available, and
 focused mobile fields are revealed through their scrolling ancestors. Desktop
 geometry and pointer layouts retain their existing behavior.
 

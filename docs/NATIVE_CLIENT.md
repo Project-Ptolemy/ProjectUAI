@@ -37,8 +37,12 @@ folder moves its chats to Universal and keeps their messages. Folders organize
 history without changing game context or conversation tool permissions. Older
 conversations retain their original game grouping.
 
-Mobile uses the desktop interface at 55% of its native dimensions, spacing, text
-and radii before user settings, with a 15px control minimum. The header, sidebar,
+Mobile uses the desktop interface at 55% of its native layout dimensions, spacing
+and radii before density settings, with a 15px control minimum. Text starts at
+10px minimum before text scaling, and standard icons at 12px, keeping their
+strokes visible within the compact layout. Auto keeps the compact placement;
+Sheet, Panel and Window select bottom, right and centred placement and retain
+separate saved positions without replacing live fields. The header, sidebar,
 welcome view, composer, Quick Chat and Code tabs share their desktop structure.
 The normal sidebar collapse control, app menu and conversation search remain.
 Settings categories and providers reflow between columns and scrolling strips.

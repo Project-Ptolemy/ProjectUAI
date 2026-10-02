@@ -41,8 +41,10 @@ For 2.4.0, exercise 320/390px portrait phones, 667/844px landscape phones and a
 tablet in both orientations, with the keyboard open and closed. Check compact
 typing, explicit expansion, long model names, wrapped attachments, history
 search, provider forms, category switching, Code tabs and Find. Confirm that the
-desktop header, sidebar, welcome view and composer remain present at uniformly
-reduced dimensions. Scroll across sliders vertically, then drag them horizontally;
+desktop header, sidebar, welcome view and composer remain present at reduced
+dimensions, with the text and icon readability floors. Select Auto, Sheet, Panel
+and Window in Settings; placement must change while fields and drafts stay mounted.
+Scroll across sliders vertically, then drag them horizontally;
 only the latter changes values.
 Rotate Quick Chat with a selected draft and press Return; retain the text and
 selection, and insert a newline without sending. Repeat at enlarged text scale.

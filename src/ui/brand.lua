@@ -28,8 +28,19 @@ return function(env)
 			piece.BorderSizePixel = 0
 			piece.BackgroundColor3 = M.color
 			piece.AnchorPoint = Vector2.new(0.5, 0.5)
-			piece.Position = UDim2.fromScale(0.49 + math.cos(radians) * centre, 0.51 + math.sin(radians) * centre)
-			piece.Size = UDim2.fromScale(ray[2] + overlap, ray[3])
+			local x = 0.49 + math.cos(radians) * centre
+			local y = 0.51 + math.sin(radians) * centre
+			if size > 0 and size <= 12 then
+				-- Preserve the original rays while giving tiny strokes whole-pixel bounds.
+				local width = math.max(1, math.floor(size * (ray[2] + overlap) + 0.5))
+				local height = math.max(1, math.floor(size * ray[3] + 0.5))
+				piece.Position = UDim2.fromOffset(math.floor(size * x - width * 0.5 + 0.5) + width * 0.5,
+					math.floor(size * y - height * 0.5 + 0.5) + height * 0.5)
+				piece.Size = UDim2.fromOffset(width, height)
+			else
+				piece.Position = UDim2.fromScale(x, y)
+				piece.Size = UDim2.fromScale(ray[2] + overlap, ray[3])
+			end
 			piece.Rotation = ray[1]
 			piece.ZIndex = 2
 			Instance.new("UICorner", piece).CornerRadius = UDim.new(0, size * 0.009)

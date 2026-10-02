@@ -443,7 +443,6 @@ return function(env)
 		-- relayout the existing fields, not rebuild them or resample their text.
 		M.handheld = env.require("ui/responsive").isMobile()
 		M.metricScale = M.handheld and 0.55 or 1
-		textScale = textScale * M.metricScale
 		spaceScale = spaceScale * M.metricScale
 		sizeScale = sizeScale * M.metricScale
 		for name, value in pairs(BASE_RADIUS) do
@@ -604,7 +603,12 @@ return function(env)
 
 		M.text = {}
 		for role, spec in pairs(BASE_TEXT) do
-			local size = math.max(math.floor(spec.size * textScale + 0.5), math.floor(8 * M.metricScale + 0.5))
+			-- Six-to-eight-pixel glyphs lose their strokes at the handheld scale.
+			-- Keep the compact layout, but give text a native reading floor before
+			-- applying the user's text setting so that setting remains effective.
+			local baseSize = spec.size * M.metricScale
+			if M.handheld then baseSize = math.max(10, baseSize) end
+			local size = math.max(math.floor(baseSize * textScale + 0.5), M.handheld and 9 or 8)
 			M.text[role] = {
 				size = size,
 				font = enums[spec.weight] or enums.regular,
@@ -632,6 +636,11 @@ return function(env)
 			-- a 6px status dot all came out as 8, which is why the scrollbar had never
 			-- been the width it said it was.
 			M.size[name] = math.max(math.floor(value * sizeScale + 0.5), 1)
+		end
+		if M.handheld then
+			-- The existing icon artwork has a one-pixel stroke at twelve pixels.
+			M.size.icon = math.max(12, M.size.icon)
+			M.size.iconLarge = math.max(12, M.size.iconLarge)
 		end
 
 		-- The transcript column is the one size a setting names directly. Resolved after

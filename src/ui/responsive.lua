@@ -336,16 +336,27 @@ return function(env)
 	function M.geometry()
 		local width, height = M.viewport.X, M.viewport.Y
 		if M.isMobile() then
-			-- The same desktop rectangle, in uniformly smaller native pixels.
-			-- Only placement follows panel/sheet orientation; composition is shared.
 			local theme = env.require("ui/theme")
 			local scale = theme.metricScale
 			local portrait = M.orientation == "portrait"
+			local minimumWidth = theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2
+			local automatic = env.require("runtime/config").get("ui.layout", "auto") == "auto"
+			-- Auto retains the compact rectangle. Explicit modes change the same
+			-- desktop surface's dimensions and placement without changing its controls.
+			if not automatic and M.mode == "sheet" then
+				return { width = width, height = math.floor(height * (portrait and 0.72 or 0.9)), anchored = "bottom" }
+			elseif not automatic and M.mode == "panel" then
+				return {
+					width = math.floor(math.max(minimumWidth, util.clamp(width / scale * 0.52, 320, 460) * scale)),
+					height = math.floor(height - M.inset.Y - 24 * scale),
+					anchored = "right",
+				}
+			end
 			return {
-				width = math.floor(math.max(theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2,
+				width = math.floor(math.max(minimumWidth,
 					util.clamp(width / scale * 0.44, 460, 780) * scale)),
 				height = math.floor(util.clamp(height / scale * 0.68, 360, 620) * scale),
-				anchored = portrait and "bottom" or "right",
+				anchored = automatic and (portrait and "bottom" or "right") or "center",
 			}
 		end
 		if M.mode == "sheet" then

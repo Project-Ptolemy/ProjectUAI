@@ -26,9 +26,13 @@ return function(env)
 		local minWidth = props.minWidth or 320
 		local minHeight = mobile and math.min(props.minHeight or 280, 200) or (props.minHeight or 280)
 		local function geometryKey()
-			-- Orientation, not a width breakpoint: both orientations of a tablet
-			-- can be panels, and a forced window layout must not write desktop state.
-			if mobile then return responsive.orientation == "portrait" and "ui.mobileSheet" or "ui.mobilePanel" end
+			-- Auto keeps its orientation-specific placement. Explicit handheld modes
+			-- remember their own geometry without replacing Auto or desktop settings.
+			if mobile then
+				local key = responsive.orientation == "portrait" and "ui.mobileSheet" or "ui.mobilePanel"
+				if config.get("ui.layout", "auto") ~= "auto" then key = key .. ".layouts." .. responsive.mode end
+				return key
+			end
 			if responsive.mode == "sheet" then return "ui.mobileSheet" end
 			if responsive.mode == "panel" then return "ui.mobilePanel" end
 			return "ui.window"
@@ -141,7 +145,7 @@ return function(env)
 				local maxPanelHeight = bounds.height
 				local defaultWidth = math.min(geometry.width, maxPanelWidth)
 				local defaultHeight = math.min(geometry.height, maxPanelHeight)
-				if mobile and responsive.keyboardHeight == 0 then
+				if mobile and config.get("ui.layout", "auto") == "auto" and responsive.keyboardHeight == 0 then
 					defaultHeight = math.min(defaultHeight, math.floor(maxPanelHeight * 0.92))
 				end
 				local width = defaultWidth
@@ -154,10 +158,12 @@ return function(env)
 				root.Size = UDim2.fromOffset(math.floor(width), math.floor(height))
 				local defaultX = bounds.x + bounds.width - width
 				local defaultY = bounds.y
-				if mobile and responsive.orientation == "portrait" then
+				if geometry.anchored == "bottom" then
 					defaultX = bounds.x + (bounds.width - width) / 2
 					defaultY = bounds.y + bounds.height - height
-				elseif mode == "sheet" then defaultY = bounds.y + bounds.height - height
+				elseif geometry.anchored == "center" then
+					defaultX = bounds.x + (bounds.width - width) / 2
+					defaultY = bounds.y + (bounds.height - height) / 2
 				elseif responsive.isMobile() then defaultY = bounds.y + (bounds.height - height) / 2 end
 				if placed then
 					root.Position = UDim2.fromOffset(

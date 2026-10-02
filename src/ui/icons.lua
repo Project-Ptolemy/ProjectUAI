@@ -98,12 +98,38 @@ return function(env)
 		return nil
 	end
 
+	local tinyFallbacks = setmetatable({}, { __mode = "k" })
+
+	local function tinyDimensions(parent)
+		local size = tinyFallbacks[parent]
+		if size then return size, size end
+		-- A fallback segment can also sit inside an outlined part of the icon.
+		size = tinyFallbacks[parent.Parent]
+		if not size then return nil end
+		local bounds = parent.Size
+		return size * bounds.X.Scale + bounds.X.Offset, size * bounds.Y.Scale + bounds.Y.Offset
+	end
+
 	local function bar(parent, props)
+		local position = props.position or UDim2.fromScale(0.5, 0.5)
+		local bounds = props.size
+		local parentWidth, parentHeight = tinyDimensions(parent)
+		if parentWidth then
+			-- Keep tiny static strokes at least one pixel wide. Snap their local,
+			-- unrotated bounds while retaining the glyph's centre anchors and angles.
+			local width = math.max(1, math.floor(parentWidth * bounds.X.Scale + bounds.X.Offset + 0.5))
+			local height = math.max(1, math.floor(parentHeight * bounds.Y.Scale + bounds.Y.Offset + 0.5))
+			local x = parentWidth * position.X.Scale + position.X.Offset
+			local y = parentHeight * position.Y.Scale + position.Y.Offset
+			position = UDim2.fromOffset(math.floor(x - width * 0.5 + 0.5) + width * 0.5,
+				math.floor(y - height * 0.5 + 0.5) + height * 0.5)
+			bounds = UDim2.fromOffset(width, height)
+		end
 		local piece = Instance.new("Frame", parent)
 		piece.BorderSizePixel = 0
 		piece.AnchorPoint = Vector2.new(0.5, 0.5)
-		piece.Position = props.position or UDim2.fromScale(0.5, 0.5)
-		piece.Size = props.size
+		piece.Position = position
+		piece.Size = bounds
 		piece.Rotation = props.rotation or 0
 		piece.BackgroundColor3 = props.color
 		piece.ZIndex = props.zIndex or 2
@@ -113,8 +139,8 @@ return function(env)
 		return piece
 	end
 
-	-- Every icon is a square container the caller sizes; the shapes inside are
-	-- expressed in scale so one implementation serves every size.
+	-- Every icon is a square container the caller sizes. Shared proportions serve
+	-- every size, with whole-pixel bounds for tiny static fallback strokes.
 	local function holder(parent, size, name)
 		local frame = Instance.new("Frame", parent)
 		frame.Name = name or "Icon"
@@ -149,6 +175,7 @@ return function(env)
 			return makeCustom(parent, size, name, asset, colour, rotation), true
 		end
 		local frame = holder(parent, size, name)
+		if size > 0 and size <= 12 then tinyFallbacks[frame] = size end
 		if rotation and rotation ~= 0 then
 			frame.Rotation = rotation
 		end
