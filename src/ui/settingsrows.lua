@@ -42,8 +42,8 @@ return function(env)
 		return P.card(group, {
 			name = props.name,
 			layoutOrder = 2,
-			gap = responsive.isMobile() and theme.space.sm or theme.space.md,
-			padding = responsive.isMobile() and theme.space.sm or theme.space.lg,
+			gap = theme.space.md,
+			padding = theme.space.lg,
 		})
 	end
 

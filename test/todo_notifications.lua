@@ -36,6 +36,7 @@ local function fixture()
 		responsive.touch, responsive.console = touch == true, false
 		responsive.mode = width < 520 and "sheet" or "window"
 		root.Size = h.dt.UDim2.fromOffset(width, height)
+		if cache["ui/theme"] then cache["ui/theme"].rebuild() end
 		responsive.changed:fire({ reason = "test" })
 	end
 	viewport(720, 600)
@@ -126,7 +127,7 @@ scenario("toast text, status icons and dismissal controls align and fit", functi
 				local dismiss = entry.card:FindFirstChild("DismissNotification")
 				check("short message centres with its icon", math.abs(centreY(indicator) - centreY(label)) < 0.01)
 				check("dismiss control shares that centre", math.abs(centreY(dismiss) - centreY(label)) < 0.01)
-				check("dismiss target respects input mode", dismiss.AbsoluteSize.Y >= (touch and 44 or 28))
+				check("dismiss target respects input mode", dismiss.AbsoluteSize.Y >= env.require("ui/responsive").minTarget())
 				entry.close(true)
 			end
 		end

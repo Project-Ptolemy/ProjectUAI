@@ -9,14 +9,17 @@ case("narrow source blocks preserve Copy and use the available keyboard space", 
 	f.h.services.UserInputService.TouchEnabled = true
 	f.h.services.UserInputService.MouseEnabled = false
 	local responsive = f.env.require("ui/responsive"); responsive.init(f.env.root)
+	local theme = f.env.require("ui/theme"); theme.rebuild()
 	local message = f.env.require("ui/chat/message")
 	local code = message.codeBlock(f.host, { text = string.rep("print('test')\n", 40), lang = "lua",
 		meta = string.rep("long metadata ", 20) })
 	f.h.settle(0.2)
 	local bar, copy = code:FindFirstChild("Bar"), f.h.byName("Copy", code)
-	check("Copy retains a full touch target", copy.AbsoluteSize.Y >= 44)
+	check("Copy retains the compact control target", copy.AbsoluteSize.Y >= responsive.minTarget())
 	check("long metadata yields space to source actions", not bar:FindFirstChild("Meta").Visible)
-	check("narrow code gains usable width", bar:FindFirstChildOfClass("UIPadding").PaddingLeft.Offset <= 8)
+	local headerInset = bar:FindFirstChildOfClass("UIPadding").PaddingLeft.Offset
+	local sourceInset = code:FindFirstChild("Body", true):FindFirstChildOfClass("UIPadding").PaddingLeft.Offset
+	check("source and header use the same scaled desktop inset", headerInset == theme.space.lg and sourceInset == headerInset)
 	local body = code:FindFirstChild("CodeScroll")
 	local tall = body.Size.Y.Offset
 	responsive.keyboardHeight = 350
@@ -24,9 +27,10 @@ case("narrow source blocks preserve Copy and use the available keyboard space", 
 	check("keyboard reduces nested code height", body.Size.Y.Offset < tall and body.Size.Y.Offset > 40)
 	local thought = message.reasoning(f.host, string.rep("Thinking details. ", 150))
 	local viewport = f.h.byName("ThoughtViewport", thought.root)
-	check("nested reasoning leaves room for text", viewport.Position.X.Offset <= 12)
+	check("reasoning keeps its scaled desktop indent and remaining width", viewport.Position.X.Offset == theme.space.xl
+		and viewport.Size.X.Scale == 1 and viewport.Size.X.Offset == -theme.space.xl)
 	local header = f.h.byName("ReasoningHeader", thought.root)
-	check("reasoning still has a complete tap target", header.Size.Y.Offset >= 44)
+	check("reasoning retains the compact control target", header.Size.Y.Offset >= responsive.minTarget())
 	f.healthy(); f.close()
 end)
 
@@ -34,6 +38,7 @@ case("tables contract above the keyboard without discarding their rows", functio
 	local f = F.ui(390, 844)
 	f.h.services.UserInputService.TouchEnabled = true; f.h.services.UserInputService.MouseEnabled = false
 	local responsive = f.env.require("ui/responsive"); responsive.init(f.env.root)
+	f.env.require("ui/theme").rebuild()
 	local rows = {}; for i = 1, 30 do rows[i] = { "Item " .. i, "Full row text" } end
 	local root = f.env.require("ui/chat/table").render(f.host, { block = { header = { "Name", "Value" }, rows = rows } })
 	f.h.settle(0.2)

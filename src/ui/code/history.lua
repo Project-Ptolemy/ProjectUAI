@@ -2,8 +2,6 @@
 return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
-	local responsive = env.require("ui/responsive")
-	local overlay = env.require("ui/overlay")
 	local common = env.require("ui/code/common")
 	local tabs = env.require("ui/code/tabs")
 	local forms = env.require("ui/code/forms")
@@ -32,14 +30,15 @@ return function(env)
 		return record.uncertain and "Unknown" or values.format(record.after)
 	end
 	function M.new(parent, gameChanges, navigate)
-		local root = P.frame(parent, { name = gameChanges and "GameChanges" or "SourceHistory", size = UDim2.fromScale(1, 1), clip = true })
-		local handle = { root = root, alive = true, visible = true }
+		local root, surface, surfaceScroll = common.surface(parent, { name = gameChanges and "GameChanges" or "SourceHistory", size = UDim2.fromScale(1, 1), clip = true },
+			function() return math.max(common.pixels(360), common.barHeight() * 4 + theme.text.body.height
+				+ theme.text.caption.height * 3 + theme.space.md + theme.space.xl + theme.text.mono.height * 3) end)
+		local handle = { root = surface, surfaceScroll = surfaceScroll, alive = true, visible = true }
 		local render, layout, renderDetail
 		local selected, selectedId, documentId, reviewRevision, previewView, valuePreview, renderedKey, fieldLayout
 		local remembered, filter, query, section, detailOpen, fieldIndex = {}, "all", "", "changes", false, 1
 		local resultText, paneWidth = "", nil
-		local short = false
-		local selectField, sizeFields, lastNotice
+		local selectField, sizeFields
 		local bar = common.toolbar(root)
 		local title = bar.add(gameChanges and "Game changes" or "History", function(button)
 			if gameChanges then return end
@@ -60,40 +59,26 @@ return function(env)
 			end
 			saveButton = bar.add("Save version", saveVersion, { tight = true, name = "SaveSourceVersion" })
 		end
-		local captionHeight = theme.text.caption.height + 12
+		local captionHeight = theme.text.caption.height + theme.space.md
 		local caption = P.text(root, { name = "HistorySummary", text = "", role = "caption", color = theme.color.textSecondary, truncate = true,
-			position = UDim2.fromOffset(10, common.barHeight()), size = UDim2.new(1, -20, 0, captionHeight) })
+			position = UDim2.fromOffset(common.pixels(10), common.barHeight()), size = UDim2.new(1, -common.pixels(20), 0, captionHeight) })
 		local top = common.barHeight() + captionHeight
 		local body = P.frame(root, { name = "HistoryBody", position = UDim2.fromOffset(0, top), size = UDim2.new(1, 0, 1, -top), clip = true })
 		local timeline = P.frame(body, { name = "HistoryTimeline", clip = true })
 		local detail = P.frame(body, { name = "HistoryReview", clip = true })
 		local filters = tabs.new(timeline, { name = "HistoryFilters", size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(id) filter = id; render() end })
 		local search = P.field(timeline, { name = "HistorySearch", placeholder = gameChanges and "Filter objects or fields" or "Filter versions", role = "small", onChange = function(text) query = text; if render then render() end end })
-		search.shell.Position, search.shell.Size = UDim2.fromOffset(8, common.barHeight() + 8), UDim2.new(1, -16, 0, common.barHeight())
-		local listTop = common.barHeight() * 2 + 16
-		local list = common.virtualList(timeline, { name = "HistoryEntries", position = UDim2.fromOffset(0, listTop), size = UDim2.new(1, 0, 1, -listTop), rowHeight = 58,
-			detail = function(item) return item.description end, meta = function(item) return item.meta end, metaWidth = 70,
+		search.shell.Position, search.shell.Size = UDim2.fromOffset(theme.space.sm, common.barHeight() + theme.space.sm), UDim2.new(1, -theme.space.sm * 2, 0, common.barHeight())
+		local listTop = common.barHeight() * 2 + theme.space.lg
+		local list = common.virtualList(timeline, { name = "HistoryEntries", position = UDim2.fromOffset(0, listTop), size = UDim2.new(1, 0, 1, -listTop), rowHeight = common.pixels(58),
+			detail = function(item) return item.description end, meta = function(item) return item.meta end, metaWidth = common.pixels(70),
 			onSelect = function(item)
 				selectedId, detailOpen, resultText, fieldIndex = item.id, true, "", 1
 				if documentId then remembered[documentId] = selectedId end
 				render(); layout()
 			end })
 		local empty = P.text(timeline, { name = "HistoryEmpty", text = "", wrap = true, color = theme.color.textSecondary,
-			position = UDim2.fromOffset(18, listTop + 24), size = UDim2.new(1, -36, 0, 110) })
-		local compactOptions = bar.add("Options", function(button)
-			local options = { { label = "Search entries", value = "search" } }
-			if query ~= "" then options[#options + 1] = { label = "Clear search", value = "clear" } end
-			for _, item in ipairs(filters.items) do options[#options + 1] = { label = item.label, value = "filter:" .. item.id, selected = filter == item.id } end
-			options[#options + 1] = { label = gameChanges and "Open Explorer" or "Save version", value = "action" }
-			common.menu(button, "History options", options, function(action)
-				if action == "search" then
-					overlay.prompt({ title = "Search history", placeholder = gameChanges and "Object or field" or "Version name", value = query,
-						confirmText = "Search", onConfirm = function(text) search.set(text); render() end })
-				elseif action == "clear" then search.set(""); render()
-				elseif action == "action" then if gameChanges then if navigate then navigate("Explorer") end else saveVersion() end
-				else filter = action:sub(8); render() end
-			end)
-		end, { name = "MobileHistoryOptions", tight = true })
+			position = UDim2.fromOffset(common.pixels(18), listTop + common.pixels(24)), size = UDim2.new(1, common.pixels(-36), 0, common.pixels(110)) })
 		local actions = common.toolbar(detail, { name = "HistoryReviewActions", gap = 4, padding = 4 })
 		local backButton = actions.add("", function() detailOpen = false; layout() end, { icon = "arrowLeft", iconOnly = true, name = "BackToHistory" })
 		local applyButton = actions.add(gameChanges and "Undo fields" or "Restore version", function()
@@ -130,53 +115,24 @@ return function(env)
 		end
 		local secondary = actions.add(gameChanges and "Reveal" or "Discard", secondaryAction,
 			{ name = gameChanges and "RevealChangedObject" or "DiscardSourceProposal", tight = true })
-		local heading = P.text(detail, { name = "HistoryReviewTitle", text = "Select an entry", role = "body", truncate = true, position = UDim2.fromOffset(12, common.barHeight() + 8), size = UDim2.new(1, -24, 0, theme.text.body.height) })
+		local heading = P.text(detail, { name = "HistoryReviewTitle", text = "Select an entry", role = "body", truncate = true, position = UDim2.fromOffset(theme.space.md, common.barHeight() + theme.space.sm), size = UDim2.new(1, -theme.space.md * 2, 0, theme.text.body.height) })
 		local metadata = P.text(detail, { name = "HistoryReviewMetadata", text = "", role = "caption", wrap = true, color = theme.color.textSecondary,
-			position = UDim2.fromOffset(12, common.barHeight() + theme.text.body.height + 10), size = UDim2.new(1, -24, 0, theme.text.caption.height * 2) })
+			position = UDim2.fromOffset(theme.space.md, common.barHeight() + theme.text.body.height + common.pixels(10)), size = UDim2.new(1, -theme.space.md * 2, 0, theme.text.caption.height * 2) })
 		local notice = P.text(detail, { name = "HistoryReviewNotice", text = "", role = "caption", wrap = true, color = theme.color.warn })
 		local detailTabs = tabs.new(detail, { name = "HistoryReviewTabs", size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(id) section = id; renderDetail() end })
 		local content = P.frame(detail, { name = "HistoryReviewContent", bg = theme.color.codeSurface, clip = true })
 		local reviewEmpty = P.text(detail, { name = "HistoryReviewEmpty", text = gameChanges and "Select an edit to inspect its before and after values." or "Select a version or proposal to review its changes.", wrap = true, color = theme.color.textSecondary,
-			position = UDim2.fromOffset(20, 24), size = UDim2.new(1, -40, 0, 90) })
-		local reviewOptions = actions.add("Review", function(button)
-			if not selected then return end
-			local options = { { label = "Entry details", value = "details" }, { label = "Copy entry", value = "copy" } }
-			if gameChanges then
-				for index, record in ipairs(selected.batch.records) do
-					local name = objectInfo(record)
-					options[#options + 1] = { label = name .. " / " .. record.key, value = "field:" .. index, selected = index == fieldIndex }
-				end
-				options[#options + 1] = { label = "Reveal object", value = "secondary" }
-			else
-				for _, item in ipairs(detailTabs.items) do options[#options + 1] = { label = item.label, value = "section:" .. item.id, selected = section == item.id } end
-				if previewView and previewView.nextChange then
-					options[#options + 1] = { label = "Previous change", value = "previous" }
-					options[#options + 1] = { label = "Next change", value = "next" }
-				end
-				if selected.proposal then options[#options + 1] = { label = "Discard proposal", value = "secondary" } end
-			end
-			common.menu(button, "Review entry", options, function(action)
-				if action == "details" then
-					local text = metadata.Text .. (notice.Text ~= "" and ("\n\n" .. notice.Text) or "")
-					if previewView and previewView.comparison then text = text .. "\n\n" .. previewView.comparison.added .. " added, " .. previewView.comparison.removed .. " removed lines" end
-					overlay.code({ title = heading.Text, code = text })
-				elseif action == "copy" then copySelected()
-				elseif action == "secondary" then secondaryAction()
-				elseif action == "previous" or action == "next" then if previewView and previewView.nextChange then previewView.nextChange(action == "next" and 1 or -1) end
-				elseif action:sub(1, 6) == "field:" then if selectField then selectField(tonumber(action:sub(7))) end
-				else section = action:sub(9); renderDetail() end
-			end)
-		end, { name = "MobileHistoryReviewOptions", tight = true })
+			position = UDim2.fromOffset(common.pixels(20), common.pixels(24)), size = UDim2.new(1, common.pixels(-40), 0, common.pixels(90)) })
 		local function fieldReview(batch)
-			local trayHeight = 140
+			local trayHeight = common.pixels(140)
 			local tray = P.frame(content, { name = "ChangedFieldValues", position = UDim2.new(0, 0, 1, -trayHeight), size = UDim2.new(1, 0, 0, trayHeight), bg = theme.color.codeSurface, clip = true })
-			local pathLabel = P.text(tray, { name = "ChangedFieldPath", text = "", role = "caption", color = theme.color.codeGutter, truncate = true, position = UDim2.fromOffset(10, 0), size = UDim2.new(1, -20, 0, 30) })
-			local beforeHost = P.frame(tray, { name = "BeforeField", position = UDim2.fromOffset(0, 30), size = UDim2.new(0.5, -3, 1, -30), clip = true })
-			local afterHost = P.frame(tray, { name = "AfterField", position = UDim2.new(0.5, 3, 0, 30), size = UDim2.new(0.5, -3, 1, -30), clip = true })
-			P.text(beforeHost, { text = "Before", role = "caption", color = theme.color.codeRemoveText, position = UDim2.fromOffset(10, 0), size = UDim2.new(1, -20, 0, 22) })
-			P.text(afterHost, { text = "After", role = "caption", color = theme.color.codeAddText, position = UDim2.fromOffset(10, 0), size = UDim2.new(1, -20, 0, 22) })
-			local beforeValues = P.frame(beforeHost, { position = UDim2.fromOffset(0, 22), size = UDim2.new(1, 0, 1, -22), clip = true })
-			local afterValues = P.frame(afterHost, { position = UDim2.fromOffset(0, 22), size = UDim2.new(1, 0, 1, -22), clip = true })
+			local pathLabel = P.text(tray, { name = "ChangedFieldPath", text = "", role = "caption", color = theme.color.codeGutter, truncate = true, position = UDim2.fromOffset(common.pixels(10), 0), size = UDim2.new(1, common.pixels(-20), 0, common.pixels(30)) })
+			local beforeHost = P.frame(tray, { name = "BeforeField", position = UDim2.fromOffset(0, common.pixels(30)), size = UDim2.new(0.5, common.pixels(-3), 1, common.pixels(-30)), clip = true })
+			local afterHost = P.frame(tray, { name = "AfterField", position = UDim2.new(0.5, common.pixels(3), 0, common.pixels(30)), size = UDim2.new(0.5, common.pixels(-3), 1, common.pixels(-30)), clip = true })
+			P.text(beforeHost, { text = "Before", role = "caption", color = theme.color.codeRemoveText, position = UDim2.fromOffset(common.pixels(10), 0), size = UDim2.new(1, common.pixels(-20), 0, common.pixels(22)) })
+			P.text(afterHost, { text = "After", role = "caption", color = theme.color.codeAddText, position = UDim2.fromOffset(common.pixels(10), 0), size = UDim2.new(1, common.pixels(-20), 0, common.pixels(22)) })
+			local beforeValues = P.frame(beforeHost, { position = UDim2.fromOffset(0, common.pixels(22)), size = UDim2.new(1, 0, 1, common.pixels(-22)), clip = true })
+			local afterValues = P.frame(afterHost, { position = UDim2.fromOffset(0, common.pixels(22)), size = UDim2.new(1, 0, 1, common.pixels(-22)), clip = true })
 			local fieldsList
 			local rows = {}
 			for index, record in ipairs(batch.records) do
@@ -194,20 +150,13 @@ return function(env)
 				local after = preview.new(afterValues, afterValue(item.record) .. (item.record.uncertain and ("\n" .. tostring(item.record.reason or "The final value could not be read.")) or ""), "AfterValue")
 				valuePreview = { destroy = function() before.destroy(); after.destroy() end }
 			end
-			fieldsList = common.virtualList(content, { name = "ChangedFields", size = UDim2.new(1, 0, 1, -trayHeight), rowHeight = 58, detail = function(item) return item.description end, onSelect = function(item) selectField(item.index) end })
+			fieldsList = common.virtualList(content, { name = "ChangedFields", size = UDim2.new(1, 0, 1, -trayHeight), rowHeight = common.pixels(58), detail = function(item) return item.description end, onSelect = function(item) selectField(item.index) end })
 			selectField(fieldIndex)
 			sizeFields = function()
-				if short then
-					tray.Position, tray.Size = UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1)
-					pathLabel.Visible, fieldsList.root.Visible = false, false
-					beforeHost.Position, beforeHost.Size = UDim2.fromOffset(0, 0), UDim2.new(0.5, -3, 1, 0)
-					afterHost.Position, afterHost.Size = UDim2.new(0.5, 3, 0, 0), UDim2.new(0.5, -3, 1, 0)
-					return
-				end
-				local height = math.min(trayHeight, math.max(100, content.AbsoluteSize.Y * 0.46))
+				local height = math.min(trayHeight, math.max(common.pixels(100), content.AbsoluteSize.Y * 0.46))
 				pathLabel.Visible, fieldsList.root.Visible = true, true
-				beforeHost.Position, beforeHost.Size = UDim2.fromOffset(0, 30), UDim2.new(0.5, -3, 1, -30)
-				afterHost.Position, afterHost.Size = UDim2.new(0.5, 3, 0, 30), UDim2.new(0.5, -3, 1, -30)
+				beforeHost.Position, beforeHost.Size = UDim2.fromOffset(0, common.pixels(30)), UDim2.new(0.5, common.pixels(-3), 1, common.pixels(-30))
+				afterHost.Position, afterHost.Size = UDim2.new(0.5, common.pixels(3), 0, common.pixels(30)), UDim2.new(0.5, common.pixels(-3), 1, common.pixels(-30))
 				tray.Position, tray.Size = UDim2.new(0, 0, 1, -height), UDim2.new(1, 0, 0, height)
 				fieldsList.root.Size = UDim2.new(1, 0, 1, -height)
 			end
@@ -218,10 +167,8 @@ return function(env)
 			if not handle.alive or not handle.visible then return end
 			local hasSelection = selected ~= nil
 			actions.root.Visible, heading.Visible, metadata.Visible, content.Visible, reviewEmpty.Visible = hasSelection, hasSelection, hasSelection, hasSelection, not hasSelection
-			heading.Visible, metadata.Visible = hasSelection and not short, hasSelection and not short
-			detailTabs.root.Visible = hasSelection and not gameChanges and not short
-			secondary.instance.Visible = hasSelection and not short and (gameChanges or selected.proposal ~= nil)
-			copyButton.instance.Visible, reviewOptions.instance.Visible = not short, short
+			detailTabs.root.Visible = hasSelection and not gameChanges
+			secondary.instance.Visible = hasSelection and (gameChanges or selected.proposal ~= nil)
 			notice.Visible = false
 			if not selected then return end
 			local doc = not gameChanges and store.resolve(selected.documentId)
@@ -242,26 +189,18 @@ return function(env)
 				if conflict and message == "" then message = "This proposal is based on an older revision. Review it against the current source." end
 				detailTabs.set({ { id = "changes", label = "Changes" }, { id = "source", label = selected.proposal and "Proposed source" or "Saved source" }, { id = "current", label = "Current source" } }, section)
 			end
-			local detailTop = common.barHeight() + theme.text.body.height + theme.text.caption.height * 2 + 20
+			local detailTop = common.barHeight() + theme.text.body.height + theme.text.caption.height * 2 + theme.space.xl
 			notice.Text, notice.Visible = message, message ~= ""
-			if message ~= "" and not short then
-				local height = math.max(theme.text.caption.height + 8, P.measureText(message, { role = "caption", width = math.max(80, detail.AbsoluteSize.X - 24) }).Y + 8)
-				notice.Position, notice.Size = UDim2.fromOffset(12, detailTop), UDim2.new(1, -24, 0, height)
+			if message ~= "" then
+				local height = math.max(theme.text.caption.height + theme.space.sm, P.measureText(message, { role = "caption", width = math.max(common.pixels(80), detail.AbsoluteSize.X - theme.space.md * 2) }).Y + theme.space.sm)
+				notice.Position, notice.Size = UDim2.fromOffset(theme.space.md, detailTop), UDim2.new(1, -theme.space.md * 2, 0, height)
 				detailTop = detailTop + height
 			end
 			detailTabs.root.Position = UDim2.fromOffset(0, detailTop)
 			if not gameChanges then detailTop = detailTop + common.barHeight() end
-			if short then
-				detailTop = common.barHeight()
-				notice.Visible = false
-				reviewOptions.setText(message ~= "" and "Review notice" or "Review")
-				if detailOpen and message ~= "" and message ~= lastNotice then overlay.toast(message, "info", 5) end
-			end
-			lastNotice = message
 			content.Position, content.Size = UDim2.fromOffset(0, detailTop), UDim2.new(1, 0, 1, -detailTop)
 			local key = selected.id .. ":" .. (gameChanges and selected.batch.status or doc.revision) .. ":" .. section
 			if key == renderedKey then
-				if previewView and previewView.setCompact then previewView.setCompact(short) end
 				if sizeFields then sizeFields() end
 				return
 			end
@@ -271,7 +210,7 @@ return function(env)
 			if valuePreview then valuePreview.destroy(); valuePreview = nil end
 			common.clear(content); handle.fields, selectField, sizeFields = nil, nil, nil
 			if gameChanges then fieldReview(selected.batch)
-			elseif section == "changes" then previewView = env.require("ui/code/diff_view").new(content, doc.source, source.source); previewView.setCompact(short)
+			elseif section == "changes" then previewView = env.require("ui/code/diff_view").new(content, doc.source, source.source)
 			else previewView = preview.new(content, section == "current" and doc.source or source.source, "HistorySourcePreview") end
 		end
 		render = function()
@@ -324,35 +263,23 @@ return function(env)
 			renderDetail(); layout()
 		end
 		local divider = env.require("ui/code/splitter").new(body, function(position)
-			paneWidth = math.max(240, math.min(root.AbsoluteSize.X - 380, position.X - body.AbsolutePosition.X)); layout()
+			paneWidth = math.max(common.pixels(240), math.min(root.AbsoluteSize.X - common.pixels(380), position.X - body.AbsolutePosition.X)); layout()
 		end)
 		layout = function()
 			if not handle.alive then return end
-			short = responsive.isMobile() and root.AbsoluteSize.Y < common.barHeight() * 5 + captionHeight + 116
-			local wide = root.AbsoluteSize.X >= 720 and not short
-			bar.root.Visible = not (short and detailOpen)
-			caption.Visible, filters.root.Visible, search.shell.Visible = not short, not short, not short
-			compactOptions.instance.Visible = short
-			if saveButton then saveButton.instance.Visible = not short end
-			if explorerButton then explorerButton.instance.Visible = not short end
-			local bodyTop = short and (detailOpen and 0 or common.barHeight()) or top
-			body.Position, body.Size = UDim2.fromOffset(0, bodyTop), UDim2.new(1, 0, 1, -bodyTop)
-			local entriesTop = short and 0 or listTop
-			list.root.Position, list.root.Size = UDim2.fromOffset(0, entriesTop), UDim2.new(1, 0, 1, -entriesTop)
-			empty.Position = UDim2.fromOffset(18, entriesTop + (short and 8 or 24))
-			empty.Size = UDim2.new(1, -36, 0, math.max(1, math.min(110, root.AbsoluteSize.Y - bodyTop - entriesTop - 8)))
-			local width = math.max(240, math.min(root.AbsoluteSize.X - 380, paneWidth or root.AbsoluteSize.X * 0.32))
+			local wide = root.AbsoluteSize.X >= common.pixels(720)
+			local width = math.max(common.pixels(240), math.min(root.AbsoluteSize.X - common.pixels(380), paneWidth or root.AbsoluteSize.X * 0.32))
 			timeline.Visible, detail.Visible = wide or not detailOpen, wide or detailOpen
 			timeline.Size = wide and UDim2.new(0, width, 1, 0) or UDim2.fromScale(1, 1)
-			detail.Position, detail.Size = UDim2.fromOffset(wide and width + 6 or 0, 0), UDim2.new(1, wide and -width - 6 or 0, 1, 0)
+			detail.Position, detail.Size = UDim2.fromOffset(wide and width + theme.space.xs or 0, 0), UDim2.new(1, wide and -width - theme.space.xs or 0, 1, 0)
 			backButton.instance.Visible = not wide
-			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
+			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, theme.space.xs, 1, 0)
 			divider.root.Visible = wide and handle.visible
 			list.render(); renderDetail()
 		end
 		local off = (gameChanges and changes.changed or store.changed):connect(render)
 		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
-		function handle.setVisible(visible) handle.visible = visible; list.visible = visible; if visible then render() end; divider.root.Visible = visible and not short and root.AbsoluteSize.X >= 720 end
+		function handle.setVisible(visible) handle.visible = visible; list.visible = visible; if visible then render() end; divider.root.Visible = visible and root.AbsoluteSize.X >= common.pixels(720) end
 		local function cleanup()
 			if not handle.alive then return false end
 			handle.alive = false; off(); divider.destroy()
@@ -361,8 +288,8 @@ return function(env)
 			if valuePreview then valuePreview.destroy() end
 			return true
 		end
-		function handle.destroy() if cleanup() then root:Destroy() end end
-		root.Destroying:Connect(cleanup)
+		function handle.destroy() if cleanup() then surface:Destroy() end end
+		surface.Destroying:Connect(cleanup)
 		handle.list, handle.render = list, render
 		layout(); render(); return handle
 	end

@@ -38,7 +38,7 @@ return function(env)
 		local block = assert(props.block, "table block required")
 		local columnCount = math.max(#block.header, block.columns or 0, 1)
 		for _, row in ipairs(block.rows) do columnCount = math.max(columnCount, #row) end
-		local padX, padY, hair = responsive.isMobile() and theme.space.sm or theme.space.md, theme.space.sm, theme.stroke.hair
+		local padX, padY, hair = theme.space.md, theme.space.sm, theme.stroke.hair
 		local bar = theme.size.scrollbar
 		local minWidth = math.max(theme.size.tableColumnMin or theme.size.keyColumn, padX * 2 + theme.text.body.size)
 		local maxWidth = math.max(minWidth, theme.size.tableColumnMax or theme.size.menuWide)

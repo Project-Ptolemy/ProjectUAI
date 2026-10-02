@@ -211,7 +211,8 @@ scenario("boot mounts the interface", function()
 
 	-- Navigation is the sidebar's, and in a client whose panels are its surfaces the
 	-- panel list has to be reachable rather than hidden behind an invisible control.
-	truthy("the app menu is reachable", harness.byName("Nav_menu") ~= nil)
+	local menuButton = harness.byName("Nav_menu", handle.app.sideHolder)
+	truthy("the app menu is reachable", menuButton ~= nil and menuButton.Visible)
 	harness.click(harness.byName("More"))
 	truthy("the panel list opens", harness.byName("NavRow_providers") ~= nil,
 		harness.dump(harness.byName("Sidebar")))
@@ -2376,12 +2377,12 @@ scenario("the window and its controls respond to input", function()
 	harness.click(harness.byName("Launcher"))
 	truthy("the launcher restores it after minimize", window.visible)
 
-	-- Nav. The app menu is the path that exists in every layout mode, including the
-	-- ones with no sidebar, so it is the one worth testing.
-	harness.click(harness.byName("Nav_menu"))
+	-- Both menus stay mounted. Exercise the visible sidebar menu on this desktop.
+	local menuButton = harness.byName("Nav_menu", handle.app.sideHolder)
+	harness.click(menuButton)
 	harness.click(harness.byName("Option_tools"))
 	check("a menu option switches panel", handle.app.panel, "tools")
-	harness.click(harness.byName("Nav_menu"))
+	harness.click(menuButton)
 	harness.click(harness.byName("Option_chat"))
 	check("and back", handle.app.panel, "chat")
 
@@ -2408,7 +2409,7 @@ scenario("the window and its controls respond to input", function()
 		tostring(sizeBefore) .. " -> " .. tostring(window.root.Size.X.Offset))
 	truthy("but not below the minimum", window.root.Size.X.Offset >= 340)
 
-	-- Maximise rebuilds the shell, so the handle has to be re-read afterwards.
+	-- Maximise changes geometry while keeping the shell mounted.
 	harness.click(harness.byName("Maximise"))
 	truthy("maximise takes effect", handle.app.window.maximised)
 	truthy("and the window is still there", harness.byName("Header") ~= nil)
@@ -3113,7 +3114,7 @@ end)
 
 scenario("the token sliders span three orders of magnitude", function()
 	local harness, handle = bootWith({ provider = false })
-	harness.click(harness.byName("Nav_menu"))
+	harness.click(harness.byName("Nav_menu", handle.app.sideHolder))
 	harness.click(harness.byName("Option_settings"))
 	harness.settle(1)
 
@@ -3149,7 +3150,7 @@ end)
 
 scenario("effort reads as a scale rather than a number", function()
 	local harness, handle = bootWith({ provider = false })
-	harness.click(harness.byName("Nav_menu"))
+	harness.click(harness.byName("Nav_menu", handle.app.sideHolder))
 	harness.click(harness.byName("Option_settings"))
 	harness.settle(1)
 
@@ -4175,7 +4176,7 @@ scenario("a phone can still reach every panel and conversation", function()
 	check("the layout is a sheet", handle.env.require("ui/responsive").mode, "sheet")
 	check("with no sidebar", handle.app.sidebarVisible(), false)
 
-	harness.click(harness.byName("Nav_menu"))
+	harness.click(harness.byName("Nav_menu", handle.app.window.header))
 	harness.settle(1)
 	local menu = harness.byName("MenuLayer")
 	truthy("the app menu opens", menu ~= nil)
@@ -4202,7 +4203,8 @@ scenario("a phone can still reach every panel and conversation", function()
 	harness.setViewport(834, 1112)
 	harness.settle(2)
 	check("a portrait tablet is a panel", handle.env.require("ui/responsive").mode, "panel")
-	truthy("and still has the app menu", harness.byName("Nav_menu") ~= nil)
+	local menuButton = harness.byName("Nav_menu", handle.app.window.header)
+	truthy("and still has the app menu", menuButton ~= nil and menuButton.Visible)
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
@@ -4222,7 +4224,7 @@ scenario("the sidebar collapses and comes back", function()
 	harness.click(harness.byName("Nav_sidebar"))
 	harness.settle(2)
 	check("pressing the toggle collapses it", app.sidebarVisible(), false)
-	truthy("and takes it off screen", harness.byName("Sidebar") == nil)
+	truthy("and takes it off screen without destroying it", harness.byName("Sidebar") ~= nil and not app.sideHolder.Visible)
 	check("which is remembered", handle.config.get("ui.sidebarCollapsed"), true)
 
 	-- The only control that could bring it back used to live inside the sidebar, so
@@ -5560,7 +5562,7 @@ scenario("mobile panel can be moved and resized, and burger menu stays within sc
 
 	local grip = harness.byName("ResizeGrip")
 	truthy("resize grip exists in panel mode", grip ~= nil)
-	check("touch expands grip hit target", grip.AbsoluteSize.X >= 44, true)
+	check("grip meets the configured target", grip.AbsoluteSize.X >= responsive.minTarget(), true)
 
 	-- Panel dragging
 	local startPosX = window.root.Position.X.Offset
@@ -5590,12 +5592,13 @@ scenario("mobile panel can be moved and resized, and burger menu stays within sc
 	truthy("shorter panel can move vertically", window.root.Position.Y.Offset ~= beforeY)
 
 	-- Hamburger menu positioning on mobile
-	local burger = harness.byName("Nav_menu")
-	truthy("burger menu button exists on mobile", burger ~= nil)
+	if handle.app.sidebarVisible() then handle.app.toggleSidebar() end
+	local burger = harness.byName("Nav_menu", window.header)
+	truthy("collapsed sidebar exposes the shared app menu", burger ~= nil and burger.Visible)
 	harness.click(burger)
 	harness.settle(2)
 
-	local menuCard = harness.byName("MobileNavigation")
+	local menuCard = harness.byName("Menu")
 	truthy("menu card rendered", menuCard ~= nil)
 	truthy("menu card top edge is on screen (no negative Y)", menuCard.AbsolutePosition.Y >= 0,
 		"AbsolutePosition.Y = " .. tostring(menuCard.AbsolutePosition.Y))
@@ -5604,7 +5607,7 @@ scenario("mobile panel can be moved and resized, and burger menu stays within sc
 		"bottom = " .. tostring(menuCard.AbsolutePosition.Y + menuCard.AbsoluteSize.Y))
 
 	-- Options can be selected
-	local optionTools = harness.byName("MobileNav_tools", menuCard)
+	local optionTools = harness.byName("Option_tools", menuCard)
 	truthy("option row exists and is reachable", optionTools ~= nil)
 	harness.click(optionTools)
 	harness.settle(2)

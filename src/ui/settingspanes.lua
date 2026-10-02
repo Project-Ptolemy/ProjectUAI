@@ -89,8 +89,7 @@ return function(env)
 				layoutOrder = api.order(),
 			})
 			P.sectionHeader(group, { title = title, description = description, layoutOrder = 1 })
-			return P.card(group, { layoutOrder = 2, gap = responsive.isMobile() and theme.space.sm or theme.space.md,
-				padding = responsive.isMobile() and theme.space.sm or theme.space.lg })
+			return P.card(group, { layoutOrder = 2, gap = theme.space.md, padding = theme.space.lg })
 		end
 		function api.note(text, colour)
 			return R.paragraph(container, text, { color = colour, layoutOrder = api.order() })
@@ -1250,7 +1249,7 @@ return function(env)
 		R.textarea(custom, {
 			name = "CustomInstructions",
 			path = "agent.customInstructions",
-			height = 108,
+			height = theme.size.formTextarea,
 			placeholder = "e.g. Reply short. I build obby games. My alt account is DaveAlt99 -- ignore it when counting players.",
 			hint = "Written when the box loses focus. Applies from the next turn, including "
 				.. "subagents, which inherit it with the rest of the brief.",

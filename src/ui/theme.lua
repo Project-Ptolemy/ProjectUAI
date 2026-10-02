@@ -339,6 +339,11 @@ return function(env)
 		modal = 380,
 		modalWide = 480,
 		modalMin = 260,
+		modalTall = 620,
+		modalHistory = 580,
+		modalCode = 420,
+		formTextarea = 108,
+		promptTextarea = 120,
 		-- The reading column. Past roughly this width a line of prose becomes a single
 		-- sentence a foot long, which is unreadable however correct the layout is.
 		-- Overridden by the transcript-width setting, which is why the three widths it
@@ -381,7 +386,8 @@ return function(env)
 
 	-- Corners are tighter than they were. A 16px radius on a card reads as a mobile
 	-- widget; 6 to 10 reads as a document panel, which is what this is.
-	M.radius = { none = 0, xs = 2, sm = 6, md = 8, lg = 12, xl = 16, pill = 999 }
+	local BASE_RADIUS = { none = 0, xs = 2, sm = 6, md = 8, lg = 12, xl = 16, pill = 999 }
+	M.radius = {}
 	M.stroke = { hair = 1, focus = 2 }
 
 	-- The visual constants that are neither a colour nor a size. They were literals
@@ -432,6 +438,17 @@ return function(env)
 		local textScale = util.clamp(tonumber(config.get("ui.fontScale", 1)) or 1, 0.85, 1.4)
 		local spaceScale = compact and 0.78 or 1
 		local sizeScale = compact and 0.86 or 1
+		-- One interface, rendered with smaller native metrics on handheld devices.
+		-- Keep this independent of orientation and keyboard height: rotating must
+		-- relayout the existing fields, not rebuild them or resample their text.
+		M.handheld = env.require("ui/responsive").isMobile()
+		M.metricScale = M.handheld and 0.55 or 1
+		textScale = textScale * M.metricScale
+		spaceScale = spaceScale * M.metricScale
+		sizeScale = sizeScale * M.metricScale
+		for name, value in pairs(BASE_RADIUS) do
+			M.radius[name] = name == "pill" and value or math.floor(value * M.metricScale + 0.5)
+		end
 
 		M.accentName = accentName
 		M.density = density
@@ -587,7 +604,7 @@ return function(env)
 
 		M.text = {}
 		for role, spec in pairs(BASE_TEXT) do
-			local size = math.max(math.floor(spec.size * textScale + 0.5), 8)
+			local size = math.max(math.floor(spec.size * textScale + 0.5), math.floor(8 * M.metricScale + 0.5))
 			M.text[role] = {
 				size = size,
 				font = enums[spec.weight] or enums.regular,

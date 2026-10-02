@@ -113,7 +113,7 @@ return function(env)
 			local fields = kind == "requests" and requestDetails(entry) or logDetails(entry)
 			local title = kind == "requests" and "Request details" or "Log details"
 			local dialog
-			dialog = overlay.modal({ title = title, width = theme.size.modalWide, height = 580, scroll = true,
+			dialog = overlay.modal({ title = title, width = theme.size.modalWide, height = theme.size.modalHistory, scroll = true,
 				onClose = function() if panel.detail == dialog then panel.detail = nil end end })
 			if not dialog then return end
 			panel.detail = dialog

@@ -14,109 +14,12 @@ return function(env)
 
 	local M = {}
 
-	local function openMobile(initial)
-		local dialog = overlay.dialog({ name = "SettingsDialog" })
-		if not dialog then return end
-		local control = responsive.minTarget()
-		local pad = theme.space.sm
-		local top = control + pad * 2
-		local body = P.scroll(dialog.card, { name = "PaneScroll", position = UDim2.fromOffset(0, top),
-			size = UDim2.new(1, 0, 1, -top), gap = theme.space.md,
-			padding = { x = pad, top = pad, bottom = theme.space.md } })
-		local active, category, select
-		local cached = {}
-		-- A retained form keeps native text/selection until an external setting or
-		-- live fact changes. Rebuilding then restores only drafts whose bound value
-		-- has not changed, so a later blur cannot undo an imported configuration.
-		local function visitFields(column, callback)
-			local function walk(parent, path)
-				local counts = {}
-				for _, child in ipairs(parent:GetChildren()) do
-					local name = child.ClassName .. ":" .. child.Name
-					counts[name] = (counts[name] or 0) + 1
-					local key = path .. "/" .. name .. ":" .. counts[name]
-					if child:IsA("TextBox") then callback(child, key) end
-					walk(child, key)
-				end
-			end
-			walk(column, "")
-		end
-		local function captureDrafts(column)
-			local drafts = {}
-			visitFields(column, function(field, key)
-				local path = field:GetAttribute("UAIConfigPath")
-				if not path or field:GetAttribute("UAIConfigValue") == tostring(config.get(path, "")) then
-					drafts[key] = { text = field.Text, cursor = field.CursorPosition, selection = field.SelectionStart }
-				end
-			end)
-			return drafts
-		end
-		local function invalidate()
-			for _, entry in pairs(cached) do entry.dirty = true end
-		end
-		local unsubscribe = panes.observeChanges(invalidate)
-		dialog.card.Destroying:Connect(unsubscribe)
-		category = P.rowButton(dialog.card, { name = "CategoryPicker",
-			position = UDim2.fromOffset(pad, pad), size = UDim2.new(1, -dialog.closeInset - pad, 0, control),
-			padding = { x = pad }, onClick = function(button)
-				local options = {}
-				for _, section in ipairs(panes.sections()) do
-					options[#options + 1] = { isHeader = true, title = section.title }
-					for _, entry in ipairs(section.panes) do
-						options[#options + 1] = { label = entry.label, value = entry.id, icon = entry.icon,
-							selected = active == entry.id }
-					end
-				end
-				overlay.menu({ target = button.instance, title = "Settings", options = options, onSelect = select })
-			end })
-		category.icon("gear", 1)
-		local label = category.label("Settings", 2, nil, "bodyStrong")
-		category.icon("chevron", 3)
-		P.frame(dialog.card, { name = "DialogDivider", position = UDim2.fromOffset(0, top),
-			size = UDim2.new(1, 0, 0, theme.stroke.hair), bg = theme.color.borderSubtle })
-		select = function(id)
-			local entry = panes.pane(id)
-			if dialog.closed or not entry or active == id then return end
-			if active and cached[active] then
-				cached[active].position = body.instance.CanvasPosition
-				cached[active].column.Visible = false
-			end
-			active = id
-			label.Text = entry.label
-			local drafts, position
-			if cached[id] and cached[id].dirty then
-				drafts, position = captureDrafts(cached[id].column), cached[id].position
-				cached[id].column:Destroy(); cached[id] = nil
-			end
-			if not cached[id] then
-				local column = P.column(body.instance, { name = "Pane_" .. id, size = UDim2.new(1, 0, 0, 0),
-					auto = "Y", gap = theme.space.md })
-				panes.render(id, column)
-				cached[id] = { column = column, position = position or Vector2.new(0, 0) }
-				if drafts then visitFields(column, function(field, key)
-					local draft = drafts[key]
-					if draft then field.Text, field.CursorPosition, field.SelectionStart = draft.text, draft.cursor, draft.selection end
-				end) end
-			end
-			cached[id].column.Visible = true
-			body.instance.CanvasPosition = cached[id].position
-			task.defer(function()
-				if not dialog.closed and active == id then body.instance.CanvasPosition = cached[id].position end
-			end)
-		end
-		select(panes.pane(initial) and initial or panes.PANES[1].id)
-		dialog.select = select
-		dialog.activeCategory = function() return active end
-		return dialog
-	end
-
 	function M.open(initial)
-		if responsive.isMobile() then return openMobile(initial) end
 		local dialog = overlay.dialog({ name = "SettingsDialog" })
 		if not dialog then return nil end
 
-		-- On a phone the two panes do not fit side by side, so the list collapses to a
-		-- row of categories above the pane rather than being cut off.
+		-- Categories become a scrollable strip whenever the dialog is too narrow
+		-- for both columns. Resizing only changes geometry, preserving live fields.
 		local narrow = dialog.width < (theme.size.dialogNav * 3)
 		local navWidth = narrow and dialog.width or theme.size.dialogNav
 		-- The height of the collapsed category strip, and therefore the offset of
@@ -189,24 +92,68 @@ return function(env)
 
 		local rows = {}
 		local active = nil
+		local cached = {}
+		-- Keep native drafts when switching categories. External changes invalidate
+		-- the saved view; only drafts still bound to the same value are restored.
+		local function visitFields(column, callback)
+			local function walk(parent, path)
+				local counts = {}
+				for _, child in ipairs(parent:GetChildren()) do
+					local name = child.ClassName .. ":" .. child.Name
+					counts[name] = (counts[name] or 0) + 1
+					local key = path .. "/" .. name .. ":" .. counts[name]
+					if child:IsA("TextBox") then callback(child, key) end
+					walk(child, key)
+				end
+			end
+			walk(column, "")
+		end
+		local function captureDrafts(column)
+			local drafts = {}
+			visitFields(column, function(field, key)
+				local path = field:GetAttribute("UAIConfigPath")
+				if not path or field:GetAttribute("UAIConfigValue") == tostring(config.get(path, "")) then
+					drafts[key] = { text = field.Text, cursor = field.CursorPosition, selection = field.SelectionStart }
+				end
+			end)
+			return drafts
+		end
+		local unsubscribe = panes.observeChanges(function()
+			for _, entry in pairs(cached) do entry.dirty = true end
+		end)
+		dialog.card.Destroying:Connect(unsubscribe)
 
 		local function select(id)
 			if dialog.closed or not panes.pane(id) or active == id then return end
+			if active and cached[active] then
+				cached[active].position = body.instance.CanvasPosition
+				cached[active].column.Visible = false
+			end
 			active = id
 			for key, row in pairs(rows) do
 				row.setSelected(key == id)
 				row.text.TextColor3 = (key == id) and theme.color.text or theme.color.textSecondary
 			end
-			body.clear()
-			local column = P.column(body.instance, {
-				name = "Pane_" .. id,
-				size = UDim2.new(1, 0, 0, 0),
-				auto = "Y",
-				gap = theme.space.md,
-				layoutOrder = 1,
-			})
-			panes.render(id, column)
-			body.instance.CanvasPosition = Vector2.new(0, 0)
+			local drafts, position
+			if cached[id] and cached[id].dirty then
+				drafts, position = captureDrafts(cached[id].column), cached[id].position
+				cached[id].column:Destroy(); cached[id] = nil
+			end
+			if not cached[id] then
+				local column = P.column(body.instance, { name = "Pane_" .. id,
+					size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.md, layoutOrder = 1 })
+				panes.render(id, column)
+				cached[id] = { column = column, position = position or Vector2.new(0, 0) }
+				if drafts then visitFields(column, function(field, key)
+					local draft = drafts[key]
+					if draft then field.Text, field.CursorPosition, field.SelectionStart = draft.text, draft.cursor, draft.selection end
+				end) end
+			end
+			cached[id].column.Visible = true
+			body.instance.CanvasPosition = cached[id].position
+			task.defer(function()
+				if not dialog.closed and active == id then body.instance.CanvasPosition = cached[id].position end
+			end)
 		end
 
 		local function renderNav()

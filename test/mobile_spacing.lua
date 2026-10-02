@@ -50,35 +50,31 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 834, 1194 } 
 			and composer.field.get() == "A short draft\nWith a second line" and field.MultiLine)
 		for _, name in ipairs({ "Send", "ComposerOptions" }) do
 			local button = h.byName(name, composer.shell)
-			check(name .. " retains its tap area", button.AbsoluteSize.X >= 44 and button.AbsoluteSize.Y >= 44)
+			local target = app.env.require("ui/responsive").minTarget()
+			check(name .. " retains its compact tap area", button.AbsoluteSize.X >= target and button.AbsoluteSize.Y >= target)
 		end
 		healthy(h); app.unload()
 	end)
 end
 
-scenario("short mobile history puts matching rows before navigation furniture", function()
+scenario("shared history search remains compact above a keyboard", function()
 	local h, app = boot(390, 844)
 	local wanted
 	for index = 1, 12 do
 		local session = app.sessions.newThread(); session.rename("Saved project " .. index)
 		if index == 12 then wanted = session end
 	end
-	local nav = app.app.showAppMenu(h.byName("Nav_menu"))
-	local scroll = h.byName("NavigationScroll", nav.card)
-	local history = h.byName("MobileHistory", nav.card)
-	local folder = h.byName("HistoryFolder", nav.card)
-	check("folder and count share a row", h.byName("HistoryCount", nav.card):IsDescendantOf(folder))
-	check("search chrome does not waste a second padding band", h.byName("NavigationBody", nav.card).Position.Y.Offset <= 52)
-	scroll.CanvasPosition = h.dt.Vector2.new(0, 200)
-	nav.filter.set("Saved project 12")
-	check("a new query starts at its first match", scroll.CanvasPosition.Y == 0)
+	local search = app.app.showSearch()
+	local field = h.byName("SearchField", search.card):FindFirstChildOfClass("TextBox")
+	field.Text = "Saved project 12"
 	keyboard(h, 664)
-	check("short layout prioritises results", history.LayoutOrder < folder.LayoutOrder
-		and history.LayoutOrder < h.byName("Destinations", nav.card).LayoutOrder)
-	check("folder controls remain available", folder.Visible and folder:IsDescendantOf(scroll))
-	check("the matching conversation remains reachable", h.byName("Open_" .. wanted.id, history) ~= nil)
+	check("search clears the keyboard", search.card.AbsolutePosition.Y + search.card.AbsoluteSize.Y <= 180)
+	check("the query remains in its native field", h.byName("SearchField", search.card):FindFirstChildOfClass("TextBox") == field
+		and field.Text == "Saved project 12")
+	check("the matching conversation remains reachable", h.textOf(h.byName("Result_1", search.card)):find(wanted.title, 1, true) ~= nil)
+	check("short results can scroll", search.scroll.instance.ScrollingEnabled and search.scroll.instance.AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
 	keyboard(h, 0)
-	check("normal navigation order returns", history.LayoutOrder > folder.LayoutOrder)
+	check("keyboard dismissal keeps the result and query", h.byName("Result_1", search.card) ~= nil and field.Text == "Saved project 12")
 	healthy(h); app.unload()
 end)
 
@@ -97,9 +93,9 @@ scenario("quick chat keeps mobile newlines, selection and actions through rotati
 	check("rotation retains quick chat's native field", quick.field.instance == field and quick.card == card)
 	check("rotation keeps the selection", field.CursorPosition == 12 and field.SelectionStart == 3)
 	local send = h.byName("SendQuickChat", card)
-	check("quick actions share the compact header", send.Parent.Name == "QuickHeader"
+	check("quick actions use the same footer as desktop", send.Parent.Name == "QuickFooter"
 		and h.byName("OpenFullChat", card).Parent == send.Parent)
-	check("quick send remains a full touch target", send.AbsoluteSize.Y >= 44)
+	check("quick send retains a compact target", send.AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
 	keyboard(h, 230)
 	check("quick chat clears the keyboard", card.AbsolutePosition.Y + card.AbsoluteSize.Y <= 160)
 	h.click(send)
@@ -176,14 +172,12 @@ for _, desktop in ipairs({ false, true }) do
 		local P, theme = app.env.require("ui/primitives"), app.env.require("ui/theme")
 		local card = P.card(app.app.screen, {})
 		local explicit = P.card(app.app.screen, { padding = theme.space.xl, gap = theme.space.lg })
-		check("card padding follows the platform", card:FindFirstChildOfClass("UIPadding").PaddingLeft.Offset
-			== (desktop and theme.space.lg or theme.space.md))
-		check("card gap follows the platform", card:FindFirstChildOfClass("UIListLayout").Padding.Offset
-			== (desktop and theme.space.md or theme.space.sm))
+		check("card padding uses the shared desktop token", card:FindFirstChildOfClass("UIPadding").PaddingLeft.Offset == theme.space.lg)
+		check("card gap uses the shared desktop token", card:FindFirstChildOfClass("UIListLayout").Padding.Offset == theme.space.md)
 		check("explicit card spacing stays intact", explicit:FindFirstChildOfClass("UIPadding").PaddingLeft.Offset == theme.space.xl
 			and explicit:FindFirstChildOfClass("UIListLayout").Padding.Offset == theme.space.lg)
 		local field = P.field(card, { multiline = true, height = 12 })
-		check("multiline inputs also respect the platform target", field.shell.Size.Y.Offset >= (desktop and 28 or 44))
+		check("multiline inputs also respect the platform target", field.shell.Size.Y.Offset >= app.env.require("ui/responsive").minTarget())
 		card:Destroy(); explicit:Destroy(); healthy(h); app.unload()
 	end)
 end

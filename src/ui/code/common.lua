@@ -7,15 +7,47 @@ return function(env)
 	local util = env.require("runtime/util")
 	local clock = env.require("runtime/clock")
 	local M = {}
-	function M.inset() return math.max(8, theme.space.sm) end
-	function M.gap() return math.max(4, theme.space.xs) end
-	function M.controlHeight() return math.max(theme.size.controlSmall, responsive.minTarget(), theme.text.small.height + 12, theme.size.icon + 16) end
-	function M.barHeight() return math.max(theme.size.codeToolbar, M.controlHeight() + 8) end
-	local function buttonPadding(props) return math.max(8, props.padX or (props.tight and theme.space.sm or theme.space.md)) end
+	-- Legacy workspace geometry follows the same density ramp as its size tokens.
+	function M.pixels(value) return math.floor(value * theme.size.codeWide / 800 + 0.5) end
+	function M.inset() return theme.space.sm end
+	function M.gap() return theme.space.xs end
+	function M.controlHeight() return math.max(theme.size.controlSmall, responsive.minTarget(), theme.text.small.height + theme.space.xs * 2, theme.size.icon + theme.space.sm * 2) end
+	function M.barHeight() return math.max(theme.size.codeToolbar, M.controlHeight() + theme.space.xxs * 2) end
+	-- Preserve the desktop composition in a short host; its surrounding canvas
+	-- scrolls instead of replacing controls or rebuilding native fields.
+	function M.surface(parent, props, minimumHeight)
+		local surface = P.frame(parent, props)
+		local scroll = P.scroll(surface, { name = "SurfaceScroll", gap = 0, bar = 0 })
+		scroll.layout:Destroy()
+		scroll.instance.AutomaticCanvasSize = Enum.AutomaticSize.None
+		scroll.instance.VerticalScrollBarInset = Enum.ScrollBarInset.None
+		local content = P.frame(scroll.instance, { name = "SurfaceContent", size = UDim2.fromScale(1, 1), clip = true })
+		local layingOut = false
+		local function layout()
+			if layingOut then return end
+			layingOut = true
+			local available = math.max(1, surface.AbsoluteSize.Y)
+			local minimum = type(minimumHeight) == "function" and minimumHeight() or minimumHeight or 0
+			local height = math.max(available, math.ceil(minimum))
+			local overflow = height > available
+			local bar = overflow and theme.size.scrollbar or 0
+			content.Size = UDim2.new(1, -bar, 0, height)
+			scroll.instance.CanvasSize = UDim2.fromOffset(0, height)
+			scroll.instance.ScrollBarThickness = bar
+			scroll.instance.ScrollingEnabled = overflow
+			scroll.instance.CanvasPosition = Vector2.new(0, math.max(0, math.min(scroll.instance.CanvasPosition.Y, height - available)))
+			layingOut = false
+		end
+		surface:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+		content:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+		layout()
+		return content, surface, scroll.instance
+	end
+	local function buttonPadding(props) return math.max(theme.space.sm, props.padX or (props.tight and theme.space.sm or theme.space.md)) end
 	function M.buttonWidth(label, props)
 		props = props or {}
 		if props.iconOnly or (props.icon and (not label or label == "")) then return M.controlHeight() end
-		local width = P.measureText(label or "", { role = "small" }).X + buttonPadding(props) * 2 + 4
+		local width = P.measureText(label or "", { role = "small" }).X + buttonPadding(props) * 2 + theme.space.xxs
 		if props.icon then width = width + theme.size.icon + theme.space.xs end
 		if props.trailing then width = width + theme.size.icon + theme.space.xs end
 		return math.max(props.minWidth or 0, M.controlHeight(), math.ceil(width))
@@ -39,11 +71,12 @@ return function(env)
 				position = UDim2.new(0, 0, 1, -theme.stroke.hair), bg = theme.color.borderSubtle })
 		end
 		local buttons = {}
-		local gap, padX = math.max(4, options.gap or M.gap()), math.max(8, options.padding or M.inset())
+		local gap = math.max(theme.space.xxs, options.gap and M.pixels(options.gap) or M.gap())
+		local padX = math.max(theme.space.sm, options.padding and M.pixels(options.padding) or M.inset())
 		local function widthOf(item) return M.buttonWidth(item.label, item) end
 		local function place(item, x, w)
 			local height = M.controlHeight()
-			item.button.instance.Position = UDim2.fromOffset(math.floor(x), math.max(4, math.floor((root.AbsoluteSize.Y - height) / 2)))
+			item.button.instance.Position = UDim2.fromOffset(math.floor(x), math.max(theme.space.xxs, math.floor((root.AbsoluteSize.Y - height) / 2)))
 			item.button.instance.Size = UDim2.fromOffset(math.max(1, math.floor(w)), height)
 		end
 		local layingOut = false
@@ -62,7 +95,7 @@ return function(env)
 			natural = natural + math.max(0, #visibleButtons - 1) * gap
 			for index, item in ipairs(visibleButtons) do
 				if item.flex and natural > width then
-					local minimum = buttonPadding(item) * 2 + 36 + (item.icon and theme.size.icon + theme.space.xs or 0) + (item.trailing and theme.size.icon + theme.space.xs or 0)
+					local minimum = buttonPadding(item) * 2 + M.pixels(36) + (item.icon and theme.size.icon + theme.space.xs or 0) + (item.trailing and theme.size.icon + theme.space.xs or 0)
 					local reduction = math.min(natural - width, math.max(0, widths[index] - minimum))
 					widths[index], natural = widths[index] - reduction, natural - reduction
 				end

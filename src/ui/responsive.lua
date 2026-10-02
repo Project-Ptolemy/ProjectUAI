@@ -309,11 +309,12 @@ return function(env)
 		refresh(reason or "manual")
 	end
 
-	-- Hit targets. Apple and Google both land on ~44pt for touch; a pointer can be
-	-- served by much less, and cramming a mouse interface to 44px wastes the space
-	-- a desktop is buying us.
+	-- The shared compact interface uses native control metrics on handhelds.
+	-- Touch capability still governs gestures and keyboard behavior, not an
+	-- oversized alternate presentation. Individual fields also fit their text.
 	function M.minTarget()
 		if M.console then return 48 end
+		if M.isMobile() then return 15 end
 		return M.touch and 44 or 28
 	end
 
@@ -335,30 +336,29 @@ return function(env)
 	function M.geometry()
 		local width, height = M.viewport.X, M.viewport.Y
 		if M.isMobile() then
-			-- Keep game space around the panel, with enough reading room on a phone.
-			-- Landscape is the primary touch layout, so it gets a wider column and more
-			-- height than before: the old 0.6x0.82 panel wrapped prose hard and showed
-			-- only a few lines at a time. Expand stays an explicit, reversible action,
-			-- and the keyboard/clamp logic still bounds this to the usable area.
+			-- The same desktop rectangle, in uniformly smaller native pixels.
+			-- Only placement follows panel/sheet orientation; composition is shared.
+			local theme = env.require("ui/theme")
+			local scale = theme.metricScale
 			local portrait = M.orientation == "portrait"
 			return {
-				width = math.floor(math.min(width * (portrait and 0.96 or 0.66), portrait and 600 or 620)),
-				height = math.floor(math.min(height * (portrait and 0.78 or 0.88), portrait and 700 or 740)),
+				width = math.floor(math.max(theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2,
+					util.clamp(width / scale * 0.44, 460, 780) * scale)),
+				height = math.floor(util.clamp(height / scale * 0.68, 360, 620) * scale),
 				anchored = portrait and "bottom" or "right",
 			}
 		end
 		if M.mode == "sheet" then
 			return {
 				width = width,
-				height = math.floor(height * (M.isMobile() and 0.64 or (M.orientation == "portrait" and 0.72 or 0.9))),
+				height = math.floor(height * (M.orientation == "portrait" and 0.72 or 0.9)),
 				anchored = "bottom",
 			}
 		end
 		if M.mode == "panel" then
 			return {
 				width = math.floor(util.clamp(width * 0.52, 320, 460)),
-				height = M.isMobile() and math.floor(util.clamp(height * 0.74, 220, 560))
-					or math.floor(height - M.inset.Y - 24),
+				height = math.floor(height - M.inset.Y - 24),
 				anchored = "right",
 			}
 		end

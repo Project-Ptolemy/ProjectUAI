@@ -45,8 +45,8 @@ return function(env)
 		if M.mounted and M.root and M.root.Parent then return M.root end
 		M.visible = false
 		local mobile = responsive.isMobile()
-		local pad = mobile and theme.space.sm or theme.space.md
-		local gap = mobile and theme.space.xxs or theme.space.sm
+		local pad = theme.space.md
+		local gap = theme.space.sm
 
 		M.root = P.frame(layer, {
 			name = "QuickChat",
@@ -92,16 +92,15 @@ return function(env)
 		local head = P.row(content, {
 			name = "QuickHeader",
 			size = UDim2.new(1, 0, 0, math.max(theme.size.controlSmall, responsive.minTarget())),
-			gap = mobile and theme.space.xxs or theme.space.sm,
+			gap = theme.space.sm,
 			layoutOrder = 1,
 		})
 		local mark = P.frame(head, {
 			name = "QuickBrand", size = UDim2.fromOffset(theme.size.iconLarge, theme.size.iconLarge), layoutOrder = 0,
-			visible = not mobile,
 		})
 		env.require("ui/brand").draw(mark, theme.size.iconLarge)
 		P.text(head, {
-			text = mobile and "Quick chat" or "A thought? A task?",
+			text = "A thought? A task?",
 			role = "heading",
 			size = UDim2.new(0, 0, 0, theme.text.heading.height),
 			flex = "Fill",
@@ -110,7 +109,7 @@ return function(env)
 		})
 		P.iconButton(head, {
 			name = "DismissQuickChat", icon = "close",
-			diameter = theme.size.controlSmall, layoutOrder = mobile and 4 or 2,
+			diameter = theme.size.controlSmall, layoutOrder = 2,
 			onClick = function() M.hide() end,
 		})
 
@@ -132,22 +131,18 @@ return function(env)
 			auto = "Y",
 			gap = theme.space.md,
 			layoutOrder = 3,
-			visible = not mobile,
 		})
-		M.hint = P.text(mobile and content or footer, {
+		M.hint = P.text(footer, {
 			name = "QuickHint",
 			text = "",
 			role = "caption",
 			color = theme.color.textTertiary,
-			size = UDim2.new(mobile and 1 or 0, 0, 0, theme.text.caption.height),
-			truncate = not mobile,
-			wrap = mobile,
-			auto = mobile and "Y" or nil,
-			flex = not mobile and "Fill" or nil,
-			visible = not mobile,
-			layoutOrder = mobile and 3 or 1,
+			size = UDim2.new(0, 0, 0, theme.text.caption.height),
+			truncate = true,
+			flex = "Fill",
+			layoutOrder = 1,
 		})
-		P.iconButton(mobile and head or footer, {
+		P.iconButton(footer, {
 			name = "OpenFullChat", icon = "windowMaximize", diameter = theme.size.controlSmall, layoutOrder = 2,
 			onClick = function()
 				local text = M.field.get()
@@ -161,20 +156,20 @@ return function(env)
 				end
 			end,
 		})
-		P.button(mobile and head or footer, {
+		P.button(footer, {
 			name = "SendQuickChat", text = "Send", icon = "send",
 			variant = "primary", size = "sm", layoutOrder = 3,
 			onClick = function() M.submit(M.field.get()) end,
 		})
 		local function layoutCard()
-			local bounds = responsive.usableRect(layer, mobile and theme.space.sm or theme.space.md)
+			local bounds = responsive.usableRect(layer, theme.space.md)
 			local width = math.min(bounds.width,
 				math.max(responsive.viewport.X * 0.5, theme.size.modal), theme.size.reading * 0.6)
 			local measured = contentLayout.AbsoluteContentSize
 			-- Layout initially reports zero, including while hidden. Keep enough room
 			-- for the fixed controls until the first measured pass arrives.
 			local minimum = head.Size.Y.Offset + M.field.shell.Size.Y.Offset + gap
-				+ (mobile and 0 or math.max(theme.size.controlSmall, responsive.minTarget()) + gap)
+				+ math.max(theme.size.controlSmall, responsive.minTarget()) + gap
 			local wanted = math.max(minimum, measured and measured.Y or 0)
 			local height = math.max(1, math.min(bounds.height, wanted + pad * 2))
 			card.Size = UDim2.fromOffset(math.max(math.floor(width), 1), math.floor(height))
@@ -222,10 +217,10 @@ return function(env)
 		local providers = env.require("provider/registry")
 		local record = providers.active()
 		M.hint.TextColor3 = theme.color.textTertiary
-		M.hint.Visible = not responsive.isMobile() or not record
+		M.hint.Visible = true
 		M.hint.Text = record
-			and string.format("%s  ·  Enter to send  ·  Esc to close",
-				tostring(record.label))
+			and (responsive.isMobile() and string.format("%s  ·  Tap Send to send", tostring(record.label))
+				or string.format("%s  ·  Enter to send  ·  Esc to close", tostring(record.label)))
 			or "No provider configured yet -- open the window and add one."
 	end
 

@@ -295,13 +295,13 @@ target = P.frame(holder, { size = U.fromOffset(100, 28) })
 local hiddenMenu = overlay.menu({ target = target, options = { { label = "Close with parent" } } })
 holder.Visible = false
 check("hiding an anchor ancestor dismisses its detached menu", hiddenMenu.closed)
-viewport(240, 180)
+viewport(240, 112)
 target = P.frame(root, { position = U.fromOffset(80, 50), size = U.fromOffset(100, 44) })
 responsive.touch = true
 local tightMenu = overlay.menu({ target = target, options = { { label = "First", value = 1 }, { label = "Second", value = 2 }, { label = "Third", value = 3 } } })
 bounds = responsive.usableRect(overlay.layer, theme.space.xs)
 check("short menus use safe room when neither anchor side fits a touch row", tightMenu.card.Size.Y.Offset == math.floor(bounds.height))
-check("short menu rows retain full touch height inside their scroll", tightMenu.card:FindFirstChild("Option_1", true).Size.Y.Offset >= 44
+check("short menu rows retain their configured target inside their scroll", tightMenu.card:FindFirstChild("Option_1", true).Size.Y.Offset >= responsive.minTarget()
 	and tightMenu.card:FindFirstChild("Options").ScrollingEnabled)
 tightMenu.close(); target:Destroy(); responsive.touch = false
 target = P.frame(root, { size = U.fromOffset(80, 28) })

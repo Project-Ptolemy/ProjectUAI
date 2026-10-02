@@ -39,9 +39,11 @@ command generates image previews.
 
 For 2.4.0, exercise 320/390px portrait phones, 667/844px landscape phones and a
 tablet in both orientations, with the keyboard open and closed. Check compact
-typing, explicit expansion, long model names, horizontal attachments, history
-search, provider forms, category switching, Code pickers and Find. Scroll across
-sliders vertically, then drag them horizontally; only the latter changes values.
+typing, explicit expansion, long model names, wrapped attachments, history
+search, provider forms, category switching, Code tabs and Find. Confirm that the
+desktop header, sidebar, welcome view and composer remain present at uniformly
+reduced dimensions. Scroll across sliders vertically, then drag them horizontally;
+only the latter changes values.
 Rotate Quick Chat with a selected draft and press Return; retain the text and
 selection, and insert a newline without sending. Repeat at enlarged text scale.
 Verify the Discord prompt waits for idle use, respects dismissal and opt-out,
@@ -181,10 +183,12 @@ ends. Native grapheme/IME behavior needs separate observation.
 
 ## End-stage checks
 
-Implementation precedes testing, per user instruction. Run from the repository root:
+Manually audit source, documentation and test changes before building. Run from
+the repository root, and inspect generated outputs between these two commands:
 
 ```powershell
-node tools/test_native.js
+node tools/test_native.js --build-only
+node tools/test_native.js --verify-only
 ```
 
 Prerequisites: Node.js, LuaJIT and the official Luau compiler. The command uses
@@ -248,9 +252,9 @@ large tables/code, folded worker feeds and **Refresh conversation** during and
 after a turn; timings and totals should remain stable without duplicate rows.
 GPU rendering, native text measurement, touch and IME still require this host check.
 
-Stop at the first failure, finish the necessary implementation fixes, then rerun
-`node tools/test_native.js` from the beginning. After it passes, inspect the complete
-scoped diff, whitespace, accidental secrets, generated files and requirement
+Stop at the first failure, finish and manually review each fix, rebuild and inspect
+changed outputs, then restart `node tools/test_native.js --verify-only`. After it
+passes, inspect the complete scoped diff, whitespace, accidental secrets, generated files and requirement
 accounting in [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md). Keep changes uncommitted.
 
 The site generator synchronizes root `index.html`, `style.css`, `script.js` and

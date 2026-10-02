@@ -249,7 +249,8 @@ scenario("touch composer keeps its input, toolbar, and targets separated", funct
 	surface.AbsoluteSize = harness.dt.Vector2.new(300, surface.Size.Y.Offset)
 	for _, name in ipairs({ "Send", "AddContext", "ComposerOptions" }) do
 		local button = harness.byName(name, composer.shell)
-		check(name .. " meets the touch target", button.Size.X.Offset >= 44 and button.Size.Y.Offset >= 44)
+		local target = handle.env.require("ui/responsive").minTarget()
+		check(name .. " meets the configured target", button.Size.X.Offset >= target and button.Size.Y.Offset >= target)
 	end
 	check("touch composer stays compact", composer.shell.Size.Y.Offset <= 80)
 	composer.setExpanded(true)
@@ -398,7 +399,7 @@ scenario("composer stays pinned while transcript responds to measured heights", 
 	local middle = harness.byName("TranscriptHolder", chat)
 	local composer = panel.composer.shell
 	local todos = panel.todos.shell
-	local bottomInset = 3 -- The existing desktop gap; mobile uses the panel edge.
+	local bottomInset = 3 -- The desktop gap is uniformly scaled on handhelds.
 	check("composer is anchored to its bottom edge", composer.AnchorPoint.Y == 1)
 	check("composer preserves its desktop bottom inset", composer.Position.Y.Scale == 1 and composer.Position.Y.Offset == -bottomInset)
 	check("chat does not use a competing flex stack", chat:FindFirstChildOfClass("UIListLayout") == nil)

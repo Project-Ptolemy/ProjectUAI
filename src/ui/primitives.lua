@@ -871,8 +871,8 @@ return function(env)
 			layoutOrder = props.layoutOrder,
 			bg = props.bg or theme.color.surfaceRaised,
 			radius = props.radius or theme.radius.lg,
-			gap = props.gap or (responsive.isMobile() and theme.space.sm or theme.space.md),
-			padding = props.padding or (responsive.isMobile() and theme.space.md or theme.space.lg),
+			gap = props.gap or theme.space.md,
+			padding = props.padding or theme.space.lg,
 			clip = props.clip,
 		})
 		if props.stroke ~= false then

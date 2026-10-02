@@ -9,6 +9,7 @@ local function ui(width, height, desktop)
 	local uis = f.h.services.UserInputService
 	uis.TouchEnabled, uis.MouseEnabled = not desktop, desktop == true
 	f.env.require("ui/responsive").init(f.env.root)
+	f.env.require("ui/theme").rebuild()
 	return f
 end
 local function settle(f, root)
@@ -26,9 +27,32 @@ local function shown(node)
 	end
 	return true
 end
-local function listFits(node, host, target)
+local function listFits(f, node, pane, target)
+	local scroll = pane.surfaceScroll
+	local content = assert(scroll:FindFirstChild("SurfaceContent"))
+	local height = scroll.AbsoluteSize.Y
+	local top = node.AbsolutePosition.Y - content.AbsolutePosition.Y
+	local bottom = top + node.AbsoluteSize.Y
+	local maximum = math.max(0, scroll.CanvasSize.Y.Offset - height)
+	local position = math.max(0, math.min(top, maximum))
+	scroll.CanvasPosition = f.h.sandbox.Vector2.new(0, position)
 	check(node.Name .. " retains a useful viewport", node.AbsoluteSize.Y >= target)
-	check(node.Name .. " stays above the host edge", node.AbsolutePosition.Y + node.AbsoluteSize.Y <= host.AbsolutePosition.Y + host.AbsoluteSize.Y + 1)
+	check(node.Name .. " remains inside its complete scroll canvas", bottom <= scroll.CanvasSize.Y.Offset + 1)
+	check(node.Name .. " can be reached through the normal surface scroll", math.min(height, bottom - position) - math.max(0, top - position) >= target)
+	check("only overflowing surfaces enable scrolling", scroll.ScrollingEnabled == (maximum > 0))
+end
+local function tab(f, root, label)
+	for _, item in ipairs(root:GetChildren()) do
+		local text = item:FindFirstChild("TabLabel", true)
+		if text and text.Text == label then f.h.click(item:FindFirstChild("TabButton")); return end
+	end
+	error("missing tab " .. label)
+end
+local function action(f, root, label)
+	for _, button in ipairs(root:GetDescendants()) do
+		if button:IsA("TextButton") and f.h.textOf(button) == label then f.h.click(button); return end
+	end
+	error("missing action " .. label)
 end
 
 for _, size in ipairs({ { 320, 100 }, { 480, 200 }, { 844, 180 } }) do
@@ -38,27 +62,32 @@ for _, size in ipairs({ { 320, 100 }, { 480, 200 }, { 844, 180 } }) do
 		local part = f.h.Instance.new("Part", f.h.workspace); part.Name = "Mobile inspector object"
 		local pane = f.env.require("ui/code/explorer").new(f.host, function() end)
 		settle(f, pane.root)
-		listFits(pane.list.root, f.host, 44)
-		check("mobile hierarchy gets the available width", pane.list.root.AbsoluteSize.X == f.host.AbsoluteSize.X)
+		local target = f.env.require("ui/responsive").minTarget()
+		listFits(f, pane.list.root, pane, target)
+		check("the hierarchy retains useful width beside a fitted inspector", pane.list.root.AbsoluteSize.X >= 120 and pane.list.root.AbsoluteSize.X <= f.host.AbsoluteSize.X)
 		local search = find(f, pane.root, "ExplorerSearch"):FindFirstChildOfClass("TextBox")
 		search.Text, search.CursorPosition, search.SelectionStart = "Mobile", 5, 2
-		local actions = find(f, pane.root, "CompactExplorerActions")
-		check("short hierarchy keeps an action target beside search", shown(actions) and actions.AbsoluteSize.Y >= 44)
+		local actions = find(f, pane.root, "ExplorerActions")
+		check("the normal hierarchy actions stay reachable", shown(actions) and actions.AbsoluteSize.Y >= target)
+		action(f, pane.root, "Refresh")
+		check("the normal refresh retains the native search draft", search.Text == "Mobile" and search.CursorPosition == 5 and search.SelectionStart == 2)
 		f.h.click(actions)
-		check("hidden hierarchy refresh remains available", f.h.byName("Option_refreshTree") ~= nil)
+		check("hierarchy search options remain available", f.h.byName("Option_search") ~= nil and f.h.byName("Option_pick") ~= nil)
 		f.env.require("ui/overlay").closeAll(); f.h.sched.advance(0.2)
 		assert(explorer.select({ refs.id(part) })); settle(f, pane.root)
-		listFits(find(f, pane.root, "InstanceProperties"), f.host, 44)
+		listFits(f, find(f, pane.root, "InstanceProperties"), pane, target)
 		local property = find(f, pane.root, "PropertySearch"):FindFirstChildOfClass("TextBox")
 		property.Text, property.CursorPosition, property.SelectionStart = "Name", 4, 2
-		f.h.click(find(f, pane.root, "CompactInspectorActions"))
-		check("all inspector sections remain available", f.h.byName("Option_section:properties") and f.h.byName("Option_section:attributes") and f.h.byName("Option_section:tags"))
-		f.h.click(f.h.byName("Option_section:tags")); f.h.sched.advance(0.2)
-		check("compact sections use the live inspector", explorer.view.section == "tags" and explorer.view.detail)
+		local sections = find(f, pane.root, "InspectorSections")
+		check("the normal inspector section strip stays visible", shown(sections))
+		tab(f, sections, "Tags"); f.h.sched.advance(0.2)
+		check("section tabs update the live inspector", explorer.view.section == "tags" and explorer.view.detail)
 		f.host.Size = f.h.dt.UDim2.fromOffset(size[1], 600); settle(f, pane.root)
 		check("restoring height keeps the property field and selection", find(f, pane.root, "PropertySearch"):FindFirstChildOfClass("TextBox") == property
 			and property.Text == "Name" and property.CursorPosition == 4 and property.SelectionStart == 2)
-		check("normal inspector sections return", find(f, pane.root, "InspectorSections").Visible and not find(f, pane.root, "CompactInspectorActions").Visible)
+		check("the same normal inspector sections remain mounted", find(f, pane.root, "InspectorSections") == sections and sections.Visible)
+		check("restoring height removes unnecessary outer scrolling", not pane.surfaceScroll.ScrollingEnabled and pane.surfaceScroll.CanvasPosition.Y == 0)
+		check("no alternate inspector chrome is built", f.h.byName("CompactInspectorActions", pane.root) == nil)
 		pane.destroy(); f.healthy(); f.close()
 	end)
 end
@@ -75,32 +104,46 @@ for _, size in ipairs({ { 320, 100 }, { 480, 200 }, { 844, 180 } }) do
 			method = "OnClientEvent", direction = "incoming", origin = "server", outcome = "received", sessionId = "fixture" }, values.pack("hello"))
 		local pane = f.env.require("ui/code/remotes").new(f.host, function() end)
 		settle(f, pane.root)
-		listFits(pane.list.root, f.host, 44)
-		check("mobile calls get the available width", pane.list.root.AbsoluteSize.X == f.host.AbsoluteSize.X)
+		local target = f.env.require("ui/responsive").minTarget()
+		listFits(f, pane.list.root, pane, target)
+		check("calls retain useful width beside fitted details", pane.list.root.AbsoluteSize.X >= 120 and pane.list.root.AbsoluteSize.X <= f.host.AbsoluteSize.X)
 		local search = find(f, pane.root, "RemoteSearch"):FindFirstChildOfClass("TextBox")
 		search.Text, search.CursorPosition, search.SelectionStart = "Mobile", 5, 2
-		local stop = find(f, pane.root, "CompactStopRemoteCapture")
-		check("active capture retains a direct Stop target", shown(stop) and stop.AbsoluteSize.Y >= 44)
-		local actions = find(f, pane.root, "CompactRemoteActions")
+		local stop = find(f, pane.root, "StopRemoteCapture")
+		check("active capture retains the normal Stop target", shown(stop) and stop.AbsoluteSize.Y >= target)
+		local actions = find(f, pane.root, "RemoteActions")
 		f.h.click(actions)
-		check("compact capture preserves browsing and filter actions", f.h.byName("Option_remotes") and f.h.byName("Option_calls") and f.h.byName("Option_viewFilter") and f.h.byName("Option_pauseResume"))
+		check("the normal capture menu retains coverage and traffic rules", f.h.byName("Option_coverage") ~= nil and f.h.byName("Option_rules") ~= nil)
+		f.env.require("ui/overlay").closeAll(); f.h.sched.advance(0.2)
+		f.h.click(find(f, pane.root, "StartRemoteCapture")); settle(f, pane.root)
+		check("the normal capture action pauses recording", capture.status == "paused")
+		f.h.click(find(f, pane.root, "StartRemoteCapture")); settle(f, pane.root)
+		check("the same action resumes recording", capture.status == "running")
+		local listTabs = find(f, pane.root, "RemoteListTabs")
+		tab(f, listTabs, "Remotes"); settle(f, pane.root)
+		check("normal tabs switch to remote browsing", capture.view.listMode == "remotes")
+		tab(f, listTabs, "Calls"); settle(f, pane.root)
+		check("normal tabs return to retained calls", capture.view.listMode == "calls")
+		f.h.click(find(f, pane.root, "FilterRemoteCalls"))
+		check("the normal filter control opens the retained-call form", #f.env.require("ui/overlay").open == 1)
 		f.env.require("ui/overlay").closeAll(); f.h.sched.advance(0.2)
 		local selected
 		for index, item in ipairs(pane.list.items) do if item.id == token.id then selected = index end end
 		assert(selected, "captured call remains listed"); pane.list.selected = selected; pane.list.activate(); settle(f, pane.root)
-		listFits(find(f, pane.root, "RemoteValues"), f.host, 44)
-		local detailStop = find(f, pane.root, "CompactDetailStopRemoteCapture")
-		check("inspecting a call retains Stop", shown(detailStop) and detailStop.AbsoluteSize.Y >= 44)
-		f.h.click(find(f, pane.root, "CompactRemoteDetailActions"))
-		check("detail sections remain reachable", f.h.byName("Option_section:arguments") and f.h.byName("Option_section:results") and f.h.byName("Option_section:caller"))
-		f.h.click(f.h.byName("Option_section:results")); f.h.sched.advance(0.2)
+		listFits(f, find(f, pane.root, "RemoteValues"), pane, target)
+		check("inspecting a call retains the same Stop action", shown(stop) and find(f, pane.root, "StopRemoteCapture") == stop)
+		local sections = find(f, pane.root, "RemoteDetailTabs")
+		check("detail sections use their normal tab strip", shown(sections))
+		tab(f, sections, "Results"); f.h.sched.advance(0.2)
 		check("section changes target the retained call", capture.view.section == "results" and capture.view.record.id == token.id)
-		f.h.click(detailStop); settle(f, pane.root)
-		check("the direct Stop actually ends capture", capture.status == "stopped" and not detailStop.Visible)
+		f.h.click(stop); settle(f, pane.root)
+		check("the direct Stop actually ends capture", capture.status == "stopped")
 		f.host.Size = f.h.dt.UDim2.fromOffset(size[1], 650); settle(f, pane.root)
 		check("restoring height keeps the search field and selection", find(f, pane.root, "RemoteSearch"):FindFirstChildOfClass("TextBox") == search
 			and search.Text == "Mobile" and search.CursorPosition == 5 and search.SelectionStart == 2)
-		check("normal capture chrome returns", find(f, pane.root, "CaptureControls").Visible and find(f, pane.root, "RemoteDetailTabs").Visible)
+		check("normal capture chrome stays mounted", find(f, pane.root, "CaptureControls").Visible and find(f, pane.root, "RemoteDetailTabs") == sections)
+		check("restoring height removes unnecessary outer scrolling", not pane.surfaceScroll.ScrollingEnabled and pane.surfaceScroll.CanvasPosition.Y == 0)
+		check("no alternate capture chrome is built", f.h.byName("CompactRemoteActions", pane.root) == nil)
 		pane.destroy(); f.healthy(); f.close()
 	end)
 end
@@ -108,10 +151,10 @@ end
 case("desktop inspectors keep their full chrome", function()
 	local f = ui(900, 650, true)
 	local explorer = f.env.require("ui/code/explorer").new(f.host, function() end)
-	check("desktop Explorer keeps its section tabs", find(f, explorer.root, "InspectorSections").Visible and not find(f, explorer.root, "CompactExplorerActions").Visible)
+	check("desktop Explorer keeps its section tabs", find(f, explorer.root, "InspectorSections").Visible and f.h.byName("CompactExplorerActions", explorer.root) == nil)
 	explorer.destroy()
 	local remotes = f.env.require("ui/code/remotes").new(f.host, function() end)
-	check("desktop Remotes keeps capture controls", find(f, remotes.root, "CaptureControls").Visible and not find(f, remotes.root, "CompactRemoteActions").Visible)
+	check("desktop Remotes keeps capture controls", find(f, remotes.root, "CaptureControls").Visible and f.h.byName("CompactRemoteActions", remotes.root) == nil)
 	remotes.destroy(); f.healthy(); f.close()
 end)
 

@@ -3,6 +3,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
 	local responsive = env.require("ui/responsive")
+	local common = env.require("ui/code/common")
 	local clock = env.require("runtime/clock")
 	local icons = env.require("ui/icons")
 	local instanceIcons = env.require("ui/instance_icons")
@@ -15,12 +16,12 @@ return function(env)
 		if horizontal then scroll.instance.ScrollingDirection = Enum.ScrollingDirection.XY end
 		if options.bg then scroll.instance.BackgroundColor3, scroll.instance.BackgroundTransparency = options.bg, 0 end
 		local labelHeight, detailHeight = theme.textRole(options.role or "small").height, theme.text.caption.height
-		local textHeight = options.detail and labelHeight + detailHeight + 12 or labelHeight + 8
-		local rowHeight = math.max(options.rowHeight or (options.detail and 50 or options.dense and 28 or 34), options.passive and 1 or responsive.minTarget(), textHeight)
-		local chevronWidth = math.max(24, responsive.minTarget())
+		local textHeight = options.detail and labelHeight + detailHeight + theme.space.xs * 2 or labelHeight + theme.space.xxs * 2
+		local rowHeight = math.max(options.rowHeight or common.pixels(options.detail and 50 or options.dense and 28 or 34), options.passive and 1 or responsive.minTarget(), textHeight)
+		local chevronWidth = math.max(common.pixels(24), responsive.minTarget())
 		local list = { root = scroll.instance, items = {}, rows = {}, selected = 1, visible = true, rowHeight = rowHeight }
 		local rendering, contentWidth, measurements = false, 0, {}
-		local function indent(item) return math.max(0, options.indent and options.indent(item) or 0) * 16 end
+		local function indent(item) return math.max(0, options.indent and options.indent(item) or 0) * theme.space.lg end
 		local function labelOf(item, index) return options.label and options.label(item, index) or item.label or tostring(item) end
 		local function measureItems()
 			contentWidth = 0; if not horizontal then return end
@@ -31,10 +32,10 @@ return function(env)
 				nextMeasurements[key] = width; return width
 			end
 			for index, item in ipairs(list.items) do
-				local left = 8 + indent(item) + (options.chevron and chevronWidth or 0) + (options.icon and theme.size.icon + 6 or 0)
-				local width = measure(labelOf(item, index), options.role or "small") + (options.meta and (options.metaWidth or 60) + 6 or 0)
+				local left = theme.space.sm + indent(item) + (options.chevron and chevronWidth or 0) + (options.icon and theme.size.icon + theme.space.xs or 0)
+				local width = measure(labelOf(item, index), options.role or "small") + (options.meta and (options.metaWidth or common.pixels(60)) + theme.space.xs or 0)
 				if options.detail then width = math.max(width, measure(options.detail(item, index) or "", "caption")) end
-				contentWidth = math.max(contentWidth, left + width + 16 + theme.size.scrollbar)
+				contentWidth = math.max(contentWidth, left + width + theme.space.lg + theme.size.scrollbar)
 			end
 			measurements = nextMeasurements
 		end
@@ -156,8 +157,8 @@ return function(env)
 					local top = (index - 1) * rowHeight
 					row.button.instance.Position, row.button.instance.Size = UDim2.fromOffset(0, top), UDim2.fromOffset(canvasWidth - theme.size.scrollbar, rowHeight)
 					row.button.instance.SelectionOrder = index
-					local left = 8 + indent(item)
-					local closeWidth = math.max(24, responsive.minTarget())
+					local left = theme.space.sm + indent(item)
+					local closeWidth = math.max(common.pixels(24), responsive.minTarget())
 					local closing = row.closeSlot ~= nil and (options.closable == nil or options.closable(item) ~= false)
 					local rightReserve = closing and closeWidth or 0
 					if row.closeSlot then
@@ -176,28 +177,28 @@ return function(env)
 						row.iconImage.Visible = class ~= nil
 						row.iconImage.Position = UDim2.fromOffset(left, math.floor((rowHeight - theme.size.icon) / 2))
 						if class then instanceIcons.paint(row.iconImage, class) end
-						left = left + theme.size.icon + 6
+						left = left + theme.size.icon + theme.space.xs
 					end
-					local metaWidth = row.meta and (options.metaWidth or 60) or 0
+					local metaWidth = row.meta and (options.metaWidth or common.pixels(60)) or 0
 					local label = row.button.label
 					label.RichText = options.richLabel ~= nil
 					label.Text = options.richLabel and options.richLabel(item, index) or labelOf(item, index)
 					label.TextColor3 = item.color or theme.color.text
-					label.Position = UDim2.fromOffset(left, row.detail and 4 or 0)
-					label.Size = UDim2.new(1, -left - 8 - metaWidth - (row.meta and 6 or 0) - rightReserve, 0, row.detail and labelHeight or rowHeight)
+					label.Position = UDim2.fromOffset(left, row.detail and theme.space.xxs or 0)
+					label.Size = UDim2.new(1, -left - theme.space.sm - metaWidth - (row.meta and theme.space.xs or 0) - rightReserve, 0, row.detail and labelHeight or rowHeight)
 					if row.value then
-						label.Size = UDim2.new(0.43, -left - 6, 1, 0)
+						label.Size = UDim2.new(0.43, -left - theme.space.xs, 1, 0)
 						row.value.Text = options.value(item, index) or ""
-						row.value.Position, row.value.Size = UDim2.new(0.43, 6, 0, 0), UDim2.new(0.57, -14, 1, 0)
+						row.value.Position, row.value.Size = UDim2.new(0.43, theme.space.xs, 0, 0), UDim2.new(0.57, -theme.space.xs - theme.space.sm, 1, 0)
 						row.value.TextColor3 = item.writable == false and theme.color.textSecondary or theme.color.text
 					end
 					if row.detail then
 						row.detail.Text = options.detail(item, index) or ""
-						row.detail.Position, row.detail.Size = UDim2.fromOffset(left, rowHeight - detailHeight - 4), UDim2.new(1, -left - 8 - rightReserve, 0, detailHeight)
+						row.detail.Position, row.detail.Size = UDim2.fromOffset(left, rowHeight - detailHeight - theme.space.xxs), UDim2.new(1, -left - theme.space.sm - rightReserve, 0, detailHeight)
 					end
 					if row.meta then
 						row.meta.Text = options.meta(item, index) or ""
-						row.meta.Position, row.meta.Size = UDim2.new(1, -metaWidth - 8 - rightReserve, 0, row.detail and 4 or 0), UDim2.fromOffset(metaWidth, row.detail and labelHeight or rowHeight)
+						row.meta.Position, row.meta.Size = UDim2.new(1, -metaWidth - theme.space.sm - rightReserve, 0, row.detail and theme.space.xxs or 0), UDim2.fromOffset(metaWidth, row.detail and labelHeight or rowHeight)
 					end
 					paint(row)
 				end

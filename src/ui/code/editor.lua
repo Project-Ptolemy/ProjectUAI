@@ -14,7 +14,6 @@ return function(env)
 	local clock = env.require("runtime/clock")
 	local util = env.require("runtime/util")
 	local common = env.require("ui/code/common")
-	local responsive = env.require("ui/responsive")
 	local M = {}
 	function M.new(parent, options)
 		options = options or {}; local role = theme.text.mono
@@ -315,7 +314,7 @@ return function(env)
 			return line, codeText.column(box.Text, cache and cache.starts[line] or 1, offset)
 		end
 		findBar = P.frame(root, { name = "EditorFind", size = UDim2.new(1, 0, 0, common.barHeight() * 2), bg = theme.color.codeBar, visible = false, zIndex = 6 })
-		findCount = P.text(findBar, { name = "FindMatchCount", text = "0 matches", role = "caption", position = UDim2.fromOffset(8, common.barHeight()), size = UDim2.new(1, -180, 0, common.barHeight()), zIndex = 7 })
+		findCount = P.text(findBar, { name = "FindMatchCount", text = "0 matches", role = "caption", truncate = true, zIndex = 7 })
 		local function findNext(backwards)
 			local ok, why = handle.find(findField.get(), backwards)
 			if not ok then common.message(nil, why) end
@@ -331,39 +330,19 @@ return function(env)
 		wordButton = common.button(findBar, { name = "FindWholeWord", text = "Word: off", tight = true, onClick = function()
 			searchState.options.wholeWord = not searchState.options.wholeWord; wordButton.setText(searchState.options.wholeWord and "Word: on" or "Word: off"); findNext(false)
 		end })
-		local mobileOptions = common.button(findBar, { name = "MobileFindOptions", text = "", icon = "ellipsis", tight = true, fill = true,
-			variant = "ghost", onClick = function(button)
-				common.menu(button, "Find in source", {
-					{ label = findCount.Text, isHeader = true, title = findCount.Text },
-					{ label = "Previous match", value = "previous" },
-					{ label = "Match case", value = "case", selected = searchState.options.caseSensitive },
-					{ label = "Whole words", value = "word", selected = searchState.options.wholeWord },
-					{ label = "Close find", value = "close" },
-				}, function(value)
-					if value == "close" then handle.closeFind()
-					elseif value == "previous" then findNext(true)
-					else
-						local key = value == "case" and "caseSensitive" or "wholeWord"
-						searchState.options[key] = not searchState.options[key]
-						caseButton.setText(searchState.options.caseSensitive and "Aa: on" or "Aa: off")
-						wordButton.setText(searchState.options.wholeWord and "Word: on" or "Word: off")
-						findNext(false)
-					end
-				end)
-			end })
 		local function layoutFind()
 			local target, gap, padding = common.controlHeight(), common.gap(), common.inset()
-			local mobile = responsive.isMobile()
-			local height = common.barHeight() * (mobile and 1 or 2)
+			local height = common.barHeight() * 2
 			findBar.Size = UDim2.new(1, 0, 0, height)
-			findCount.Visible, caseButton.instance.Visible, wordButton.instance.Visible = not mobile, not mobile, not mobile
-			previous.instance.Visible, close.instance.Visible, mobileOptions.instance.Visible = not mobile, not mobile, mobile
 			if findBar.Visible then scroll.instance.Position, scroll.instance.Size = UDim2.fromOffset(0, height), UDim2.new(1, 0, 1, -height) end
-			local top = math.max(4, math.floor((common.barHeight() - target) / 2))
-			local buttons = mobile and { nextButton, mobileOptions } or { previous, nextButton, close }
+			local top = math.max(theme.space.xxs, math.floor((common.barHeight() - target) / 2))
+			local buttons = { previous, nextButton, close }
 			local actionsWidth = (target + gap) * #buttons + padding
-			caseButton.instance.Position, caseButton.instance.Size = UDim2.new(1, -170, 0, common.barHeight() + top), UDim2.fromOffset(76, target)
-			wordButton.instance.Position, wordButton.instance.Size = UDim2.new(1, -90, 0, common.barHeight() + top), UDim2.fromOffset(82, target)
+			local caseWidth = math.max(common.pixels(76), common.buttonWidth("Aa: off", { tight = true }))
+			local wordWidth = math.max(common.pixels(82), common.buttonWidth("Word: off", { tight = true }))
+			caseButton.instance.Position, caseButton.instance.Size = UDim2.new(1, -padding - wordWidth - gap - caseWidth, 0, common.barHeight() + top), UDim2.fromOffset(caseWidth, target)
+			wordButton.instance.Position, wordButton.instance.Size = UDim2.new(1, -padding - wordWidth, 0, common.barHeight() + top), UDim2.fromOffset(wordWidth, target)
+			findCount.Position, findCount.Size = UDim2.fromOffset(padding, common.barHeight()), UDim2.new(1, -padding * 2 - wordWidth - caseWidth - gap * 2, 0, common.barHeight())
 			findField.shell.Position, findField.shell.Size = UDim2.fromOffset(padding, top), UDim2.new(1, -padding - actionsWidth, 0, target)
 			for index, button in ipairs(buttons) do
 				button.instance.Position = UDim2.new(1, -padding - target * (#buttons + 1 - index) - gap * (#buttons - index), 0, top)

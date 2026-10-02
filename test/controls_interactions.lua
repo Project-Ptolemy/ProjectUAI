@@ -41,6 +41,7 @@ local responsive = {
 	reduceMotion = false,
 	changed = signal.new("responsive"),
 	minTarget = function() return 28 end,
+	isMobile = function() return false end,
 }
 cache["ui/responsive"] = responsive
 cache["ui/icons"] = {}

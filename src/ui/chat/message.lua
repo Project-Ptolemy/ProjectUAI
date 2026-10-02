@@ -164,8 +164,8 @@ return function(env)
 		-- sitting on the border. Both axes are one padding on the body row now, the bar
 		-- shares the horizontal one, and the gutter is only as wide as its digits plus the
 		-- gap to the code.
-		local padY = responsive.isMobile() and theme.space.sm or theme.space.md
-		local padX = responsive.isMobile() and theme.space.sm or theme.space.lg
+		local padY = theme.space.md
+		local padX = theme.space.lg
 
 		local card = P.column(parent, {
 			name = "Code",
@@ -181,10 +181,7 @@ return function(env)
 
 		local bar = P.row(card, {
 			name = "Bar",
-			-- As tall as the copy button inside it. P.iconButton floors its diameter at
-			-- the platform hit target, which is 44 on touch, so a bar fixed at the 26px
-			-- token had eighteen pixels of button hanging over the code below it -- on
-			-- exactly the platform the floor exists for.
+			-- Match the actual copy button height, including the hit-target minimum.
 			size = UDim2.new(1, 0, 0, math.max(theme.size.controlSmall, responsive.minTarget())),
 			bg = theme.color.codeBar,
 			gap = theme.space.xs,
@@ -201,9 +198,7 @@ return function(env)
 				.. (props.lang and props.lang:lower() or "code") .. (props.unterminated and " (incomplete)" or ""),
 			role = "caption",
 			color = theme.color.codeGutter,
-			-- Fills rather than reserving controlSmall: the copy button is sized to
-			-- max(controlSmall, minTarget()), which is 44 on touch, so the reserve was
-			-- twelve pixels short on exactly the platform the minimum exists for.
+			-- Fill the space left by the actual copy button width.
 			size = UDim2.new(0, 0, 1, 0),
 			flex = "Fill",
 			truncate = true,
@@ -350,7 +345,7 @@ return function(env)
 			local fullHeight = height + padY * 2 + theme.size.scrollbar
 			local mobile = responsive.isMobile()
 			local room = mobile and responsive.usableRect(env.root, 0).height or responsive.viewport.Y
-			local minHeight = mobile and (lineHeight * 2 + padY * 2 + theme.size.scrollbar) or lineHeight * 4
+			local minHeight = lineHeight * 4
 			local capHeight = math.max(minHeight,
 				math.min(theme.size.codeViewport, room * 0.45))
 			local visibleHeight = math.min(fullHeight, capHeight)
@@ -904,7 +899,7 @@ return function(env)
 		local bodyRow = P.frame(card, { name = "Aside", size = UDim2.new(1, 0, 0, 0), layoutOrder = 2, visible = false })
 		P.frame(bodyRow, { name = "Rule", size = UDim2.new(0, theme.stroke.hair, 1, 0),
 			position = UDim2.fromOffset(theme.space.sm, 0), bg = theme.color.borderSubtle })
-		local indent = responsive.isMobile() and theme.space.md or theme.space.xl
+		local indent = theme.space.xl
 		local viewport = P.scroll(bodyRow, { name = "ThoughtViewport", size = UDim2.new(1, -indent, 0, 0),
 			position = UDim2.fromOffset(indent, 0), gap = theme.space.sm,
 			padding = { right = theme.space.sm, y = theme.space.xxs } })

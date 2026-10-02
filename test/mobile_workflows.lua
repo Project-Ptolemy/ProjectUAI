@@ -65,7 +65,7 @@ scenario("tablet rotation preserves the live editor and separate orientation pla
 	check("portrait placement restores", window.root.Position.Y.Offset == portraitY)
 	check("landscape placement stays saved", h.json.encode(app.config.get("ui.mobilePanel")) == landscape)
 	app.config.set("ui.layout", "window"); h.settle(0.4)
-	check("a forced window still has touch navigation", app.app.sidebar == nil and h.byName("Nav_menu", window.root) ~= nil)
+	check("a forced window retains the shared sidebar", app.app.sidebar ~= nil and app.app.sideHolder.Visible)
 	drag(h, window.header, 20, -20)
 	window.toggleMaximised(); window.toggleMaximised()
 	check("mobile never writes desktop placement", h.json.encode(app.config.get("ui.window")) == desktop)
@@ -78,15 +78,13 @@ for _, size in ipairs({ { 844, 390 }, { 932, 430 }, { 1194, 834 }, { 667, 375 },
 		local composer = app.app.chatPanel.composer
 		local field = composer.field.instance
 		check("touch always supports newlines", field.MultiLine == true)
-		check("compact input has more room than the old three-button row", composer.field.shell.AbsoluteSize.X >= 150)
+		check("the reduced input retains useful editable width", composer.field.shell.AbsoluteSize.X >= 60)
 		check("launcher cannot cover Send", app.app.launcher.Visible == false)
 		local sends = 0
 		app.sessions.current().send = function() sends = sends + 1; return true end
 		composer.field.set("A first line\nAnd a second line")
-		if size[1] > size[2] then
-			check("landscape typing preserves vertical reading space", composer.shell.AbsoluteSize.Y <= 56)
-			check("inline landscape input gets the model chip's space", not h.byName("ModelChip", composer.shell).Visible)
-		end
+		check("shared composer controls stay mounted", h.byName("ModelChip", composer.shell) ~= nil
+			and h.byName("AddContext", composer.shell).Visible)
 		field.FocusLost:Fire(true)
 		check("keyboard return never accidentally submits", sends == 0)
 		composer.setExpanded(true)
@@ -96,7 +94,7 @@ for _, size in ipairs({ { 844, 390 }, { 932, 430 }, { 1194, 834 }, { 667, 375 },
 		local root, body = app.app.window.root, app.app.chatPanel.root
 		check("window clears keyboard", root.AbsolutePosition.Y + root.AbsoluteSize.Y <= size[2] - math.floor(size[2] * 0.55))
 		check("input fits body", composer.shell.AbsoluteSize.Y <= body.AbsoluteSize.Y)
-		check("input preserves touch height", composer.field.shell.AbsoluteSize.Y >= 44)
+		check("input preserves its compact target", composer.field.shell.AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
 		check("keyboard retains text", composer.field.get() == "A first line\nAnd a second line")
 		local send = h.byName("Send", composer.shell)
 		local inputRight = composer.field.shell.AbsolutePosition.X + composer.field.shell.AbsoluteSize.X
@@ -123,10 +121,10 @@ scenario("context and many attachments cannot displace the input above a keyboar
 	composer.attach(other); composer.attach(session)
 	check("all attachments restore", #composer.attachments == 20)
 	local strip = h.byName("AttachmentStrip", composer.shell)
-	check("attachments use one horizontal scroll row", strip.ScrollingDirection == h.sandbox.Enum.ScrollingDirection.X and strip.Size.Y.Offset < 60)
+	check("attachments use the same wrapped scrolling region as desktop", strip.ScrollingDirection == h.sandbox.Enum.ScrollingDirection.Y)
 	h.click(h.byName("ComposerOptions", composer.shell)); h.click(h.byName("Option_context"))
 	check("context can be expanded", h.byName("ContextStrip", composer.shell).Visible)
-	h.setViewport(844, 390); keyboard(h, 230)
+	h.setViewport(844, 390); keyboard(h, 300)
 	check("many attachments cannot cover input", composer.shell.AbsoluteSize.Y <= app.app.chatPanel.root.AbsoluteSize.Y)
 	check("tight keyboard space hides only the attachment preview", not strip.Visible and #composer.attachments == 20)
 	h.click(h.byName("ComposerOptions", composer.shell)); h.click(h.byName("Option_attachments"))
@@ -138,7 +136,7 @@ scenario("context and many attachments cannot displace the input above a keyboar
 	healthy(h); app.unload()
 end)
 
-scenario("mobile history is searchable and opens in one tap without a new keyboard", function()
+scenario("shared conversation search opens a result without losing drafts or summoning a keyboard", function()
 	local h, app = boot(390, 844)
 	local conversations = {}
 	for index = 1, 14 do
@@ -148,51 +146,56 @@ scenario("mobile history is searchable and opens in one tap without a new keyboa
 	local current = app.sessions.current()
 	app.app.openSession(current.id)
 	app.app.chatPanel.composer.field.set("Draft stays with this chat")
-	local nav = app.app.showAppMenu(h.byName("Nav_menu"))
-	check("mobile opens its own navigation", nav and nav.card.Name == "MobileNavigation")
+	local search = app.app.showSearch()
+	local field = h.byName("SearchField", search.card):FindFirstChildOfClass("TextBox")
+	field.Text = "Project 14"
+	field.CursorPosition, field.SelectionStart = 8, 3
 	h.setViewport(844, 390); h.settle(0.3)
-	check("landscape navigation uses a separate destination column", h.byName("Destinations", nav.card).Parent.Name == "NavigationBody")
-	check("landscape history keeps most of the available width", h.byName("NavigationScroll", nav.card).AbsoluteSize.X > 400)
 	h.setViewport(390, 844); h.settle(0.3)
-	check("history includes more than eight conversations", h.byName("Open_" .. conversations[1].id, nav.card) ~= nil)
-	local field = nav.filter.instance
-	nav.filter.set("Project 14")
-	check("filter keeps the search field", nav.filter.instance == field and field.Parent ~= nil)
-	check("filter finds matching conversation", h.byName("Open_" .. conversations[14].id, nav.card) ~= nil)
-	check("filter excludes unrelated conversation", h.byName("Open_" .. conversations[1].id, nav.card) == nil)
-	nav.filter.set("Project 1")
+	check("rotation retains the native search field and selection", h.byName("SearchField", search.card):FindFirstChildOfClass("TextBox") == field
+		and field.CursorPosition == 8 and field.SelectionStart == 3)
+	check("search finds its unique matching conversation", h.textOf(h.byName("Result_1", search.card)):find("Project 14", 1, true) ~= nil
+		and h.byName("Result_2", search.card) == nil)
+	field.Text = "Project 2"
 	local focusCalls = 0
 	app.app.chatPanel.composer.focus = function() focusCalls = focusCalls + 1 end
-	h.click(h.byName("Open_" .. conversations[1].id, nav.card))
-	check("history opens directly", app.sessions.activeId == conversations[1].id and nav.closed)
+	h.click(h.byName("Result_1", search.card))
+	check("search reaches conversations beyond the recent menu limit", app.sessions.activeId == conversations[2].id and search.closed)
 	check("opening history does not summon the keyboard", focusCalls == 0)
 	app.app.openSession(current.id)
 	check("history navigation retains drafts", app.app.chatPanel.composer.field.get() == "Draft stays with this chat")
-	nav = app.app.showAppMenu(h.byName("Nav_menu"))
-	h.click(h.byName("HistoryActions_" .. conversations[2].id, nav.card))
-	check("management actions have separate targets", h.byName("Option_rename") and h.byName("Option_delete"))
+	h.click(h.byName("Nav_collapse", app.app.window.root)); h.settle(0.3)
+	local menuButton = h.byName("Nav_menu", app.app.window.header)
+	check("the collapsed layout exposes its header menu", menuButton.Visible)
+	h.click(menuButton)
+	h.click(h.byName("Option_session:" .. current.id))
+	check("the shared conversation menu retains management actions", h.byName("Option_open") and h.byName("Option_rename")
+		and h.byName("Option_move") and h.byName("Option_delete"))
 	app.env.require("ui/overlay").closeAll(); h.settle(0.4)
 	healthy(h); app.unload()
 end)
 
-scenario("settings and action sheets stay usable with landscape keyboards", function()
+scenario("shared settings categories and anchored menus fit landscape keyboards", function()
 	local h, app = boot(844, 390)
 	local dialog = app.app.showSettingsDialog("agent")
 	check("settings opens the requested category", dialog.activeCategory() == "agent")
-	check("settings has an accessible category picker", h.byName("CategoryPicker", dialog.card).AbsoluteSize.Y >= 44)
+	check("settings uses its normal category rows", h.byName("Category_agent", dialog.card) ~= nil and h.byName("CategoryPicker", dialog.card) == nil)
 	local pane = h.byName("Pane_agent", dialog.card)
 	h.setViewport(390, 844); h.settle(0.3)
 	check("rotating settings keeps its live pane", h.byName("Pane_agent", dialog.card) == pane)
-	h.click(h.byName("CategoryPicker", dialog.card))
-	check("all categories are reachable", h.byName("Option_infinite_yield") ~= nil)
-	h.click(h.byName("Option_privacy"))
+	check("all categories are reachable", h.byName("Category_infinite_yield", dialog.card) ~= nil)
+	h.click(h.byName("Category_privacy", dialog.card))
 	check("choosing a category updates the same dialog", dialog.activeCategory() == "privacy" and not dialog.closed)
 	h.setViewport(844, 390); keyboard(h, 220)
-	h.click(h.byName("CategoryPicker", dialog.card))
-	local menu = h.byName("Menu")
-	check("action sheet clears keyboard", menu.AbsolutePosition.Y + menu.AbsoluteSize.Y <= 170)
-	check("sheet retains readable option space", h.byName("Options", menu).AbsoluteSize.Y >= 44)
-	check("sheet has an explicit touch dismissal", h.byName("MenuClose", menu).AbsoluteSize.Y >= 44)
+	local overlay = app.env.require("ui/overlay")
+	local menu = overlay.menu({ target = h.byName("Category_privacy", dialog.card), options = {
+		{ label = "First action", value = "first" }, { label = "Second action", value = "second" },
+	} })
+	check("anchored menu clears keyboard", menu.card.AbsolutePosition.Y + menu.card.AbsoluteSize.Y <= 170)
+	check("the shared menu keeps readable option space", h.byName("Options", menu.card).AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
+	check("no separate mobile menu chrome is built", h.byName("MenuClose", menu.card) == nil)
+	h.press("Escape")
+	check("Escape dismisses the same anchored menu", menu.closed)
 	app.env.require("ui/overlay").closeAll(); h.settle(0.4)
 	healthy(h); app.unload()
 end)

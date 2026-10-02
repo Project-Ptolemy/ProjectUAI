@@ -12,6 +12,7 @@ local function ui(width, height, touch, scale, density)
 	local config = f.env.require("runtime/config")
 	config.set("ui.fontScale", scale or 1); config.set("ui.density", density or "comfortable")
 	f.env.require("ui/responsive").init(f.env.root)
+	f.env.require("ui/theme").rebuild()
 	return f
 end
 local function settle(f, root)
@@ -41,17 +42,19 @@ local function controls(parent)
 end
 local function auditBars(f, root)
 	local count = 0
+	local theme = f.env.require("ui/theme")
+	local inset = f.env.require("ui/code/common").inset()
 	for _, strip in ipairs(root:GetDescendants()) do
 		if strip.Name == "ToolbarControls" and visible(strip, root) then
-			local right = 4
+			local right = inset - theme.space.xxs
 			for _, button in ipairs(controls(strip)) do
 				local x, y, size = button.Position.X.Offset, button.Position.Y.Offset, button.AbsoluteSize
-				check(button.Name .. " has space beside its neighbour", x - right >= 4)
-				check(button.Name .. " has top/bottom clearance", y >= 4 and strip.AbsoluteSize.Y - y - size.Y >= 4)
-				check(button.Name .. " stays inside the padded canvas", x >= 8 and x + size.X <= strip.CanvasSize.X.Offset - 8 + 0.01)
+				check(button.Name .. " has space beside its neighbour", x - right >= theme.space.xxs - 0.01)
+				check(button.Name .. " has top/bottom clearance", y >= theme.space.xxs and strip.AbsoluteSize.Y - y - size.Y >= theme.space.xxs)
+				check(button.Name .. " stays inside the padded canvas", x >= inset and x + size.X <= strip.CanvasSize.X.Offset - inset + 0.01)
 				local content = button:FindFirstChild("Content")
 				local padding = assert(content:FindFirstChildOfClass("UIPadding"))
-				check(button.Name .. " leaves room around its content", size.X >= padding.PaddingLeft.Offset + padding.PaddingRight.Offset + 12)
+				check(button.Name .. " leaves room around its content", size.X >= padding.PaddingLeft.Offset + padding.PaddingRight.Offset + f.env.require("ui/code/common").pixels(12))
 				right, count = x + size.X, count + 1
 			end
 			check("overflow stays reachable", strip.CanvasSize.X.Offset <= strip.AbsoluteSize.X + 0.01 or strip.ScrollingEnabled)
@@ -59,12 +62,12 @@ local function auditBars(f, root)
 	end
 	return count
 end
-local function auditList(list)
+local function auditList(list, theme)
 	for _, row in ipairs(list.rows) do
 		if row.item and row.detail then
 			local label, detail = row.button.label, row.detail
-			check("row title and detail never overlap", detail.Position.Y.Offset - label.Position.Y.Offset - label.AbsoluteSize.Y >= 4)
-			check("row text has vertical padding", label.Position.Y.Offset >= 4 and row.button.instance.AbsoluteSize.Y - detail.Position.Y.Offset - detail.AbsoluteSize.Y >= 4)
+			check("row title and detail never overlap", detail.Position.Y.Offset - label.Position.Y.Offset - label.AbsoluteSize.Y >= theme.space.xxs)
+			check("row text has vertical padding", label.Position.Y.Offset >= theme.space.xxs and row.button.instance.AbsoluteSize.Y - detail.Position.Y.Offset - detail.AbsoluteSize.Y >= theme.space.xxs)
 		end
 	end
 end
@@ -84,16 +87,17 @@ end
 case("crowded toolbars preserve action labels and reveal keyboard focus", function()
 	local f = ui(240, 300, true, 1.4, "compact")
 	local common = f.env.require("ui/code/common")
+	f.host.Size = f.h.sandbox.UDim2.fromOffset(common.pixels(240), 300)
 	local bar = common.toolbar(f.host)
 	bar.add("A long source name with pending changes", function() end, { flex = true })
 	local run = bar.add("Run", function() end)
 	local save = bar.add("Save file", function() end)
 	local more = bar.add("", function() end, { icon = "ellipsis", iconOnly = true })
 	auditBars(f, f.host)
-	check("command text keeps its full width", save.instance.Size.X.Offset >= f.env.require("ui/primitives").measureText("Save file", { role = "small" }).X + 16)
+	check("command text keeps its full width", save.instance.Size.X.Offset >= f.env.require("ui/primitives").measureText("Save file", { role = "small" }).X + f.env.require("ui/theme").space.sm * 2)
 	check("crowded strip has a scroll range", bar.controls.CanvasSize.X.Offset > bar.controls.AbsoluteSize.X)
 	more.instance.SelectionGained:Fire()
-	check("focusing the last action reveals its padded edge", more.instance.Position.X.Offset + more.instance.Size.X.Offset + 8 <= bar.controls.CanvasPosition.X + bar.controls.AbsoluteSize.X + 0.01)
+	check("focusing the last action reveals its padded edge", more.instance.Position.X.Offset + more.instance.Size.X.Offset + common.inset() <= bar.controls.CanvasPosition.X + bar.controls.AbsoluteSize.X + 0.01)
 	run.instance.Visible = false; save.setText("Save file as")
 	auditBars(f, f.host)
 	f.host.Size = f.h.sandbox.UDim2.fromOffset(960, 300); settle(f, f.host)
@@ -104,15 +108,17 @@ end)
 case("narrow document tabs keep a readable label and reveal focused close buttons", function()
 	local f = ui(100, 300, true, 1.4, "compact")
 	local common = f.env.require("ui/code/common")
+	local theme = f.env.require("ui/theme")
+	f.host.Size = f.h.sandbox.UDim2.fromOffset(common.pixels(100), 300)
 	local tabs = f.env.require("ui/code/tabs").new(f.host, { size = f.h.sandbox.UDim2.new(1, 0, 0, common.barHeight()), onClose = function() end })
 	tabs.set({ { id = "one", label = "First source file.lua" }, { id = "two", label = "Another source file.lua" } }, "one")
 	local first, second = tabs.cells.one, tabs.cells.two
-	check("document label retains a readable slice", first.label.AbsoluteSize.X >= 36)
-	check("tabs have outer and inter-tab spacing", first.root.Position.X.Offset >= 8 and second.root.Position.X.Offset - first.root.Position.X.Offset - first.root.AbsoluteSize.X >= 4)
-	check("tab and close keep vertical padding", first.root.Position.Y.Offset >= 4 and first.close.AbsoluteSize.Y >= 44 and first.root.AbsoluteSize.Y <= tabs.root.AbsoluteSize.Y - 8)
+	check("document label retains a readable slice", first.label.AbsoluteSize.X >= common.pixels(36))
+	check("tabs have outer and inter-tab spacing", first.root.Position.X.Offset >= common.inset() and second.root.Position.X.Offset - first.root.Position.X.Offset - first.root.AbsoluteSize.X >= theme.space.xxs)
+	check("tab and close keep vertical padding", first.root.Position.Y.Offset >= theme.space.xxs and first.close.AbsoluteSize.Y >= f.env.require("ui/responsive").minTarget() and first.root.AbsoluteSize.Y <= tabs.root.AbsoluteSize.Y - theme.space.xxs * 2)
 	second.button.SelectionGained:Fire()
 	local function revealed(button, at)
-		return at >= tabs.root.CanvasPosition.X + 8 - 0.01 and at + button.AbsoluteSize.X <= tabs.root.CanvasPosition.X + tabs.root.AbsoluteSize.X - 8 + 0.01
+		return at >= tabs.root.CanvasPosition.X + common.inset() - 0.01 and at + button.AbsoluteSize.X <= tabs.root.CanvasPosition.X + tabs.root.AbsoluteSize.X - common.inset() + 0.01
 	end
 	check("keyboard navigation reveals a document label", revealed(second.button, second.x))
 	second.close.SelectionGained:Fire()
@@ -143,16 +149,16 @@ for _, width in ipairs({ 320, 390, 620, 960 }) do
 					local view = assert(panel.views[destination])
 					check(destination .. " body remains usable", view.root.AbsoluteSize.Y > 200 and view.root.AbsoluteSize.X > 0)
 					auditBars(f, panel.root)
-					if view.list then auditList(view.list) end
+					if view.list then auditList(view.list, env.require("ui/theme")) end
 					if destination == "Editor" then
 						view.openFind(); settle(f, panel.root)
 						local field = h.byName("FindSourceText", view.root)
-						check("Find field has typing room", field.AbsoluteSize.X >= 100)
+						check("Find field has typing room", field.AbsoluteSize.X >= env.require("ui/code/common").pixels(100))
 						local edge = field.AbsolutePosition.X + field.AbsoluteSize.X
-						local findActions = touch and { "FindNext", "MobileFindOptions" } or { "FindPrevious", "FindNext", "CloseFind" }
+						local findActions = { "FindPrevious", "FindNext", "CloseFind" }
 						for _, name in ipairs(findActions) do
 							local button = h.byName(name, view.root)
-							check(name .. " leaves a gap", button.AbsolutePosition.X - edge >= 4)
+							check(name .. " leaves a gap", button.AbsolutePosition.X - edge >= env.require("ui/theme").space.xxs)
 							check(name .. " keeps a full hit target", button.AbsoluteSize.X >= env.require("ui/responsive").minTarget())
 							edge = button.AbsolutePosition.X + button.AbsoluteSize.X
 						end
@@ -165,13 +171,13 @@ for _, width in ipairs({ 320, 390, 620, 960 }) do
 						activate(view.list, refs.id(part)); settle(f, panel.root); auditBars(f, panel.root)
 					elseif destination == "Remotes" then
 						local follow = h.byName("FollowLatestCalls", view.root)
-						check("Following label fits its padded button", follow.AbsoluteSize.X >= env.require("ui/primitives").measureText("Following", { role = "small" }).X + 16)
+						check("Following label fits its padded button", follow.AbsoluteSize.X >= env.require("ui/primitives").measureText("Following", { role = "small" }).X + env.require("ui/theme").space.sm * 2)
 						activate(view.list, call.id); settle(f, panel.root); auditBars(f, panel.root)
 						section(f, h.byName("RemoteDetailTabs", view.root), "Replay draft"); settle(f, panel.root); auditBars(f, panel.root)
 					elseif destination == "History" or destination == "Game changes" then
 						activate(view.list, destination == "History" and version.id or edit.batchId)
 						settle(f, panel.root); auditBars(f, panel.root)
-						if view.fields then auditList(view.fields) end
+						if view.fields then auditList(view.fields, env.require("ui/theme")) end
 					end
 				end
 				assert(fs.write("files/layout/large.lua", string.rep("-- line\n", 40000)))
@@ -193,10 +199,10 @@ case("Coding dialogs reserve footer space for larger controls", function()
 		settle(f, modal.card)
 		local height = 0
 		for _, button in ipairs(controls(modal.footer)) do
-			check("footer button leaves space around larger text", button.AbsoluteSize.Y >= theme.text.small.height + 8)
+			check("footer button leaves space around larger text", button.AbsoluteSize.Y >= theme.text.small.height + theme.space.xxs * 2)
 			height = math.max(height, button.AbsoluteSize.Y)
 		end
-		local footerPad = env.require("ui/responsive").isMobile() and theme.space.xxs or theme.space.sm
+		local footerPad = theme.space.sm
 		check("footer reserves vertical padding", modal.footer.AbsoluteSize.Y >= height + footerPad * 2)
 		if modal.footer.Parent == modal.scroll.instance then
 			check("short mobile dialogs scroll complete actions after the fields", modal.footer.LayoutOrder > modal.content.LayoutOrder

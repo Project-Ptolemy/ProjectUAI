@@ -154,6 +154,7 @@ return function(env)
 		env.root = screen
 
 		responsive.init(screen)
+		theme.rebuild()
 		overlay.mount(screen)
 
 		-- Quick chat lives on the overlay layer and outlives every rebuild: it holds no
@@ -164,8 +165,7 @@ return function(env)
 		M.buildLauncher()
 		M.buildWindow()
 
-		-- A real layout switch rebuilds; a resize does not. Debounced inside
-		-- responsive, so a desktop drag does not thrash. Theme changes (accent,
+		-- Layout switches retain the original panes. Theme changes (accent,
 		-- density, text scale, either font, the code palette, the reading width)
 		-- rebuild too: colours and metrics are read at build time by design, which
 		-- keeps every component free of subscription bookkeeping.
@@ -173,10 +173,11 @@ return function(env)
 		-- Both are registered for disposal, because after an unload a config write must
 		-- not rebuild an interface that is no longer there.
 		dispose.add(responsive.modeChanged:connect(function()
-			-- Phone/tablet chrome is identical across breakpoints. Relayout keeps
-			-- the live caret, selection, scroll position and provider edits intact.
-			if M.window and M.window.mobile and responsive.isMobile() then return end
-			M.rebuild("mode")
+			if theme.handheld ~= responsive.isMobile() then
+				theme.rebuild()
+			else
+				M.layoutNavigation()
+			end
 		end), "app.modeChanged")
 
 		dispose.add(theme.changed:connect(clock.debounce(function()
@@ -194,16 +195,12 @@ return function(env)
 			["ui.showToolDetail"] = true,
 			["ui.showToolCode"] = true,
 			["ui.showActivity"] = true,
-			-- Collapsing the sidebar is a layout change the interface has to answer, and
-			-- the switch in the appearance pane writes this path without the quiet flag.
-			-- Without it here, that switch changed a field in config.json and nothing
-			-- else until the next full reload.
-			["ui.sidebarCollapsed"] = true,
 		}
 		local rebuildForView = clock.debounce(function()
 			M.rebuild("view setting")
 		end, 0.2)
 		dispose.add(config.changed:connect(function(path)
+			if path == "ui.sidebarCollapsed" then M.layoutNavigation() end
 			if VIEW_KEYS[tostring(path)] then rebuildForView() end
 		end), "app.viewSettings")
 
@@ -611,7 +608,7 @@ return function(env)
 			minWidth = M.sidebarVisible()
 				and (theme.size.sidebar + theme.size.modalMin + theme.space.xl * 2)
 				or theme.size.modalMin + theme.space.xl * 2,
-			minHeight = 300,
+			minHeight = math.floor(300 * theme.metricScale + 0.5),
 		})
 		M.buildChrome()
 		-- The body is the heavy half of the mount: it builds the open panel, and the
@@ -623,6 +620,7 @@ return function(env)
 		if env.onMountPhase then env.onMountPhase("building the interface") end
 		M.buildBody()
 		M.window.onLayout = function()
+			M.layoutNavigation()
 			M.syncNav()
 		end
 		-- Returning to the conversation should land on the newest message. The
@@ -660,7 +658,28 @@ return function(env)
 	-- early from on re-entry -- so the field and `ui.sidebarCollapsed` could diverge and
 	-- never reconcile, and the switch in the appearance pane wrote a value nothing read.
 	function M.sidebarVisible()
-		return not responsive.isMobile() and (responsive.mode == "window") and (config.get("ui.sidebarCollapsed", false) ~= true)
+		if config.get("ui.sidebarCollapsed", false) == true then return false end
+		return responsive.isMobile() or responsive.mode == "window"
+	end
+
+	-- Keep the original desktop panes mounted at every handheld size. Only an
+	-- explicit sidebar toggle hides it; rotation never replaces the composition.
+	function M.layoutNavigation()
+		if not M.window or not M.mainHolder then return end
+		local shown = M.sidebarVisible()
+		M.window.setMinWidth((shown and theme.size.sidebar or 0) + theme.size.modalMin + theme.space.xl * 2)
+		local offset = shown and theme.size.sidebar + theme.stroke.hair or 0
+		M.sideHolder.Visible = shown
+		M.sideDivider.Visible = shown
+		M.mainHolder.Position = UDim2.fromOffset(offset, 0)
+		M.mainHolder.Size = UDim2.new(1, -offset, 1, 0)
+		M.window.header.Position = UDim2.fromOffset(offset, 0)
+		M.window.header.Size = UDim2.new(1, -offset, 0, M.window.headerHeight)
+		if M.navMenu then M.navMenu.instance.Visible = not shown end
+		if M.navCollapse then
+			M.navCollapse.instance.Visible = responsive.isMobile() or responsive.mode == "window"
+		end
+		if M.maximiseButton then M.maximiseButton.instance.Visible = responsive.mode ~= "tv" end
 	end
 
 	-- The header reads left to right as what you are looking at, then the window
@@ -670,7 +689,6 @@ return function(env)
 	-- left a tablet in portrait and a console with no way to change panel at all.
 	function M.buildChrome()
 		local header = M.window.header
-		local mobile = responsive.isMobile()
 		local sidebarWidth = theme.size.sidebar
 		local showSidebar = M.sidebarVisible()
 		local headerHeight = M.window.headerHeight or theme.size.header
@@ -686,12 +704,12 @@ return function(env)
 		local left = P.row(header, {
 			name = "Left",
 			size = UDim2.new(0, 0, 1, 0),
-			gap = mobile and theme.space.xxs or theme.space.sm,
+			gap = theme.space.sm,
 			flex = "Fill",
 			layoutOrder = 1,
 		})
 
-		if not showSidebar then
+		do
 			local menuButton = P.iconButton(left, {
 				name = "Nav_menu",
 				icon = "bars",
@@ -699,33 +717,19 @@ return function(env)
 				layoutOrder = 1,
 			})
 			menuButton.instance.LayoutOrder = 1
+			M.navMenu = menuButton
 			menuButton.instance.Activated:Connect(function()
 				M.showAppMenu(menuButton.instance)
 			end)
-			-- The way back. In window mode the sidebar is hidden because someone
-			-- collapsed it, and the only control that could bring it back lived *inside*
-			-- the sidebar -- so collapsing it was a one-way trip, and the appearance pane
-			-- promised a header toggle that was not there. In sheet, panel and tv mode
-			-- there is no sidebar to restore, so no button is offered.
-			if responsive.mode == "window" and not mobile then
-				local expand = P.iconButton(left, {
-					name = "Nav_collapse",
-					icon = "sidebarToggle",
-					diameter = theme.size.control,
-					layoutOrder = 2,
-					onClick = function() M.toggleSidebar() end,
-				})
-				expand.instance.LayoutOrder = 2
-			end
-		else
 			local collapse = P.iconButton(left, {
 				name = "Nav_collapse",
 				icon = "sidebarToggle",
 				diameter = theme.size.control,
-				layoutOrder = 1,
+				layoutOrder = 2,
 				onClick = function() M.toggleSidebar() end,
 			})
-			collapse.instance.LayoutOrder = 1
+			collapse.instance.LayoutOrder = 2
+			M.navCollapse = collapse
 		end
 
 		-- What is on screen, named. The title is the conversation on the chat panel and
@@ -744,7 +748,6 @@ return function(env)
 		local brandSlot = P.frame(left, {
 			name = "HeaderBrand",
 			size = UDim2.fromOffset(theme.size.icon, theme.size.icon),
-			visible = not mobile,
 			layoutOrder = 3,
 		})
 		icons.brand(brandSlot, theme.size.icon)
@@ -778,13 +781,12 @@ return function(env)
 			size = UDim2.new(1, 0, 0, math.ceil(theme.text.caption.size * theme.line.tight)),
 			layoutOrder = 2,
 		})
-		M.subtitleLabel.Visible = not mobile
 
 		local right = P.row(header, {
 			name = "Right",
 			size = UDim2.new(0, 0, 1, 0),
 			auto = "X",
-			gap = mobile and theme.space.none or theme.space.xxs,
+			gap = theme.space.xxs,
 			layoutOrder = 3,
 			-- Anchors the control cluster to the header's right edge regardless of
 			-- what the title column beside it measures. Without it the row's own
@@ -793,22 +795,7 @@ return function(env)
 			alignX = "Right",
 		})
 
-		if mobile then
-			-- Resize is a corner grip on the panel, as on desktop; only the Expand
-			-- toggle lives in the header. Note the grip sits over the composer's
-			-- bottom-right, which is why it used to be relocated here -- watch Send
-			-- on narrow panels.
-			P.iconButton(right, {
-				name = "ExpandPanel",
-				icon = M.window.maximised and "minus" or "windowMaximize",
-				diameter = responsive.minTarget(),
-				layoutOrder = 2,
-				onClick = function(button)
-					M.window.toggleMaximised()
-					button.setIcon(M.window.maximised and "minus" or "windowMaximize")
-				end,
-			})
-		elseif responsive.mode == "window" then
+		do
 			local minimize = P.iconButton(right, {
 				name = "Minimize",
 				icon = "minus",
@@ -825,6 +812,7 @@ return function(env)
 				layoutOrder = 2,
 			})
 			maximise.instance.LayoutOrder = 2
+			M.maximiseButton = maximise
 			maximise.instance.Activated:Connect(function()
 				M.window.toggleMaximised()
 				maximise.setIcon(M.window.maximised and "minus" or "windowMaximize")
@@ -851,15 +839,14 @@ return function(env)
 	function M.toggleSidebar()
 		local collapsed = config.get("ui.sidebarCollapsed", false) == true
 		config.set("ui.sidebarCollapsed", not collapsed, { quiet = true })
-		M.rebuild("sidebar")
+		M.layoutNavigation()
 	end
 
 	function M.buildBody()
 		local sidebarWidth = theme.size.sidebar
-		local showSidebar = M.sidebarVisible()
 
 		local host = M.window.body
-		if showSidebar then
+		do
 			local sideHolder = P.frame(host, {
 				name = "SidebarHolder",
 				size = UDim2.new(0, sidebarWidth, 1, 0),
@@ -877,8 +864,9 @@ return function(env)
 				bg = theme.color.sidebar,
 			})
 			M.sidebar = sidebarModule.new(sideHolder, M)
+			M.sideHolder = sideHolder
 
-			P.frame(host, {
+			M.sideDivider = P.frame(host, {
 				name = "SidebarDivider",
 				size = UDim2.new(0, 1, 1, 0),
 				position = UDim2.new(0, sidebarWidth, 0, 0),
@@ -890,9 +878,9 @@ return function(env)
 				size = UDim2.new(1, -sidebarWidth - 1, 1, 0),
 				position = UDim2.new(0, sidebarWidth + 1, 0, 0),
 			})
-		else
-			M.sidebar = nil
 		end
+		M.mainHolder = host
+		M.layoutNavigation()
 
 		local headerHeight = M.window.headerHeight or theme.size.header
 		P.frame(host, {
@@ -966,7 +954,7 @@ return function(env)
 		-- Lifted off the panel's bottom edge by the same inset the sidebar gives its
 		-- own bottom row, so the composer's bottom lines up with the profile bar's
 		-- rather than sitting flush against the window edge below it.
-		local BOTTOM_GAP = responsive.isMobile() and 0 or 3
+		local BOTTOM_GAP = math.max(1, math.floor(3 * theme.metricScale + 0.5))
 		panel.composer.shell.AnchorPoint = Vector2.new(0, 1)
 		panel.composer.shell.Position = UDim2.new(0, 0, 1, -BOTTOM_GAP)
 
@@ -1184,9 +1172,6 @@ return function(env)
 	-- The hamburger. Every panel, plus the two things that are not panels: a new
 	-- conversation and the search.
 	function M.showAppMenu(target)
-		if responsive.isMobile() then
-			return env.require("ui/mobilenav").open(M, PANELS)
-		end
 		local options = {}
 		for _, entry in ipairs(PANELS) do
 			options[#options + 1] = {

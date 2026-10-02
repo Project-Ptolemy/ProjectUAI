@@ -37,26 +37,25 @@ folder moves its chats to Universal and keeps their messages. Folders organize
 history without changing game context or conversation tool permissions. Older
 conversations retain their original game grouping.
 
-On mobile, the app menu filters history by folder and searches folder names as
-well as titles and game names. Search stays above the results. Forms keep their
-existing fields during rotation; when a landscape keyboard leaves too little
-space, footer actions move into the scrollable body at full touch size. Dismissing
-the keyboard restores the pinned actions. Focused fields account for the keyboard
-edge and clipping ancestors, without repeatedly scrolling nested panels. Short
-navigation layouts put New conversation and workspace actions after the history
-in its scroll region, keeping them available while the keyboard is open.
+Mobile uses the desktop interface at 55% of its native dimensions, spacing, text
+and radii before user settings, with a 15px control minimum. The header, sidebar,
+welcome view, composer, Quick Chat and Code tabs share their desktop structure.
+The normal sidebar collapse control, app menu and conversation search remain.
+Settings categories and providers reflow between columns and scrolling strips.
+Menus remain anchored to their controls and scroll within the available space.
 
-Version 2.4.0 keeps ordinary mobile typing compact in both orientations; explicit
-expansion opens the longer draft editor. Mobile Return adds a newline in both
-Chat and Quick Chat. Smaller insets recover reading and editing width without
-shrinking tap targets. Code, tables and reasoning resize their nested scroll
-areas to the space above the keyboard. Source metadata yields to Copy in narrow
-headers. Vertical swipes over settings sliders scroll without changing values.
+Ordinary mobile typing stays compact in both orientations; explicit expansion
+opens the longer draft editor. Mobile Return adds a newline in Chat and Quick
+Chat. Rotation keeps the native fields, selections and drafts mounted. When a
+landscape keyboard leaves too little space, form actions join the scrollable
+body; dismissing it restores the pinned actions. Focused fields account for the
+keyboard edge and clipping ancestors without repeating nested scroll movement.
 
-Mobile Code uses destination and document pickers, with secondary actions under
-More. Short keyboard layouts give space back to source editing. Find adapts to
-the available width, and settings categories preserve their mounted drafts and
-scroll positions when revisited.
+Code, tables and reasoning resize their nested scroll areas above the keyboard.
+Source metadata yields to Copy in narrow headers. Vertical swipes over settings
+sliders scroll without changing values. Settings categories preserve their
+mounted drafts and individual scroll positions when revisited.
+When a Code surface is too short, the original arrangement scrolls as a whole.
 
 Conversation history stays in the session while the view uses measured spacers
 for offscreen messages and mounts nearby Markdown chunks. Recently read chunks

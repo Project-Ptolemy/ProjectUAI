@@ -64,8 +64,7 @@ return function(env)
 		-- arrows. Every one of them does something; the pair that used to announce
 		-- "Navigated to previous session" in a toast now actually goes there.
 		--
-		-- It wraps because on a touch device every one of these is forced to 44px by the
-		-- hit-target floor, and five of those plus their gaps are wider than the sidebar.
+		-- Wrap only when the selected density leaves too little room for the row.
 		local topNav = P.row(sidebar, {
 			name = "TopNav",
 			size = UDim2.new(1, 0, 0, 0),

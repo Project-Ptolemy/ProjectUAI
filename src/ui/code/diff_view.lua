@@ -12,7 +12,7 @@ return function(env)
 		local summary = bar.add("+" .. comparison.added .. "  −" .. comparison.removed, function() end, { flex = true, trailing = false })
 		summary.setEnabled(false)
 		local list = common.virtualList(root, { name = "DiffLines", position = UDim2.fromOffset(0, common.barHeight()), size = UDim2.new(1, 0, 1, -common.barHeight()),
-			role = "mono", passive = true, rowHeight = theme.text.mono.height + 2, horizontal = true, bg = theme.color.codeSurface,
+			role = "mono", passive = true, rowHeight = theme.text.mono.height + theme.space.hair, horizontal = true, bg = theme.color.codeSurface,
 			label = function(row) return string.format("%4s %4s %s %s", row.oldLine or "", row.newLine or "", row.kind == "add" and "+" or row.kind == "remove" and "−" or " ", row.text) end,
 			richLabel = function(row) return string.format("%4s %4s %s ", row.oldLine or "", row.newLine or "", row.kind == "add" and "+" or row.kind == "remove" and "−" or " ") .. env.require("ui/markdown").highlight(row.text, "luau") end,
 			background = function(row) return row.kind == "add" and theme.color.codeAddSurface or row.kind == "remove" and theme.color.codeRemoveSurface or nil end,
@@ -21,7 +21,7 @@ return function(env)
 			row.id, row.color = "line:" .. index, row.kind == "add" and theme.color.codeAddText or row.kind == "remove" and theme.color.codeRemoveText or theme.color.codeText
 		end
 		list.set(comparison.rows)
-		local empty = P.text(root, { name = "DiffEmpty", text = "This version matches the current source.", wrap = true, color = theme.color.codeGutter, position = UDim2.fromOffset(16, common.barHeight() + 20), size = UDim2.new(1, -32, 0, 60), visible = #comparison.rows == 0 })
+		P.text(root, { name = "DiffEmpty", text = "This version matches the current source.", wrap = true, color = theme.color.codeGutter, position = UDim2.fromOffset(theme.space.lg, common.barHeight() + theme.space.xl), size = UDim2.new(1, -theme.space.lg * 2, 0, common.pixels(60)), visible = #comparison.rows == 0 })
 		local current = 0
 		local function nextChange(delta)
 			if #comparison.hunks == 0 then return end
@@ -34,15 +34,6 @@ return function(env)
 		if #comparison.hunks > 0 then nextChange(1) end
 		local handle = { root = root, comparison = comparison, list = list, nextChange = nextChange,
 			destroy = function() root:Destroy() end }
-		-- A parent with its own review actions can expose hunk navigation there.
-		-- Relayout preserves the current comparison, scroll and selected hunk.
-		function handle.setCompact(compact)
-			local top = compact and 0 or common.barHeight()
-			bar.root.Visible = not compact
-			list.root.Position, list.root.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top)
-			empty.Position = UDim2.fromOffset(16, top + 12)
-			list.render()
-		end
 		return handle
 	end
 	return M

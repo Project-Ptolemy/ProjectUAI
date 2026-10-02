@@ -735,28 +735,29 @@ built before old content is released; a failed block falls back to readable text
 
 Breakpoints: `xs < 520`, `sm < 900`, `md < 1280`, `lg < 1700`, `xl`. Layout modes:
 `sheet` (xs), `panel` (sm, touch-only input, and any portrait orientation), `window` (md+), plus `tv`
-when `GuiService:IsTenFootInterface()`. Minimum touch target is 44px on a touch
-device, 28px with a pointer, 48px on a console. Navigation is reachable in every
-mode: the sidebar in `window`, the app menu in the header everywhere else.
+when `GuiService:IsTenFootInterface()`. These modes control placement and bounds;
+phones use the same application components and navigation as desktop. Handheld
+metrics uniformly use 55% of desktop dimensions, spacing, text and radii before
+user density and text settings. Controls have a 15px minimum on handhelds, 28px
+with a pointer and 48px on a console. Native dimensions are reduced directly;
+the application is not resampled through a UIScale.
 
-Mobile chrome trims padding rather than touch targets: at default density its
-header is 48px and its collapsed composer is 56px. The welcome view uses compact
-prompt rows and omits the large decorative mark and subtitle. Desktop chrome and
-spacing retain their existing dimensions. Mobile resize uses a bottom-corner grip
-as on desktop; a separate header expand action toggles the maximised size and
-position. In short keyboard space, multiline input uses one compact row
-without changing the draft or its multiline editing mode.
+The shared header retains its brand, detail and Minimize/Maximise/Close actions.
+The shared welcome view, composer, Quick Chat, Code tabs and document tabs remain
+present, including the normal sidebar. Its collapse control and regular app menu
+remain available. Settings categories and provider lists use their normal
+column or horizontally scrolling strip according to the available width. Menus
+use the same anchored, bounded, scrolling presentation on every device.
 
-Version 2.4.0 also keeps ordinary portrait typing compact until explicitly
-expanded. Shared cards, forms, headers and navigation trim nested insets; settings
-controls use the available width when stacked. Short history layouts prioritize
-search results. Quick Chat retains its field, draft and selection on rotation,
-and mobile Return inserts a newline. Slider gestures wait for horizontal intent,
-so vertical page swipes cannot alter values. Mobile Code uses destination and
-document pickers, suppresses extra docked panes and gives short keyboard layouts
-back their document/status rows; Find places secondary options in a menu.
-Code, table and reasoning scroll areas account for keyboard-obstructed height.
-Settings categories retain live fields and their individual scroll positions.
+Ordinary handheld typing stays compact until explicitly expanded. In short
+keyboard space, the same multiline input contracts without replacing its native
+field or changing its draft. Quick Chat retains its field, draft and selection
+on rotation, and mobile Return inserts a newline. Slider gestures wait for
+horizontal intent, so vertical page swipes cannot alter values. Code, table and
+reasoning scroll areas account for keyboard-obstructed height. Settings
+categories retain live fields and their individual scroll positions.
+Short Code surfaces scroll the original composition as a whole; controls stay
+mounted in their normal rows instead of moving into separate mobile menus.
 
 The Discord invitation is an app-owned optional modal. Automatic display requires
 five minutes since mounting and 30 seconds of idle time in a visible focused
@@ -767,16 +768,14 @@ Dismissal keeps the cooldown; opting out or successfully copying the invite
 disables reminders. Manual menu access stays available. UI-free boot schedules
 nothing; screen destruction and runtime disposal release the watcher.
 
-Landscape is the primary touch layout. Ordinary typing stays in the compact
-composer, and explicit expansion provides more draft space. Mobile Enter inserts
-a newline; only Send submits. Attachments occupy one horizontal scroll row, with
-management available from Message options when keyboard space hides their preview.
-Rotation relays out existing mobile views without replacing their text fields,
-selections or live forms. Mobile navigation pins conversation search above a
-scrollable history, opens conversations directly, and separates history actions
-from opening. Short keyboard layouts return footer space to the results. Settings
-use a category picker with the full width available to the active form. The mobile
-launcher is visible only while the main window is minimized.
+On touch devices, Enter inserts a newline; only Send submits. Attachments use the
+shared wrapping scroll region, with management available from Message options
+when keyboard space hides their preview.
+Rotation relays out existing views without replacing their text fields,
+selections or live forms. Collapsing the sidebar does not rebuild the window or
+transcript. The shared conversation search opens a matching chat directly;
+conversation management remains in the sidebar and app menu. The
+mobile launcher is visible only while the main window is minimized.
 
 Sheets, panels and desktop windows can all be moved. Default desktop placement
 avoids CoreGui's top bar, but dragging and restoring a chosen position use the full
@@ -794,11 +793,11 @@ focused mobile fields are revealed through their scrolling ancestors. Desktop
 geometry and pointer layouts retain their existing behavior.
 
 When a mobile keyboard leaves too little height for a form, its footer actions
-join the body scroll region at their full touch size. Dismissal remains available;
-keyboard dismissal restores the pinned footer and preserves the fields. Focus
+join the body scroll region at their configured control size. Dismissal remains
+available; keyboard dismissal restores the pinned footer and preserves the fields. Focus
 reveal accounts for clipping ancestors and the keyboard edge without repeating
-the displacement of an inner scroller. Mobile history searches folder names and
-offers a folder filter with the same create, move, and manage flows as desktop.
+the displacement of an inner scroller. Shared conversation search includes
+folder names; create, move and manage flows remain available from the app menu.
 
 Profile avatars start with a readable initial behind a renderable image. A deferred
 worker resolves a ready headshot through `Players:GetUserThumbnailAsync` and calls
@@ -952,11 +951,13 @@ executor forwarding/coexistence and performance need the client scenarios in
 
 ## 8. Build and verification
 
-For the native improvement plan, finish all edits first, then run
-`node tools/test_native.js`. It runs bundle/catalog generation, read-only freshness,
-native static checks, the main native suite, every focused native suite,
-performance contracts and the official Luau compiler, sequentially and fail-fast.
-After any fix, restart the entire sequence. Results and suite summaries are in
+Audit changed source, documentation and tests before running
+`node tools/test_native.js --build-only`. Inspect its generated bundles,
+manifests and catalog before running `node tools/test_native.js --verify-only`.
+Verification runs read-only freshness, native static checks, the main native
+suite, every focused native suite, performance contracts and the official Luau
+compiler, sequentially and fail-fast. After any fix, review the change, rebuild
+and inspect affected outputs, then restart verification. Results and suite summaries are in
 `refer/native-verification/results.json`. See the native testing guide for setup
 and the final diff/scope/generated-output review. This is behavioral contract
 coverage and syntax validation, not strict Roblox type analysis or host validation.

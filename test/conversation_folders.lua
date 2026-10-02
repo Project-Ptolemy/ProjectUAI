@@ -1,4 +1,4 @@
--- Folder storage, legacy history, and the native mobile organization flows.
+-- Folder storage, legacy history, and shared native organization flows.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
 local passed = 0
@@ -90,14 +90,13 @@ for _, viewport in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 80
 	check("the native form creates a named chat in its folder", modal.closed and chat.title == "Portable scripts" and chat.named and uai.sessions.folderLabel(chat) == "Across games")
 	uai.app.openSession(original.id)
 	check("creating a folder chat preserves the previous draft", uai.app.chatPanel.composer.field.get() == "Keep my original draft")
-	if mobile then
-		local nav = uai.app.showAppMenu(h.byName("Nav_menu"))
-		nav.filter.set("Across games")
-		check("mobile history searches folder labels", h.byName("Open_" .. chat.id, nav.card) ~= nil and h.byName("Open_" .. original.id, nav.card) == nil)
-		h.click(h.byName("HistoryFolder", nav.card)); h.click(h.byName("Option_" .. chat.folderId)); h.settle(0.2)
-		check("mobile folder filter retains matching history", h.byName("Open_" .. chat.id, nav.card) ~= nil)
-		nav.close(); h.settle(0.3)
-	end
+	local search = uai.app.showSearch()
+	h.byName("SearchField", search.card):FindFirstChildOfClass("TextBox").Text = "Across games"
+	local result = h.byName("Result_1", search.card)
+	check("shared search matches folder labels", result ~= nil and h.textOf(result):find("Portable scripts", 1, true) ~= nil and h.byName("Result_2", search.card) == nil)
+	h.click(result); h.settle(0.3)
+	check("folder search opens the matching conversation", search.closed and uai.sessions.current() == chat)
+	uai.app.openSession(original.id)
 	modal = uai.app.moveConversation(chat)
 	h.click(h.byName("ConversationFolder", modal.card)); h.click(h.byName("Option_universal"))
 	h.click(h.byName("ConfirmConversation", modal.card)); h.settle(0.3)

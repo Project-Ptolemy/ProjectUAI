@@ -23,8 +23,9 @@ return function(env)
 	}
 	function M.new(parent)
 		store.init()
-		local root = P.frame(parent, { name = "CodeWorkspace", size = UDim2.fromScale(1, 1), clip = true })
-		local panel = { root = root, alive = true, visible = true }
+		local root, surface, surfaceScroll = common.surface(parent, { name = "CodeWorkspace", size = UDim2.fromScale(1, 1), clip = true },
+			function() return math.max(common.pixels(360), common.barHeight() * 2 + theme.size.codeStatus + common.controlHeight() * 3) end)
+		local panel = { root = surface, surfaceScroll = surfaceScroll, alive = true, visible = true }
 		local sourceGeneration = 0
 		local activeDocument, activeDestination, activeSource = store.activeId(), store.workspace.destination, store.workspace.sourceId
 		local function cancelSource()
@@ -33,18 +34,7 @@ return function(env)
 		local views, containers, constructing, layingOut = {}, {}, {}, false
 		local navigate, layout, sync
 		local navigation = tabs.new(root, { name = "CodeDestinations", size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(id) navigate(id) end })
-		local mobileNav = common.toolbar(root, { name = "MobileCodeNavigation" })
-		local destinationButton = mobileNav.add("Editor", function(button)
-			local options = {}
-			for _, destination in ipairs(destinations) do
-				options[#options + 1] = { label = destination.label, value = destination.id, selected = store.workspace.destination == destination.id }
-			end
-			common.menu(button, "Code", options, navigate)
-		end, { name = "CodeDestinationPicker", flex = true })
-		local mobileDocuments = common.toolbar(root, { name = "MobileCodeDocuments" })
 		local chooseDocument
-		local documentButton = mobileDocuments.add("Open script", function(button) chooseDocument(button) end,
-			{ name = "CodeDocumentPicker", flex = true })
 		local body = P.frame(root, { name = "WorkspaceContent", clip = true })
 		local status = P.text(root, { name = "CodeStatus", text = "", role = "caption", truncate = true, color = theme.color.textSecondary })
 		local statusRule = P.frame(root, { name = "CodeStatusRule", size = UDim2.new(1, 0, 0, 1), bg = theme.color.borderSubtle })
@@ -90,7 +80,7 @@ return function(env)
 			local id, why = runner.start(store.activeId())
 			if common.message(id, why) then
 				store.workspace.outputVisible = true
-				if responsive.isMobile() or root.AbsoluteSize.X < 620 then navigate("Output") else layout(); sync() end
+				if root.AbsoluteSize.X < common.pixels(620) or body.AbsoluteSize.Y < common.pixels(250) then navigate("Output") else layout(); sync() end
 			end
 		end
 		local function more(button)
@@ -108,15 +98,6 @@ return function(env)
 				{ label = "Extract editable copy / selection", value = "extract" }, { label = "Refresh source snapshot", value = "refreshSource" },
 				{ label = "Workspace save details", value = "storageDetails" }, { label = "Retry workspace autosave", value = "workspaceSave" }, { label = "Delete script…", value = "delete" },
 			}
-			if responsive.isMobile() then
-				for index = #options, 1, -1 do
-					local option = options[index]
-					if option.value == "filesPane" then table.remove(options, index)
-					elseif option.value == "outputPane" then option.label = "Open output"
-					elseif option.value == "save" then option.label = "Save file"
-					elseif option.value == "find" then option.label = "Find" end
-				end
-			end
 			common.menu(button or moreButton, "Editor actions", options, function(action)
 				local doc = store.active()
 				if action == "documents" then chooseDocument(button or moreButton)
@@ -124,7 +105,8 @@ return function(env)
 				elseif action == "file" then navigate("Files")
 				elseif action == "filesPane" then store.workspace.filesVisible = store.workspace.filesVisible == false; layout()
 				elseif action == "outputPane" then
-					if responsive.isMobile() then navigate("Output") else store.workspace.outputVisible = not store.workspace.outputVisible; layout() end
+					if root.AbsoluteSize.X < common.pixels(620) or body.AbsoluteSize.Y < common.pixels(250) then navigate("Output")
+					else store.workspace.outputVisible = not store.workspace.outputVisible; layout() end
 				elseif action == "workspaceSave" then local ok, why = store.saveNow(); if common.message(ok, why) then overlay.toast("Workspace saved", "good") end
 				elseif action == "storageDetails" then overlay.code({ title = "Workspace storage", code = store.storage.message or store.storage.state })
 				elseif action == "refreshSource" then
@@ -171,15 +153,11 @@ return function(env)
 				store.workspace.sourceId = nil; common.message(store.select(id)); navigate("Editor")
 			end,
 			onClose = function(id) if id ~= "new" then common.message(store.close(id)); sync() end end })
-		runButton = actionBar.add("Run", run, { variant = "primary", name = "RunCode", tight = true, minWidth = 52 })
-		saveButton = actionBar.add("Save", function() save(false) end, { name = "SaveCodeFile", tight = true, minWidth = 56 })
+		runButton = actionBar.add("Run", run, { variant = "primary", name = "RunCode", tight = true, minWidth = common.pixels(52) })
+		saveButton = actionBar.add("Save", function() save(false) end, { name = "SaveCodeFile", tight = true, minWidth = common.pixels(56) })
 		stopButton = actionBar.add("", function() runner.stop() end, { icon = "square", iconOnly = true, name = "StopCode" })
 		stopButton.instance.Visible = false
 		moreButton = actionBar.add("", more, { icon = "ellipsis", iconOnly = true, name = "CodeActions" })
-		local mobileRun = mobileNav.add("Run", run, { variant = "primary", name = "MobileRunCode", tight = true })
-		local mobileStop = mobileNav.add("Stop", function() runner.stop() end, { name = "MobileStopCode", tight = true })
-		local mobileMore = mobileNav.add("", more, { icon = "ellipsis", iconOnly = true, name = "MobileCodeActions" })
-		mobileStop.instance.Visible = false
 		local function getView(id)
 			if views[id] then return views[id] end
 			if constructing[id] then return nil end
@@ -193,10 +171,10 @@ return function(env)
 			constructing[id] = nil; return views[id]
 		end
 		local fileDivider = env.require("ui/code/splitter").new(body, function(position)
-			store.workspace.filePaneWidth = math.max(180, math.min(root.AbsoluteSize.X * 0.45, position.X - body.AbsolutePosition.X)); layout()
+			store.workspace.filePaneWidth = math.max(common.pixels(180), math.min(root.AbsoluteSize.X * 0.45, position.X - body.AbsolutePosition.X)); layout()
 		end)
 		local outputDivider = env.require("ui/code/splitter").new(body, function(position)
-			store.workspace.outputHeight = math.max(100, math.min(body.AbsoluteSize.Y * 0.65, body.AbsolutePosition.Y + body.AbsoluteSize.Y - position.Y)); layout()
+			store.workspace.outputHeight = math.max(common.pixels(100), math.min(body.AbsoluteSize.Y * 0.65, body.AbsolutePosition.Y + body.AbsoluteSize.Y - position.Y)); layout()
 		end, true)
 		layout = function()
 			if not panel.alive or layingOut then return end; layingOut = true
@@ -206,32 +184,23 @@ return function(env)
 			local id = store.workspace.destination
 			local editing = id == "Editor"
 			local barHeight = common.barHeight()
-			local compact = root.AbsoluteSize.Y < 360
-			local mobile = responsive.isMobile()
-			local short = mobile and root.AbsoluteSize.Y < barHeight * 4 + theme.size.codeStatus
-			local statusHeight = mobile and root.AbsoluteSize.Y < barHeight * 3 + theme.size.codeStatus and 0 or theme.size.codeStatus
+			local compact = root.AbsoluteSize.Y < common.pixels(360)
+			local statusHeight = root.AbsoluteSize.Y < barHeight * 3 + theme.size.codeStatus and 0 or theme.size.codeStatus
 			status.Visible, statusRule.Visible = statusHeight > 0, statusHeight > 0
-			navigation.root.Visible = not mobile
-			mobileNav.root.Visible = mobile
-			mobileDocuments.root.Visible = mobile and editing and not short
-			mobileDocuments.root.Position = UDim2.fromOffset(0, barHeight)
-			mobileRun.instance.Visible = editing and not runner.busy()
-			mobileStop.instance.Visible = runner.busy()
-			mobileMore.instance.Visible = editing
-			saveButton.instance.Visible = root.AbsoluteSize.X >= 380
-			local actionsWidth = actionBar.width()
-			documentTabs.root.Visible, actionBar.root.Visible, filePath.Visible = editing and not mobile, editing and not mobile, editing and not compact and not mobile
+			saveButton.instance.Visible = root.AbsoluteSize.X >= common.pixels(380)
+			local actionsWidth = math.min(actionBar.width(), root.AbsoluteSize.X * 0.62)
+			documentTabs.root.Visible, actionBar.root.Visible, filePath.Visible = editing, editing, editing and not compact
 			documentTabs.root.Size = UDim2.new(1, -actionsWidth, 0, barHeight)
 			actionBar.root.Position, actionBar.root.Size = UDim2.new(1, -actionsWidth, 0, barHeight), UDim2.fromOffset(actionsWidth, barHeight)
-			filePath.Position, filePath.Size = UDim2.fromOffset(12, barHeight * 2), UDim2.new(1, -24, 0, 24)
-			local top = editing and barHeight * 2 + (compact and 0 or 24) or barHeight
-			if mobile then top = barHeight * (editing and not short and 2 or 1) end
+			local pathHeight = math.max(theme.text.caption.height, common.pixels(24))
+			filePath.Position, filePath.Size = UDim2.fromOffset(theme.space.md, barHeight * 2), UDim2.new(1, -theme.space.md * 2, 0, pathHeight)
+			local top = editing and barHeight * 2 + (compact and 0 or pathHeight) or barHeight
 			body.Position, body.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top - statusHeight)
-			status.Position, status.Size = UDim2.new(0, 10, 1, -theme.size.codeStatus), UDim2.new(1, -20, 0, theme.size.codeStatus)
+			status.Position, status.Size = UDim2.new(0, common.pixels(10), 1, -theme.size.codeStatus), UDim2.new(1, -common.pixels(20), 0, theme.size.codeStatus)
 			statusRule.Position = UDim2.new(0, 0, 1, -theme.size.codeStatus)
 			local actual = editing and store.workspace.sourceId and "Large source" or id
-			local dockFiles = editing and root.AbsoluteSize.X >= 640 and not compact and not mobile and store.workspace.filesVisible ~= false
-			local dockOutput = editing and root.AbsoluteSize.X >= 620 and body.AbsoluteSize.Y >= 250 and not mobile and store.workspace.outputVisible == true
+			local dockFiles = editing and root.AbsoluteSize.X >= common.pixels(640) and not compact and store.workspace.filesVisible ~= false
+			local dockOutput = editing and root.AbsoluteSize.X >= common.pixels(620) and body.AbsoluteSize.Y >= common.pixels(250) and store.workspace.outputVisible == true
 			getView(actual); if dockFiles then getView("Files") end; if dockOutput then getView("Output") end
 			for key, view in pairs(views) do
 				local visible = key == actual or (dockFiles and key == "Files") or (dockOutput and key == "Output")
@@ -242,17 +211,17 @@ return function(env)
 			local inset = 0
 			fileDivider.root.Visible, outputDivider.root.Visible = dockFiles and panel.visible, dockOutput and panel.visible
 			if dockFiles then
-				local width = math.max(180, math.min(root.AbsoluteSize.X * 0.4, store.workspace.filePaneWidth or 230))
-				containers.Files.Size = UDim2.new(0, width, 1, 0); inset = width + 6
-				fileDivider.root.Position, fileDivider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
+				local width = math.max(common.pixels(180), math.min(root.AbsoluteSize.X * 0.4, store.workspace.filePaneWidth or common.pixels(230)))
+				containers.Files.Size = UDim2.new(0, width, 1, 0); inset = width + theme.space.xs
+				fileDivider.root.Position, fileDivider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, theme.space.xs, 1, 0)
 			end
 			if editing then
 				containers[actual].Position, containers[actual].Size = UDim2.fromOffset(inset, 0), UDim2.new(1, -inset, 1, 0)
 				if dockOutput then
-					local height = math.max(100, math.min(body.AbsoluteSize.Y * 0.55, store.workspace.outputHeight or 160))
-					containers[actual].Size = UDim2.new(1, -inset, 1, -height - 6)
+					local height = math.max(common.pixels(100), math.min(body.AbsoluteSize.Y * 0.55, store.workspace.outputHeight or common.pixels(160)))
+					containers[actual].Size = UDim2.new(1, -inset, 1, -height - theme.space.xs)
 					containers.Output.Position, containers.Output.Size = UDim2.new(0, inset, 1, -height), UDim2.new(1, -inset, 0, height)
-					outputDivider.root.Position, outputDivider.root.Size = UDim2.new(0, inset, 1, -height - 6), UDim2.new(1, -inset, 0, 6)
+					outputDivider.root.Position, outputDivider.root.Size = UDim2.new(0, inset, 1, -height - theme.space.xs), UDim2.new(1, -inset, 0, theme.space.xs)
 				end
 			end
 			layingOut = false
@@ -261,8 +230,6 @@ return function(env)
 			if not panel.alive then return end
 			local doc = store.active()
 			navigation.set(destinations, store.workspace.destination)
-			for _, destination in ipairs(destinations) do if destination.id == store.workspace.destination then destinationButton.setText(destination.label); break end end
-			documentButton.setText(store.workspace.sourceId and "Source snapshot" or doc and doc.name or "Open script")
 			local documents = {}
 			for _, id in ipairs(store.openIds()) do
 				local item = store.resolve(id)
@@ -271,7 +238,6 @@ return function(env)
 			documents[#documents + 1] = { id = "new", label = "+", closable = false }
 			documentTabs.set(documents, store.activeId())
 			runButton.setEnabled(caps.exec and doc ~= nil and not store.workspace.sourceId and not doc.readOnly and not runner.busy())
-			mobileRun.setEnabled(caps.exec and doc ~= nil and not store.workspace.sourceId and not doc.readOnly and not runner.busy())
 			stopButton.setEnabled(runner.busy())
 			local stopping = runner.busy()
 			if stopButton.instance.Visible ~= stopping then stopButton.instance.Visible = stopping; layout() end
@@ -342,9 +308,9 @@ return function(env)
 			if not panel.alive then return end; panel.alive = false
 			input:Disconnect(); offStore(); offStorage(); offRun(); offCapture(); offResponsive(); fileDivider.destroy(); outputDivider.destroy()
 			for _, view in pairs(views) do if view.destroy then view.destroy() end end
-			cancelSource(); store.saveNow(); if not rootDestroying then root:Destroy() end
+			cancelSource(); store.saveNow(); if not rootDestroying then surface:Destroy() end
 		end
-		root.Destroying:Connect(function() rootDestroying = true; panel.destroy() end)
+		surface.Destroying:Connect(function() rootDestroying = true; panel.destroy() end)
 		panel.navigate, panel.views = navigate, views
 		layout(); sync(); return panel
 	end

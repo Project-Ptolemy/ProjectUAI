@@ -32,7 +32,7 @@ return function(env)
 			title = "What's new",
 			description = "Every release this client has shipped, newest first.",
 			width = theme.size.modalWide,
-			height = 580,
+			height = theme.size.modalHistory,
 			scroll = true,
 		})
 		if not modal then return nil end

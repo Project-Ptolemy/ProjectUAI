@@ -42,13 +42,11 @@ return function(env)
 			Instance.new("UICorner", button).CornerRadius = UDim.new(0, theme.radius.sm)
 			local stroke = Instance.new("UIStroke", button)
 			stroke.Color, stroke.Thickness = theme.color.borderSubtle, theme.stroke.hair
-			local mobile = responsive.isMobile()
-			local row = P.row(button, { size = UDim2.fromScale(1, 1), gap = mobile and theme.space.xs or theme.space.sm,
-				padding = { x = mobile and theme.space.xs or theme.space.sm } })
+			local row = P.row(button, { size = UDim2.fromScale(1, 1), gap = theme.space.sm,
+				padding = { x = theme.space.sm } })
 			local caret = P.frame(row, { name = "Caret", size = UDim2.fromOffset(theme.size.icon, theme.size.icon), layoutOrder = 1 })
 			icons.chevron(caret, theme.size.icon, theme.color.textTertiary, "right")
 			local badge = P.frame(row, { name = badgeName, size = UDim2.fromOffset(theme.size.icon, theme.size.icon), layoutOrder = 2 })
-			badge.Visible = not mobile
 			icons.draw(icon, badge, theme.size.icon, theme.color.accent)
 			local label = P.text(row, { name = "Title", text = "", role = "small", color = theme.color.text,
 				truncate = true, size = UDim2.new(0, 0, 1, 0), flex = "Fill", layoutOrder = 3 })

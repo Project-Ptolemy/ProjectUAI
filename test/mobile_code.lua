@@ -8,6 +8,7 @@ local function fixture(width, height)
 	local f = F.ui(width, height)
 	f.h.services.UserInputService.TouchEnabled, f.h.services.UserInputService.MouseEnabled = true, false
 	f.env.require("ui/responsive").init(f.env.root)
+	f.env.require("ui/theme").rebuild()
 	return f
 end
 local function click(f, name, root) f.h.click(assert(f.h.byName(name, root), name)) end
@@ -20,8 +21,15 @@ local function visible(node, root)
 	while node and node ~= root do if node.Visible == false then return false end; node = node.Parent end
 	return node == root
 end
+local function tab(f, root, label)
+	for _, item in ipairs(root:GetChildren()) do
+		local text = item:FindFirstChild("TabLabel", true)
+		if text and text.Text:find(label, 1, true) then f.h.click(item:FindFirstChild("TabButton")); return end
+	end
+	error("missing tab " .. label)
+end
 
-for _, dimensions in ipairs({ { 320, 500 }, { 844, 280 }, { 932, 205 }, { 1194, 700 } }) do
+for _, dimensions in ipairs({ { 320, 100 }, { 844, 100 }, { 320, 500 }, { 844, 280 }, { 932, 205 }, { 1194, 700 } }) do
 	case("Code keeps full controls and editor width at " .. dimensions[1] .. "x" .. dimensions[2], function()
 		local f = fixture(dimensions[1], dimensions[2])
 		local store = f.env.require("runtime/code_store")
@@ -32,28 +40,33 @@ for _, dimensions in ipairs({ { 320, 500 }, { 844, 280 }, { 932, 205 }, { 1194, 
 		local panel = f.env.require("ui/panels/code").new(f.host)
 		panel.navigate("Editor"); f.h.settle(0.2)
 		local editor, target = panel.views.Editor, f.env.require("ui/responsive").minTarget()
-		check("mobile panes reserve the full width for source", editor.root.AbsoluteSize.X == f.host.AbsoluteSize.X)
-		check("desktop tab strips are replaced", not f.h.byName("CodeDestinations", panel.root).Visible and not f.h.byName("OpenDocumentTabs", panel.root).Visible)
-		for _, name in ipairs({ "CodeDestinationPicker", "MobileRunCode", "MobileCodeActions" }) do
+		check("source retains useful space beside any docked panes", editor.root.AbsoluteSize.X >= 120 and editor.root.AbsoluteSize.X <= f.host.AbsoluteSize.X)
+		check("the desktop destination and document tab strips remain visible", f.h.byName("CodeDestinations", panel.root).Visible and f.h.byName("OpenDocumentTabs", panel.root).Visible)
+		for _, name in ipairs({ "RunCode", "CodeActions" }) do
 			local button = assert(f.h.byName(name, panel.root))
-			check(name .. " is visible and touch sized", visible(button, panel.root) and button.AbsoluteSize.X >= target and button.AbsoluteSize.Y >= target)
+			check(name .. " is visible at the compact control size", visible(button, panel.root) and button.AbsoluteSize.X >= target and button.AbsoluteSize.Y >= target)
 		end
-		local short = dimensions[2] < f.env.require("ui/code/common").barHeight() * 4 + f.env.require("ui/theme").size.codeStatus
-		check("short keyboard height has one chrome row", f.h.byName("MobileCodeDocuments", panel.root).Visible ~= short)
-		check("the source keeps useful vertical space", editor.root.AbsoluteSize.Y >= dimensions[2] - (short and 80 or 132))
-		click(f, "MobileCodeActions", panel.root); click(f, "Option_documents")
-		click(f, "Option_" .. second.id)
-		check("script switching remains reachable with the document row hidden", editor.box.Text == "return 2")
-		click(f, "CodeDestinationPicker", panel.root); click(f, "Option_Files")
-		check("every destination can open through the picker", store.workspace.destination == "Files" and panel.views.Files ~= nil)
+		check("no alternate mobile navigation is built", f.h.byName("MobileCodeNavigation", panel.root) == nil and f.h.byName("CodeDestinationPicker", panel.root) == nil)
+		check("the source keeps useful vertical space", editor.root.AbsoluteSize.Y >= math.max(target * 3, dimensions[2] - 100))
+		if dimensions[2] == 100 then
+			local scroll = panel.surfaceScroll
+			check("the full original workspace scrolls in keyboard-height space", scroll.ScrollingEnabled and scroll.CanvasSize.Y.Offset > scroll.AbsoluteSize.Y)
+			local bottom = scroll.CanvasSize.Y.Offset - scroll.AbsoluteSize.Y
+			scroll.CanvasPosition = f.h.sandbox.Vector2.new(0, bottom)
+			check("the workspace scroll can reach the lower editor region", scroll.CanvasPosition.Y == bottom)
+		end
+		tab(f, f.h.byName("OpenDocumentTabs", panel.root), second.name)
+		check("the normal document tab selects exact source", editor.box.Text == "return 2")
+		tab(f, f.h.byName("CodeDestinations", panel.root), "Files")
+		check("destinations open through their normal tabs", store.workspace.destination == "Files" and panel.views.Files ~= nil)
 		if dimensions[2] <= 280 then
 			check("short Files pane leaves room for its tree", panel.views.Files.list.root.AbsoluteSize.Y > 40)
 			local field = f.h.byName("WorkspaceFileSearch", panel.views.Files.root):FindFirstChildOfClass("TextBox")
 			field.Text = "mobile-filter"
-			click(f, "CompactFileActions", panel.views.Files.root)
-			check("compact Files keeps all actions reachable", f.h.byName("Option_new") ~= nil and f.h.byName("Option_delete") ~= nil and f.h.byName("Option_refresh") ~= nil)
-			f.h.press("Escape")
-			check("opening the file menu keeps the query", field.Text == "mobile-filter")
+			check("Files keeps the desktop actions mounted", f.h.byName("NewWorkspaceFile", panel.views.Files.root) ~= nil
+				and f.h.byName("DeleteWorkspaceEntry", panel.views.Files.root) ~= nil and f.h.byName("RefreshWorkspaceFiles", panel.views.Files.root) ~= nil)
+			click(f, "RefreshWorkspaceFiles", panel.views.Files.root)
+			check("refreshing files keeps the query", field.Text == "mobile-filter")
 		end
 		panel.navigate("Editor")
 		editor.box:CaptureFocus(); editor.box.CursorPosition, editor.box.SelectionStart = 5, 2
@@ -63,10 +76,11 @@ for _, dimensions in ipairs({ { 320, 500 }, { 844, 280 }, { 932, 205 }, { 1194, 
 		check("rotation keeps the native selection", box.CursorPosition == 5 and box.SelectionStart == 2)
 		editor.openFind(); f.h.settle(0.2)
 		local find = f.h.byName("EditorFind", editor.root)
-		check("mobile Find takes one row", find.Size.Y.Offset == f.env.require("ui/code/common").barHeight())
-		click(f, "MobileFindOptions", editor.root)
-		check("find options and dismissal remain accessible", f.h.byName("Option_previous") ~= nil and f.h.byName("Option_case") ~= nil and f.h.byName("Option_close") ~= nil)
-		click(f, "Option_close")
+		check("Find retains the desktop two-row composition", find.Size.Y.Offset == f.env.require("ui/code/common").barHeight() * 2)
+		for _, name in ipairs({ "FindPrevious", "FindNext", "FindCaseSensitive", "FindWholeWord", "CloseFind" }) do
+			check(name .. " stays reachable", visible(assert(f.h.byName(name, editor.root)), editor.root))
+		end
+		click(f, "CloseFind", editor.root)
 		check("closing Find returns source space", not find.Visible)
 		panel.destroy(); f.healthy(); f.close()
 	end)
@@ -115,8 +129,8 @@ case("destroying a Code root releases its responsive listener and child views", 
 	f.healthy(); f.close()
 end)
 
-case("mobile provider navigation keeps Add visible and exposes every provider", function()
-	local f = fixture(320, 500)
+case("the shared provider strip exposes Add and every provider", function()
+	local f = fixture(300, 500)
 	local registry = f.env.require("provider/registry")
 	for i = 1, 7 do
 		local record = registry.blank("custom")
@@ -124,14 +138,15 @@ case("mobile provider navigation keeps Add visible and exposes every provider", 
 		record.models = { record.model }; assert(registry.save(record))
 	end
 	local panel = f.env.require("ui/panels/providers").new(f.host)
-	local add = assert(f.h.byName("MobileAddProvider", panel.root))
-	check("Add is outside the scrolling provider list", visible(add, panel.root) and add.Parent.Name == "MobileProviderNavigation")
-	click(f, "ProviderPicker", panel.root)
+	local list = assert(f.h.byName("ProviderList", panel.root))
+	local add = assert(f.h.byName("AddProvider", list))
+	check("the normal Add action remains in the scrolling strip", visible(add, panel.root) and list.ScrollingEnabled)
+	check("provider navigation has no alternate mobile picker", f.h.byName("ProviderPicker", panel.root) == nil)
 	local last = registry.list()[7]
-	click(f, "Option_" .. last.id)
+	click(f, "Provider_" .. last.id, panel.root)
 	check("the last provider opens directly", f.h.byName("ProviderTitle", panel.root).Text == last.label)
 	local detailPadding = panel.scroll.instance:FindFirstChildOfClass("UIPadding")
-	check("the detail uses compact outer padding", detailPadding.PaddingLeft.Offset == f.env.require("ui/theme").space.sm)
+	check("the detail uses the same scaled desktop padding", detailPadding.PaddingLeft.Offset == f.env.require("ui/theme").space.lg)
 	panel.root:Destroy(); f.healthy(); f.close()
 end)
 

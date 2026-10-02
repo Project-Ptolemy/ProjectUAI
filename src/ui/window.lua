@@ -45,7 +45,7 @@ return function(env)
 		root.Active = true
 		root.ZIndex = theme.z.raised
 		root.ClipsDescendants = true
-		P.corner(root, mobile and theme.radius.lg or theme.radius.xl)
+		P.corner(root, theme.radius.xl)
 		local outline = P.stroke(root, theme.color.border)
 
 		-- No entrance scale or delayed group fade: rapid hide/show is synchronous,
@@ -218,14 +218,23 @@ return function(env)
 				root.Position.Y.Scale, math.floor(util.clamp(root.Position.Y.Offset, minY, maxY)))
 		end
 
+		function handle.setMinWidth(width)
+			minWidth = width
+			local bounds = responsive.usableRect(parent, theme.space.sm, false)
+			local wanted = math.min(minWidth, bounds.width)
+			if root.Size.X.Offset < wanted then
+				root.Size = UDim2.fromOffset(math.floor(wanted), root.Size.Y.Offset)
+				handle.clampIntoView()
+				saveGeometry()
+			end
+		end
+
 		-- Chrome --------------------------------------------------------------
 
-		-- Tall enough for the controls it holds. The window buttons are sized to
-		-- max(control, minTarget()), which is 44 on a touch device, so a header fixed at
-		-- the 42px token clipped two pixels off every one of them there. Published so
-		-- the shell that fills the header uses the same number instead of the token.
-		local headerHeight = mobile and math.max(responsive.minTarget(), theme.text.bodyStrong.height) + theme.space.xxs
-			or math.max(theme.size.header, responsive.minTarget() + theme.space.sm)
+		-- Both title lines and the ordinary window controls share the same header.
+		local headerHeight = math.max(theme.size.header, responsive.minTarget() + theme.space.sm,
+			math.ceil(theme.text.bodyStrong.size * theme.line.tight)
+				+ math.ceil(theme.text.caption.size * theme.line.tight) + theme.space.hair + theme.space.xxs * 2)
 		handle.headerHeight = headerHeight
 
 		-- The header is a transparent top bar across the active pane that provides
@@ -233,8 +242,8 @@ return function(env)
 		handle.header = P.row(root, {
 			name = "Header",
 			size = UDim2.new(1, 0, 0, headerHeight),
-			gap = mobile and theme.space.xxs or theme.space.sm,
-			padding = { x = mobile and theme.space.xs or theme.space.md },
+			gap = theme.space.sm,
+			padding = { x = theme.space.md },
 			zIndex = theme.z.header,
 		})
 		handle.header.BackgroundTransparency = 1
@@ -358,28 +367,28 @@ return function(env)
 		grip.BackgroundTransparency = 1
 		grip.AnchorPoint = Vector2.new(1, 1)
 		grip.Position = UDim2.fromScale(1, 1)
-		local gripSize = responsive.touch and math.max(RESIZE_GRIP, responsive.minTarget()) or RESIZE_GRIP
+		local scaledGrip = math.max(1, math.floor(RESIZE_GRIP * theme.metricScale + 0.5))
+		local gripSize = responsive.touch and math.max(scaledGrip, responsive.minTarget()) or scaledGrip
 		grip.Size = UDim2.fromOffset(gripSize, gripSize)
 		grip.ZIndex = theme.z.header + 2
 		grip.Selectable = false
 		handle.resizeGrip = grip
 
 		local function updateGrip()
-			local currentGripSize = responsive.touch and math.max(RESIZE_GRIP, responsive.minTarget()) or RESIZE_GRIP
+			local currentGripSize = responsive.touch and math.max(scaledGrip, responsive.minTarget()) or scaledGrip
 			grip.Size = UDim2.fromOffset(currentGripSize, currentGripSize)
 			grip.Visible = draggableNow()
 		end
 
 		-- A corner hatch at the bottom-right, on every device: resize is a corner
-		-- grip on the panel exactly as it is on the desktop window. Touch gets a
-		-- brighter tint because the hairline is easy to miss on a phone.
+		-- grip on the panel exactly as it is on the desktop window.
 		for index = 1, 2 do
 			local line = P.frame(grip, {
 				name = "Grip" .. index,
-				size = UDim2.fromOffset(index * 5 + 1, 1),
+				size = UDim2.fromOffset(math.floor((index * 5 + 1) * theme.metricScale + 0.5), theme.stroke.hair),
 				anchor = Vector2.new(1, 1),
-				position = UDim2.new(1, -4, 1, -(index * 4)),
-				bg = mobile and theme.color.textSecondary or theme.color.borderStrong,
+				position = UDim2.new(1, -theme.space.xxs, 1, -index * theme.space.xxs),
+				bg = theme.color.borderStrong,
 				radius = theme.radius.pill,
 			})
 			line.Rotation = -45

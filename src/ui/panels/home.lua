@@ -18,23 +18,6 @@ return function(env)
 
 	local M = {}
 
-	-- How much of the grid fits. Twenty-six weeks is six months and is what the card
-	-- is designed around, but a cell is a fixed eleven pixels and the card is only as
-	-- wide as the window: at 340 the full grid is seventy pixels wider than the space
-	-- it has, and a grid that overflows is clipped rather than scaled.
-	local function heatmapWeeks()
-		if responsive.mode == "sheet" then return 13 end
-		if responsive.mode == "panel" then return 18 end
-		return 26
-	end
-
-	-- Four tiles to a row on anything with room, two on a phone. Eight tiles of a
-	-- quarter width each on a 276px card leaves 53px for "Longest streak".
-	local function tilesPerRow()
-		if responsive.mode == "sheet" or responsive.mode == "panel" then return 2 end
-		return 4
-	end
-
 	local function levelColour(level)
 		if level >= 4 then return theme.color.activityBlueDark end
 		if level >= 3 then return theme.color.activityBlue end
@@ -58,17 +41,11 @@ return function(env)
 
 	-- One metric. The tile shows the short form; the exact figure and what it counts
 	-- live in the Usage pane, which is where the click goes.
-	local function tile(parent, spec, order, perRow)
+	local function tile(parent, spec, order)
 		local holder = P.rowButton(parent, {
 			name = "Metric_" .. tostring(spec.key),
 			vertical = true,
-			-- The gap is shared out across the tiles rather than subtracted whole from
-			-- each: n children of (W/n - g) plus (n-1) gaps comes to W - g, so the row
-			-- stopped a gap short of the well it sits in and the right edge never lined up
-			-- with the card above it. The share is (n-1)/n of one gap per tile.
-			size = UDim2.new(1 / (perRow or 4),
-				-math.floor(theme.space.hair * ((perRow or 4) - 1) / (perRow or 4)),
-				0, theme.size.statTile),
+			size = UDim2.fromOffset(0, theme.size.statTile),
 			height = theme.size.statTile,
 			bg = theme.color.surfaceRaised,
 			radius = theme.radius.none,
@@ -147,33 +124,36 @@ return function(env)
 	end
 
 	local function buildOverview(parent, window)
-		local box = P.column(parent, {
+		local box = P.frame(parent, {
 			name = "MetricsBox",
 			size = UDim2.new(1, 0, 0, 0),
-			auto = "Y",
-			gap = theme.space.hair,
 			bg = theme.color.surfaceOverlay,
 			radius = theme.radius.md,
-			padding = theme.space.hair,
 			layoutOrder = 1,
 		})
 		P.stroke(box, theme.color.borderSubtle)
 
 		local specs = overviewTiles(window)
-		local perRow = tilesPerRow()
-		local rows = math.ceil(#specs / perRow)
-		for rowIndex = 1, rows do
-			local row = P.row(box, {
-				name = "MetricRow" .. tostring(rowIndex),
-				size = UDim2.new(1, 0, 0, theme.size.statTile),
-				gap = theme.space.hair,
-				layoutOrder = rowIndex,
-			})
-			for column = 1, perRow do
-				local spec = specs[(rowIndex - 1) * perRow + column]
-				if spec then tile(row, spec, column, perRow) end
-			end
+		local tiles, minWidth = {}, 0
+		for index, spec in ipairs(specs) do
+			tiles[index] = tile(box, spec, index).instance
+			minWidth = math.max(minWidth, P.measureText(spec.label, { role = "caption" }).X + theme.space.sm * 2)
 		end
+		local function fitTiles()
+			local gap = theme.space.hair
+			local width = math.max(1, box.AbsoluteSize.X - gap * 2)
+			local perRow = width >= minWidth * 4 + gap * 3 and 4 or (width >= minWidth * 2 + gap and 2 or 1)
+			local height = math.max(theme.size.statTile, theme.text.caption.height + theme.text.title.height + gap + theme.space.xs * 2)
+			local cellWidth = math.max(1, (width - gap * (perRow - 1)) / perRow)
+			for index, entry in ipairs(tiles) do
+				entry.Size = UDim2.fromOffset(cellWidth, height)
+				entry.Position = UDim2.fromOffset(gap + ((index - 1) % perRow) * (cellWidth + gap),
+					gap + math.floor((index - 1) / perRow) * (height + gap))
+			end
+			box.Size = UDim2.new(1, 0, 0, math.ceil(#tiles / perRow) * (height + gap) + gap)
+		end
+		box:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitTiles)
+		fitTiles()
 		return box
 	end
 
@@ -273,7 +253,7 @@ return function(env)
 	end
 
 	local function buildHeatmap(parent, order)
-		local map = stats.heatmap(heatmapWeeks())
+		local map = stats.heatmap(26)
 		local todayKey = clock.dayKey()
 		local holder = P.column(parent, {
 			name = "Heatmap",
@@ -331,7 +311,6 @@ return function(env)
 	-- column it is being dropped into -- the transcript, in practice.
 	function M.card(parent, order, props)
 		props = props or {}
-		local mobile = responsive.isMobile()
 		local name = "there"
 		local okName, display = pcall(function()
 			return env.plr and env.plr.DisplayName
@@ -347,9 +326,8 @@ return function(env)
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			alignX = "Center",
-			gap = mobile and theme.space.sm or theme.space.xl,
-			padding = { top = mobile and theme.space.xxs or theme.space.xxl,
-				bottom = mobile and theme.space.sm or theme.space.lg },
+			gap = theme.space.xl,
+			padding = { top = theme.space.xxl, bottom = theme.space.lg },
 			layoutOrder = order,
 		})
 
@@ -358,20 +336,19 @@ return function(env)
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			alignX = "Center",
-			gap = mobile and theme.space.xxs or theme.space.md,
+			gap = theme.space.md,
 			layoutOrder = 1,
 		})
 		local brandSlot = P.frame(greeting, {
 			name = "HomeBrand",
 			size = UDim2.fromOffset(theme.size.controlLarge, theme.size.controlLarge),
-			visible = not mobile,
 			layoutOrder = 1,
 		})
 		icons.brand(brandSlot, theme.size.controlLarge)
 		P.text(greeting, {
 			name = "GreetingText",
-			text = mobile and "What will we create?" or string.format("What will we create, %s?", name),
-			role = mobile and "title" or "display",
+			text = string.format("What will we create, %s?", name),
+			role = "display",
 			color = theme.color.text,
 			align = "Center",
 			wrap = true,
@@ -379,12 +356,11 @@ return function(env)
 			layoutOrder = 2,
 		})
 
-		local subtitle = P.text(greeting, {
+		P.text(greeting, {
 			name = "GreetingSubtitle", text = "Your ideas. Your game. An agent to help make it happen.",
 			role = "small", color = theme.color.textTertiary, align = "Center", wrap = true,
 			auto = "Y", size = UDim2.new(1, 0, 0, 0), layoutOrder = 3,
 		})
-		subtitle.Visible = not mobile
 		if props.onInsert then
 			local grid = P.frame(holder, {
 				name = "PromptStarters", size = UDim2.new(1, 0, 0, 0),
@@ -393,37 +369,37 @@ return function(env)
 			local cards = {}
 			local minStarterWidth = 0
 			for index, entry in ipairs(env.require("ui/chat/prompts").items) do
-				minStarterWidth = math.max(minStarterWidth, P.measureText(entry.label, { role = "small" }).X
-					+ theme.size.icon + theme.space.xs + theme.space.sm * 2)
+				minStarterWidth = math.max(minStarterWidth, P.measureText(entry.label, { role = "label" }).X + theme.space.md * 2)
 				local card = P.rowButton(grid, {
-					name = "Starter_" .. entry.id, vertical = not mobile, size = UDim2.fromOffset(0, theme.size.promptCard),
-					bg = not mobile and theme.color.surface or nil, stroke = not mobile,
-					radius = mobile and theme.radius.md or theme.radius.lg, gap = theme.space.xs,
-					padding = mobile and { x = theme.space.sm, y = theme.space.xxs } or theme.space.md,
-					alignX = "Left", alignY = mobile and "Center" or "Top",
+					name = "Starter_" .. entry.id, vertical = true, size = UDim2.fromOffset(0, theme.size.promptCard),
+					bg = theme.color.surface, stroke = true,
+					radius = theme.radius.lg, gap = theme.space.xs,
+					padding = theme.space.md,
+					alignX = "Left", alignY = "Top",
 					onClick = function() props.onInsert(entry.text) end,
 				})
 				card.icon(entry.icon, 1, theme.color.accentHot, theme.size.icon)
-				P.text(card.row, { text = entry.label, role = mobile and "small" or "label", layoutOrder = 2,
-					flex = mobile and "Fill" or nil,
-					size = UDim2.new(mobile and 0 or 1, 0, 0, mobile and theme.text.small.height or theme.text.label.height), truncate = true })
-				if not mobile then
-					P.text(card.row, { text = entry.detail, role = "caption", color = theme.color.textTertiary,
-						layoutOrder = 3, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true })
-				end
-				cards[index] = card.instance
+				P.text(card.row, { text = entry.label, role = "label", layoutOrder = 2,
+					size = UDim2.new(1, 0, 0, theme.text.label.height), truncate = true })
+				P.text(card.row, { text = entry.detail, role = "caption", color = theme.color.textTertiary,
+					layoutOrder = 3, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true })
+				cards[index] = { instance = card.instance, detail = entry.detail }
 			end
 			local function fitStarters()
-				local columns = grid.AbsoluteSize.X >= (mobile and minStarterWidth * 2 + theme.space.sm or theme.size.promptColumns) and 2 or 1
 				local gap = theme.space.sm
+				local columns = grid.AbsoluteSize.X >= math.max(minStarterWidth * 2 + gap, theme.size.promptColumns) and 2 or 1
+				local width = math.max(1, (grid.AbsoluteSize.X - gap * (columns - 1)) / columns - theme.space.md * 2)
+				local detailHeight = theme.text.caption.height * 2
+				for _, card in ipairs(cards) do
+					detailHeight = math.max(detailHeight, P.measureText(card.detail, { role = "caption", width = width }).Y)
+				end
 				local height = math.max(theme.size.promptCard,
-					theme.size.icon + theme.text.label.height + theme.text.caption.height * 2 + theme.space.md * 2 + theme.space.xs * 2)
-				if mobile then height = math.max(responsive.minTarget(), theme.text.small.height + theme.space.xxs * 2) end
+					theme.size.icon + theme.text.label.height + detailHeight + theme.space.md * 2 + theme.space.xs * 2)
 				for index, card in ipairs(cards) do
 					local col = (index - 1) % columns
 					local row = math.floor((index - 1) / columns)
-					card.Size = UDim2.new(1 / columns, -gap * (columns - 1) / columns, 0, height)
-					card.Position = UDim2.new(col / columns, col * gap / columns, 0, row * (height + gap))
+					card.instance.Size = UDim2.new(1 / columns, -gap * (columns - 1) / columns, 0, height)
+					card.instance.Position = UDim2.new(col / columns, col * gap / columns, 0, row * (height + gap))
 				end
 				grid.Size = UDim2.new(1, 0, 0, math.ceil(#cards / columns) * (height + gap) - gap)
 			end

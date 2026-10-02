@@ -6,7 +6,6 @@ return function(env)
 	local files = env.require("runtime/code_files")
 	local store = env.require("runtime/code_store")
 	local util = env.require("runtime/util")
-	local responsive = env.require("ui/responsive")
 	local M = {}
 	function M.saveDocument(doc, saveAs, done)
 		if not doc then return end
@@ -46,11 +45,9 @@ return function(env)
 		bar.add("", function() handle.deleteSelected() end, { icon = "trash", iconOnly = true, name = "DeleteWorkspaceEntry" })
 		bar.add("Refresh", function() view.pages = {}; refresh() end, { tight = true, name = "RefreshWorkspaceFiles" })
 		local filter = P.field(root, { name = "WorkspaceFileSearch", placeholder = "Filter loaded files", text = view.query or "", role = "small", onChange = function(text) view.query = text; if refresh then refresh() end end })
-		local compactMenu = common.button(root, { name = "CompactFileActions", text = "", icon = "ellipsis", tight = true, fill = true,
-			variant = "ghost", onClick = fileMenu, visible = false })
-		filter.shell.Position, filter.shell.Size = UDim2.fromOffset(8, common.barHeight() + 6), UDim2.new(1, -16, 0, common.barHeight())
-		local top = common.barHeight() * 2 + 12
-		local hint = P.text(root, { name = "WorkspaceFileStatus", text = "Click a folder to expand · click a file to open", role = "caption", color = theme.color.textSecondary, truncate = true, position = UDim2.new(0, 8, 1, -24), size = UDim2.new(1, -16, 0, 24) })
+		filter.shell.Position, filter.shell.Size = UDim2.fromOffset(theme.space.sm, common.barHeight() + theme.space.xs), UDim2.new(1, -theme.space.sm * 2, 0, common.barHeight())
+		local top = common.barHeight() * 2 + theme.space.md
+		local hint = P.text(root, { name = "WorkspaceFileStatus", text = "Click a folder to expand · click a file to open", role = "caption", color = theme.color.textSecondary, truncate = true, position = UDim2.new(0, theme.space.sm, 1, -common.pixels(24)), size = UDim2.new(1, -theme.space.sm * 2, 0, common.pixels(24)) })
 		local function load(path)
 			local result, why = files.children(path)
 			view.pages[path] = { items = result or {}, error = why, limit = 200 }
@@ -100,7 +97,7 @@ return function(env)
 		function handle.deleteSelected()
 			deleteEntry(view.selected, view.selected and view.selected:match("[^/]+$"), view.selected and files.isDir(view.selected))
 		end
-		list = common.virtualList(root, { name = "WorkspaceFileTree", position = UDim2.fromOffset(0, top), size = UDim2.new(1, 0, 1, -top - 24), dense = true,
+		list = common.virtualList(root, { name = "WorkspaceFileTree", position = UDim2.fromOffset(0, top), size = UDim2.new(1, 0, 1, -top - common.pixels(24)), dense = true,
 			onClose = function(row) if row.path and row.path ~= "" then deleteEntry(row.path, row.name, row.isDir) end end,
 			closable = function(row) return row.path ~= nil and row.path ~= "" end,
 			icon = function(row) return row.path ~= nil and (row.isDir and "Folder" or row.name:lower():match("%.lua[u]?$") and "ModuleScript" or "Document") or nil end,
@@ -154,18 +151,6 @@ return function(env)
 			hint.Text = binding and (files.root .. "/" .. binding.path .. (files.dirty(store.activeId()) and " · unsaved changes" or "")) or "Click folders to expand · click files to open"
 		end
 		local off = store.changed:connect(function(event) if event.kind ~= "source" then refresh() end end)
-		local function layout()
-			local short = responsive.isMobile() and root.AbsoluteSize.Y < common.barHeight() * 4
-			local inset, gap, target = common.inset(), common.gap(), common.controlHeight()
-			bar.root.Visible, compactMenu.instance.Visible, hint.Visible = not short, short, not short
-			local fieldTop = short and gap or common.barHeight() + 6
-			filter.shell.Position = UDim2.fromOffset(inset, fieldTop)
-			filter.shell.Size = UDim2.new(1, -inset * 2 - (short and target + gap or 0), 0, short and target or common.barHeight())
-			compactMenu.instance.Position, compactMenu.instance.Size = UDim2.new(1, -inset - target, 0, fieldTop), UDim2.fromOffset(target, target)
-			local listTop = short and common.barHeight() or top
-			list.root.Position, list.root.Size = UDim2.fromOffset(0, listTop), UDim2.new(1, 0, 1, -listTop - (short and 0 or 24))
-		end
-		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
 		function handle.setVisible(visible)
 			if handle.visible == visible then return end
 			handle.visible, list.visible = visible, visible
@@ -173,7 +158,7 @@ return function(env)
 		end
 		function handle.destroy() handle.alive = false; view.y = list.root.CanvasPosition.Y; off(); root:Destroy() end
 		handle.list, handle.refresh = list, refresh
-		layout(); refresh(); list.root.CanvasPosition = Vector2.new(0, view.y or 0)
+		refresh(); list.root.CanvasPosition = Vector2.new(0, view.y or 0)
 		return handle
 	end
 	return M

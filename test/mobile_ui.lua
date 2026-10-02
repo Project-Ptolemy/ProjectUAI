@@ -38,9 +38,11 @@ end
 local function drag(h, target, dx, dy, touch)
 	local E, V = h.sandbox.Enum, h.dt.Vector3
 	local origin = target.AbsolutePosition
+	local startX = target.Name == "Header" and math.min(96, target.AbsoluteSize.X * 0.4) or target.AbsoluteSize.X * 0.5
+	local startY = math.min(20, target.AbsoluteSize.Y * 0.5)
 	local input = { UserInputType = touch and E.UserInputType.Touch or E.UserInputType.MouseButton1,
 		UserInputState = E.UserInputState.Begin,
-		Position = V.new(origin.X + (target.Name == "Header" and 96 or 20), origin.Y + 20, 0),
+		Position = V.new(origin.X + startX, origin.Y + startY, 0),
 		Changed = newSignal("drag") }
 	target.InputBegan:Fire(input)
 	local move = touch and input or { UserInputType = E.UserInputType.MouseMovement }
@@ -74,8 +76,9 @@ for _, touch in ipairs({ false, true }) do
 		drag(h, window.header, 2000, 2000, touch)
 		local viewport = app.env.require("ui/responsive").viewport
 		local bottom = viewport.Y - (touch and 24 or 0)
-		check("window reaches the right edge", math.abs(window.root.AbsolutePosition.X + window.root.AbsoluteSize.X - (viewport.X - 8)) <= 1)
-		check("window reaches the bottom without losing the composer", math.abs(window.root.AbsolutePosition.Y + window.root.AbsoluteSize.Y - (bottom - 8)) <= 1)
+		local margin = app.env.require("ui/theme").space.sm
+		check("window reaches the right edge", math.abs(window.root.AbsolutePosition.X + window.root.AbsoluteSize.X - (viewport.X - margin)) <= 1)
+		check("window reaches the bottom without losing the composer", math.abs(window.root.AbsolutePosition.Y + window.root.AbsoluteSize.Y - (bottom - margin)) <= 1)
 		drag(h, app.app.launcher, -2000, -2000, touch)
 		check("launcher also reaches the top", app.app.launcher.AbsolutePosition.Y <= 8)
 		check("launcher also reaches the left", app.app.launcher.AbsolutePosition.X <= 8)
@@ -129,8 +132,8 @@ scenario("mobile expansion, keyboard and rotation preserve size and draft", func
 	drag(h, window.header, -90, -20, true)
 	local x, y, width, height = window.root.Position.X.Offset, window.root.Position.Y.Offset,
 		window.root.Size.X.Offset, window.root.Size.Y.Offset
-	local expand = h.byName("ExpandPanel", window.root)
-	check("mobile has an accessible expand action", expand ~= nil and expand.AbsoluteSize.Y >= 44)
+	local expand = h.byName("Maximise", window.root)
+	check("handheld uses the same maximise action as desktop", expand ~= nil and expand.AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
 	h.click(expand)
 	check("expand uses the available screen height", window.root.Size.Y.Offset > height)
 	check("expansion keeps the same composer and draft", app.app.chatPanel.composer == composer and composer.field.get() == "Keep this mobile draft")
@@ -141,7 +144,7 @@ scenario("mobile expansion, keyboard and rotation preserve size and draft", func
 	keyboard(h, 230)
 	check("keyboard cannot cover the window", window.root.AbsolutePosition.Y + window.root.AbsoluteSize.Y <= 160)
 	check("expanded input fits the remaining body", composer.shell.AbsoluteSize.Y <= app.app.chatPanel.root.AbsoluteSize.Y)
-	check("keyboard keeps a 44px input target", composer.field.shell.AbsoluteSize.Y >= 44)
+	check("keyboard keeps the compact input target", composer.field.shell.AbsoluteSize.Y >= app.env.require("ui/responsive").minTarget())
 	keyboard(h, 0)
 	check("keyboard dismissal restores geometry", window.root.Position.X.Offset == x and window.root.Position.Y.Offset == y
 		and window.root.Size.X.Offset == width and window.root.Size.Y.Offset == height)
@@ -157,27 +160,67 @@ for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } 
 	scenario("mobile stays compact and tappable at " .. size[1] .. "x" .. size[2], function()
 		local h, app = boot(true, size[1], size[2])
 		local window, composer = app.app.window, app.app.chatPanel.composer
-		check("touch-only devices retain mobile navigation", h.byName("Nav_menu", window.root) ~= nil and app.app.sidebar == nil)
-		check("header is slimmer than desktop chrome", window.headerHeight <= 48)
-		check("collapsed composer reserves at most 56px", composer.shell.Size.Y.Offset <= 56)
-		check("decorative header brand is hidden", not h.byName("HeaderBrand", window.root).Visible)
-		check("header detail no longer needs a second line", not h.byName("TitleDetail", window.root).Visible)
-		check("large greeting mark is hidden", not h.byName("HomeBrand", window.root).Visible)
-		for _, name in ipairs({ "Nav_menu", "Close", "ExpandPanel", "ResizeGrip", "Send", "AddContext", "ComposerOptions", "Starter_explore" }) do
+		local theme, responsive = app.env.require("ui/theme"), app.env.require("ui/responsive")
+		check("sidebar is the same mounted component on every width", app.app.sidebar ~= nil)
+		check("sidebar retains the desktop composition at every width", app.app.sideHolder.Visible)
+		check("the regular menu remains available when the sidebar is collapsed", h.byName("Nav_menu", window.root) ~= nil)
+		check("header uses substantially reduced native metrics", window.headerHeight <= 38)
+		check("collapsed composer remains compact", composer.shell.Size.Y.Offset <= 56)
+		check("the desktop header brand and detail remain present", h.byName("HeaderBrand", window.root).Visible
+			and h.byName("TitleDetail", window.root).Visible)
+		check("the shared welcome view keeps its brand", h.byName("HomeBrand", window.root).Visible)
+		check("the handheld control minimum is reduced", responsive.minTarget() == 15)
+		for _, name in ipairs({ "Close", "Minimize", "Maximise", "ResizeGrip", "Send", "AddContext", "ComposerOptions", "Starter_explore" }) do
 			local control = assert(h.byName(name, window.root), name)
-			check(name .. " retains a full touch target", control.AbsoluteSize.X >= 44 and control.AbsoluteSize.Y >= 44)
+			check(name .. " retains its compact target", control.AbsoluteSize.X >= responsive.minTarget() and control.AbsoluteSize.Y >= responsive.minTarget())
 		end
 		local grip = h.byName("ResizeGrip", window.root)
 		check("resize is a corner grip on the panel like desktop", grip.Parent == window.root
 			and grip.AnchorPoint.X == 1 and grip.AnchorPoint.Y == 1)
-		check("starters fit in compact rows", h.byName("Starter_explore", window.root).Size.Y.Offset == 44)
+		check("starters share the desktop card at reduced height", h.byName("Starter_explore", window.root).Size.Y.Offset < 60)
 		h.click(h.byName("Starter_explore", window.root))
 		check("compact starter still inserts its prompt", composer.field.get():find("Explore this game", 1, true) ~= nil)
 		h.click(h.byName("ComposerOptions", window.root))
 		check("model controls remain reachable", h.byName("Option_model") ~= nil)
+		check("no alternate mobile shell is built", h.byName("ExpandPanel", window.root) == nil and h.byName("MobileNavigation") == nil)
 		healthy(h)
 	end)
 end
+
+scenario("handheld uses uniformly reduced desktop metrics and the same component ownership", function()
+	local desktopHarness, desktop = boot(false, 1280, 720)
+	local h, app = boot(true, 390, 844)
+	local desktopTheme, theme = desktop.env.require("ui/theme"), app.env.require("ui/theme")
+	for _, entry in ipairs({
+		{ "size", "header" }, { "size", "sidebar" }, { "size", "control" }, { "size", "icon" },
+		{ "size", "codeWide" }, { "space", "sm" }, { "space", "lg" }, { "space", "xl" },
+		{ "radius", "md" }, { "radius", "lg" },
+	}) do
+		check(entry[1] .. "." .. entry[2] .. " follows the uniform scale",
+			math.abs(theme[entry[1]][entry[2]] - desktopTheme[entry[1]][entry[2]] * 0.55) <= 1)
+	end
+	for _, role in ipairs({ "body", "caption", "title", "mono" }) do
+		check(role .. " text follows the same uniform scale", math.abs(theme.text[role].size - desktopTheme.text[role].size * 0.55) <= 1)
+	end
+	check("native header height follows the desktop proportion", math.abs(app.app.window.headerHeight - desktop.app.window.headerHeight * 0.55) <= 1)
+	check("native composer height follows the desktop proportion", math.abs(app.app.chatPanel.composer.shell.Size.Y.Offset - desktop.app.chatPanel.composer.shell.Size.Y.Offset * 0.55) <= 3)
+	for _, name in ipairs({ "HeaderBrand", "TitleDetail", "Minimize", "Maximise", "Close", "HomeBrand", "GreetingSubtitle", "AddContext", "ComposerOptions" }) do
+		local small, original = assert(h.byName(name, app.app.window.root)), assert(desktopHarness.byName(name, desktop.app.window.root))
+		check(name .. " retains desktop ownership", small.ClassName == original.ClassName and small.Parent.Name == original.Parent.Name)
+	end
+	local window, composer = app.app.window, app.app.chatPanel.composer
+	composer.field.set("Keep the shared draft")
+	local field = composer.field.instance
+	h.click(h.byName("Nav_collapse", window.root))
+	check("explicit collapse changes layout without replacing the input", not app.app.sideHolder.Visible and app.app.chatPanel.composer.field.instance == field)
+	h.click(h.byName("Nav_collapse", window.root))
+	check("expanding restores the same sidebar and draft", app.app.sideHolder.Visible and app.app.window == window and composer.field.get() == "Keep the shared draft")
+	h.click(h.byName("Minimize", window.root))
+	check("the shared minimize control exposes the launcher", not window.visible and app.app.launcher.Visible)
+	h.click(app.app.launcher)
+	check("restore keeps the same mounted draft", window.visible and app.app.chatPanel.composer.field.instance == field and composer.field.get() == "Keep the shared draft")
+	healthy(h); healthy(desktopHarness); app.unload(); desktop.unload()
+end)
 
 scenario("dragging respects an inset parent without counting the CoreGui band twice", function()
 	local h, app = boot(true, 1000, 600, 112)
@@ -187,8 +230,9 @@ scenario("dragging respects an inset parent without counting the CoreGui band tw
 	local window = app.env.require("ui/window").new(parent)
 	window.show()
 	drag(h, window.header, -2000, -2000, true)
-	check("left device-safe inset is counted once", window.root.AbsolutePosition.X == 40)
-	check("top device-safe inset is counted once", window.root.AbsolutePosition.Y == 32)
+	local margin = app.env.require("ui/theme").space.sm
+	check("left device-safe inset is counted once", window.root.AbsolutePosition.X == 32 + margin)
+	check("top device-safe inset is counted once", window.root.AbsolutePosition.Y == 24 + margin)
 	window.destroy()
 	parent:Destroy()
 	healthy(h)
@@ -202,10 +246,11 @@ for _, touch in ipairs({ false, true }) do
 		app.env.require("ui/responsive").refresh("scaled display")
 		local window = app.app.window
 		drag(h, window.header, 2000, 2000, touch)
-		check("right drag bound follows the full GUI width", window.root.AbsolutePosition.X + window.root.AbsoluteSize.X == 1392)
-		check("bottom drag bound follows the full GUI height", window.root.AbsolutePosition.Y + window.root.AbsoluteSize.Y == 832 - (touch and 24 or 0))
+		local theme = app.env.require("ui/theme")
+		check("right drag bound follows the full GUI width", window.root.AbsolutePosition.X + window.root.AbsoluteSize.X == 1400 - theme.space.sm)
+		check("bottom drag bound follows the full GUI height", window.root.AbsolutePosition.Y + window.root.AbsoluteSize.Y == 840 - theme.space.sm - (touch and 24 or 0))
 		drag(h, app.app.launcher, 2000, 2000, touch)
-		check("launcher also uses the full GUI width", app.app.launcher.AbsolutePosition.X + app.app.launcher.AbsoluteSize.X == 1394)
+		check("launcher also uses the full GUI width", app.app.launcher.AbsolutePosition.X + app.app.launcher.AbsoluteSize.X == 1400 - theme.space.xs)
 		healthy(h)
 	end)
 end

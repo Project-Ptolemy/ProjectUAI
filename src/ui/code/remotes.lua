@@ -1,7 +1,6 @@
 return function(env)
 	local P = env.require("ui/primitives")
 	local theme = env.require("ui/theme")
-	local responsive = env.require("ui/responsive")
 	local common = env.require("ui/code/common")
 	local forms = env.require("ui/code/forms")
 	local tree = env.require("ui/code/value_tree")
@@ -21,7 +20,8 @@ return function(env)
 	local tabs = env.require("ui/code/tabs")
 	local M = {}
 	function M.new(parent, navigate)
-		local root = P.frame(parent, { name = "NativeRemotes", size = UDim2.fromScale(1, 1), clip = true })
+		local root, surface, surfaceScroll = common.surface(parent, { name = "NativeRemotes", size = UDim2.fromScale(1, 1), clip = true },
+			function() return common.barHeight() * 4 + theme.text.caption.height * 4 + theme.space.sm + theme.space.md + common.controlHeight() * 3 end)
 		local view = capture.view
 		view.filter = store.workspace.remoteFilter or view.filter or ""
 		view.section, view.expanded = view.section or "arguments", view.expanded or {}
@@ -33,11 +33,10 @@ return function(env)
 		if view.persistent == nil then view.persistent = false end
 		view.duration = view.duration or 30
 		if view.follow == nil then view.follow = true end
-		local handle = { root = root, alive = true, visible = true }
+		local handle = { root = surface, surfaceScroll = surfaceScroll, alive = true, visible = true }
 		local header = common.toolbar(root)
 		local statusButton, startButton, stopButton, menuButton, refresh, refreshDetail, layout, perform
 		local guardedRefresh, showFilter, cataloguePage
-		local compact = false
 		local info = P.text(root, { name = "CaptureCoverage", text = "Capture is stopped", role = "caption", wrap = true })
 		local body = P.frame(root, { name = "CaptureBody" })
 		local listHost, detailHost = P.frame(body, { name = "Calls", clip = true }), P.frame(body, { name = "CallDetail", clip = true })
@@ -141,21 +140,6 @@ return function(env)
 		end
 		local function more(button)
 			local choices = { { label = "Capture settings / Start…", value = "start" }, { label = "Capture coverage", value = "coverage" }, { label = "Traffic rules…", value = "rules" }, { label = "Export retained calls", value = "export" }, { label = "Import offline capture…", value = "import" }, { label = "Clear retained calls", value = "clear" }, { label = "Show excluded remotes", value = "excluded" }, { label = "Reset admission filters", value = "filterReset" } }
-			if compact then
-				local current = state()
-				table.insert(choices, 1, { label = "Capture status", detail = info.Text, value = "coverage" })
-				for _, choice in ipairs({ { label = "Captured calls", value = "calls", selected = view.listMode == "calls" },
-					{ label = "Browse remotes", value = "remotes", selected = view.listMode == "remotes" },
-					{ label = "Filter retained calls", value = "viewFilter" }, { label = "Follow latest calls", value = "latest" } }) do choices[#choices + 1] = choice end
-				if current.status == "running" or current.status == "paused" then
-					table.insert(choices, 1, { label = current.status == "running" and "Pause capture" or "Resume capture", value = "pauseResume" })
-				end
-				if selected then
-					for _, section in ipairs(sectionTabs.items) do
-						choices[#choices + 1] = { label = "Inspect " .. section.label:lower(), value = "section:" .. section.id, selected = view.section == section.id }
-					end
-				end
-			end
 			if selected or view.remoteId then
 				for _, pair in ipairs({ { "Reveal remote in Explorer", "reveal" }, { "Exclude exact remote from recording", "exclude" }, { "Restore exact remote recording", "include" }, { "Copy reference", "reference" }, { "Ask AI about this", "ask" } }) do choices[#choices + 1] = { label = pair[1], value = pair[2] } end
 			end
@@ -289,7 +273,7 @@ return function(env)
 			view.follow, view.before, view.listMode = true, nil, "calls"; refresh()
 		end, { flex = true, trailing = false, name = "FollowLatestCalls", tight = true })
 		local function layoutListHeader()
-			local tabsWidth = math.max(100, common.controlHeight() * 2 + common.inset() * 2)
+			local tabsWidth = math.max(common.pixels(100), common.controlHeight() * 2 + common.inset() * 2)
 			local width = math.min(listBar.width(), math.max(common.controlHeight() + common.inset() * 2, listHost.AbsoluteSize.X - tabsWidth))
 			listTabs.root.Size = UDim2.new(1, -width, 0, common.barHeight())
 			listBar.root.Position, listBar.root.Size = UDim2.new(1, -width, 0, 0), UDim2.fromOffset(width, common.barHeight())
@@ -305,13 +289,10 @@ return function(env)
 			end)
 		end })
 		local filterSize, searchInset = common.controlHeight(), common.inset()
-		search.shell.Position, search.shell.Size = UDim2.fromOffset(searchInset, common.barHeight() + 4), UDim2.new(1, -searchInset * 2 - filterSize - common.gap(), 0, filterSize)
+		search.shell.Position, search.shell.Size = UDim2.fromOffset(searchInset, common.barHeight() + theme.space.xxs), UDim2.new(1, -searchInset * 2 - filterSize - common.gap(), 0, filterSize)
 		local filterButton = common.button(listHost, { name = "FilterRemoteCalls", text = "", icon = "sliders", tight = true, fill = true, variant = "ghost", onClick = showFilter })
-		local compactListMenu = common.button(listHost, { name = "CompactRemoteActions", text = "", icon = "ellipsis", fill = true, onClick = more })
-		local compactListStop = common.button(listHost, { name = "CompactStopRemoteCapture", text = "", icon = "stop", fill = true, variant = "danger",
-			onClick = function() capture.stop("Stopped by user") end })
-		filterButton.instance.Position, filterButton.instance.Size = UDim2.new(1, -searchInset - filterSize, 0, common.barHeight() + 4), UDim2.fromOffset(filterSize, filterSize)
-		local listTop = common.barHeight() * 2 + 8
+		filterButton.instance.Position, filterButton.instance.Size = UDim2.new(1, -searchInset - filterSize, 0, common.barHeight() + theme.space.xxs), UDim2.fromOffset(filterSize, filterSize)
+		local listTop = common.barHeight() * 2 + theme.space.sm
 		local function selectRow(row)
 			if row.older then view.follow, view.before = false, row.older; refresh(); return end
 			if row.more then cataloguePage(true); return end
@@ -346,19 +327,13 @@ return function(env)
 		local openButton = detailBar.add("Open", function() perform("source") end, { tight = true, name = "OpenRemoteCode" })
 		local replayButton = detailBar.add("Replay", review, { tight = true, name = "ReviewRemoteReplay" })
 		detailBar.add("", more, { icon = "ellipsis", iconOnly = true, name = "RemoteDetailActions" })
-		local compactDetail = common.toolbar(detailHost, { name = "CompactRemoteDetail" })
-		local compactBack = compactDetail.add("Back", function() view.detail = false; layout() end, { icon = "arrowLeft", tight = true })
-		local compactSection = compactDetail.add("Arguments", more, { flex = true })
-		local compactDetailStop = compactDetail.add("", function() capture.stop("Stopped by user") end,
-			{ name = "CompactDetailStopRemoteCapture", icon = "stop", iconOnly = true, variant = "danger" })
-		compactDetail.add("", more, { name = "CompactRemoteDetailActions", icon = "ellipsis", iconOnly = true })
 		sectionTabs = tabs.new(detailHost, { name = "RemoteDetailTabs", position = UDim2.fromOffset(0, common.barHeight()), size = UDim2.new(1, 0, 0, common.barHeight()), onSelect = function(section)
 			view.section = section
 			if section == "draft" and selected then view.argumentDraft = view.argumentDraft or util.deepCopy(selected.arguments) end
 			refreshDetail()
 		end })
-		recordHeader = P.text(detailHost, { name = "RemoteCallIdentity", text = "Select a captured call", role = "caption", truncate = true, position = UDim2.fromOffset(8, common.barHeight() * 2), size = UDim2.new(1, -16, 0, theme.text.caption.height * 2 + 12) })
-		local detailTop = common.barHeight() * 2 + theme.text.caption.height * 2 + 12
+		recordHeader = P.text(detailHost, { name = "RemoteCallIdentity", text = "Select a captured call", role = "caption", truncate = true, position = UDim2.fromOffset(theme.space.sm, common.barHeight() * 2), size = UDim2.new(1, -theme.space.sm * 2, 0, theme.text.caption.height * 2 + theme.space.md) })
+		local detailTop = common.barHeight() * 2 + theme.text.caption.height * 2 + theme.space.md
 		local valueHost = P.frame(detailHost, { name = "RemoteValues", position = UDim2.fromOffset(0, detailTop), size = UDim2.new(1, 0, 1, -detailTop), clip = true })
 		local function describeSelected()
 			if not selected then return end
@@ -373,12 +348,10 @@ return function(env)
 			local sections = { { id = "arguments", label = "Arguments" }, { id = "results", label = "Results" }, { id = "caller", label = "Caller" } }
 			if outgoing then sections[#sections + 1] = { id = "code", label = "Code" }; sections[#sections + 1] = { id = "draft", label = "Replay draft" } end
 			sectionTabs.set(sections, view.section)
-			for _, section in ipairs(sections) do if section.id == view.section then compactSection.setText(section.label) end end
 			copyButton.setText(outgoing and "Copy code" or "Copy record")
 			copyButton.setEnabled(selected ~= nil); openButton.setEnabled(outgoing); replayButton.setEnabled(outgoing)
 			if not selected then
 				local object = view.remoteId and refs.resolve(view.remoteId)
-				compactSection.setText(object and object.Name or "Remotes")
 				recordHeader.Text = object and (object.Name .. " · " .. object.ClassName .. "\n" .. refs.describe(object).displayPath) or "Select a call to inspect its arguments, code and results."
 				local title = object and "Ready to observe this remote" or "Remote spy"
 				local empty = P.scroll(valueHost, { name = "RemoteEmptyState", padding = theme.space.sm, gap = theme.space.sm })
@@ -468,39 +441,20 @@ return function(env)
 			end
 		end
 		local divider = env.require("ui/code/splitter").new(body, function(position)
-			view.listWidth = math.max(240, math.min(body.AbsoluteSize.X - 280, position.X - body.AbsolutePosition.X)); layout()
+			view.listWidth = math.max(common.pixels(240), math.min(body.AbsoluteSize.X - common.pixels(280), position.X - body.AbsolutePosition.X)); layout()
 		end)
 		layout = function()
-			compact = responsive.isMobile() and root.AbsoluteSize.Y < common.barHeight() * 5 + common.controlHeight() * 2
-			local top = common.barHeight() * 2 + theme.text.caption.height * 2 + 8
-			if compact then top = 0 end
-			header.root.Visible, configBar.root.Visible, info.Visible = not compact, not compact, not compact
-			info.Position, info.Size = UDim2.fromOffset(10, common.barHeight() * 2 + 4), UDim2.new(1, -20, 0, theme.text.caption.height * 2 + 4)
+			local top = common.barHeight() * 2 + theme.text.caption.height * 2 + theme.space.sm
+			info.Position, info.Size = UDim2.fromOffset(common.pixels(10), common.barHeight() * 2 + theme.space.xxs), UDim2.new(1, -theme.space.xl, 0, theme.text.caption.height * 2 + theme.space.xxs)
 			body.Position, body.Size = UDim2.fromOffset(0, top), UDim2.new(1, 0, 1, -top)
-			local wide = not responsive.isMobile() and root.AbsoluteSize.X >= 620
-			local width = math.max(240, math.min(root.AbsoluteSize.X - 280, view.listWidth or root.AbsoluteSize.X * 0.4))
+			local wide = root.AbsoluteSize.X >= common.pixels(620)
+			local width = math.max(common.pixels(240), math.min(root.AbsoluteSize.X - common.pixels(280), view.listWidth or root.AbsoluteSize.X * 0.4))
 			listHost.Visible, detailHost.Visible = wide or not view.detail, wide or view.detail == true
 			listHost.Size = wide and UDim2.new(0, width, 1, 0) or UDim2.fromScale(1, 1)
 			layoutListHeader()
-			detailHost.Position, detailHost.Size = UDim2.fromOffset(wide and width + 6 or 0, 0), UDim2.new(1, wide and -width - 6 or 0, 1, 0)
+			detailHost.Position, detailHost.Size = UDim2.fromOffset(wide and width + theme.space.xs or 0, 0), UDim2.new(1, wide and -width - theme.space.xs or 0, 1, 0)
 			backButton.instance.Visible, divider.root.Visible = not wide, wide and handle.visible
-			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, 6, 1, 0)
-			local inset, control, bar = common.inset(), common.controlHeight(), common.barHeight()
-			local active = capture.status == "running" or capture.status == "paused" or capture.status == "starting" or #capture.rules > 0
-			listTabs.root.Visible, listBar.root.Visible, filterButton.instance.Visible = not compact, not compact, not compact
-			detailBar.root.Visible, sectionTabs.root.Visible, recordHeader.Visible = not compact, not compact, not compact
-			compactDetail.root.Visible, compactListMenu.instance.Visible = compact, compact
-			compactBack.instance.Visible = not wide
-			compactListStop.instance.Visible, compactDetailStop.instance.Visible = compact and active, compact and active
-			local stopWidth = compact and active and (control + common.gap()) or 0
-			search.shell.Position = UDim2.fromOffset(inset, (compact and 0 or bar) + theme.space.xxs)
-			search.shell.Size = UDim2.new(1, -inset * 2 - control - common.gap() - stopWidth, 0, control)
-			compactListMenu.instance.Position, compactListMenu.instance.Size = UDim2.new(1, -inset - control, 0, theme.space.xxs), UDim2.fromOffset(control, control)
-			compactListStop.instance.Position, compactListStop.instance.Size = UDim2.new(1, -inset - control * 2 - common.gap(), 0, theme.space.xxs), UDim2.fromOffset(control, control)
-			local callsTop, valuesTop = compact and bar or listTop, compact and bar or detailTop
-			local height = math.max(1, root.AbsoluteSize.Y - top)
-			list.root.Position, list.root.Size = UDim2.fromOffset(0, callsTop), UDim2.new(1, 0, 0, math.max(1, height - callsTop))
-			valueHost.Position, valueHost.Size = UDim2.fromOffset(0, valuesTop), UDim2.new(1, 0, 0, math.max(1, height - valuesTop))
+			divider.root.Position, divider.root.Size = UDim2.fromOffset(width, 0), UDim2.new(0, theme.space.xs, 1, 0)
 		end
 		-- A refresh that throws must not take the capture view down with it. It is
 		-- driven from the engine's own scheduled threads, where a host that drops
@@ -537,12 +491,15 @@ return function(env)
 				cancelSource(); saveDraft(); catalogueGeneration = catalogueGeneration + 1; catalogueBusy = false; divider.root.Visible = false
 			end
 		end
-		function handle.destroy()
+		local function cleanup()
+			if not handle.alive then return false end
 			handle.alive = false; catalogueGeneration = catalogueGeneration + 1
 			cancelSource()
 			saveDraft(); view.record = selected; offRecords(); offCapture(); divider.destroy()
-			if valueView then valueView.destroy() end; root:Destroy()
+			if valueView then valueView.destroy() end; return true
 		end
+		function handle.destroy() if cleanup() then surface:Destroy() end end
+		surface.Destroying:Connect(cleanup)
 		handle.list, handle.more, handle.refresh, handle.start, handle.scan = list, more, refresh, start, cataloguePage
 		layout(); refresh(); refreshDetail()
 		if view.listMode == "remotes" then cataloguePage() end

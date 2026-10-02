@@ -306,7 +306,7 @@ sidebar.renderHistory()
 check("history refresh preserves navigation", find(parent, "ActionRows") == actions)
 parent:Destroy()
 h.settle(0.5)
-for _, floor in ipairs({ 28, 44, 48 }) do
+for _, floor in ipairs({ 15, 28, 44, 48 }) do
 	target = floor
 	config.set("ui.fontScale", 1.4)
 	responsive.mode = "panel"

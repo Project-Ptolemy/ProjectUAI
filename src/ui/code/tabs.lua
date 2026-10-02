@@ -37,7 +37,7 @@ return function(env)
 			button.Active, button.Selectable, button.BorderSizePixel = true, true, 0
 			button.Size, button.BackgroundTransparency = UDim2.fromScale(1, 1), 1
 			local cell = { root = holder, button = button, item = item }
-			cell.label = P.text(button, { name = "TabLabel", text = item.label, role = "small", truncate = true, position = UDim2.fromOffset(12, 0) })
+			cell.label = P.text(button, { name = "TabLabel", text = item.label, role = "small", truncate = true, position = UDim2.fromOffset(theme.space.md, 0) })
 			cell.label.Active = false
 			cell.line = P.frame(holder, { name = "ActiveTab", size = UDim2.new(1, 0, 0, 2), position = UDim2.new(0, 0, 1, -2), bg = theme.color.accent, visible = false })
 			button.MouseEnter:Connect(function() cell.hovered = true; paint(cell) end)
@@ -61,22 +61,23 @@ return function(env)
 		end
 		local function layout(revealSelected)
 			if layingOut then return end; layingOut = true
-			local padding, gap = common.inset(), 4
+			local padding, gap = common.inset(), theme.space.xxs
 			local x, selectedCell = padding, nil
 			for index, item in ipairs(handle.items) do
 				local cell = cells[item.id]
 				local close = cell.close and item.closable ~= false
 				local target = common.controlHeight()
-				local minimum = math.max(options.minWidth or 44, close and math.max(target, 60) + target or target)
-				local maximum = math.max(minimum, math.min(options.maxWidth or 200, root.AbsoluteSize.X - padding * 2))
-				local width = math.max(minimum, math.min(maximum, math.ceil(P.measureText(item.label, { role = "small" }).X) + 30 + (close and target or 0)))
-				cell.root.Position, cell.root.Size = UDim2.fromOffset(x, 4), UDim2.new(0, width, 1, -8)
+				local labelMinimum = math.max(target, common.pixels(60), theme.space.md * 2 + common.pixels(36))
+				local minimum = math.max(options.minWidth or common.pixels(44), close and labelMinimum + target or target)
+				local maximum = math.max(minimum, math.min(options.maxWidth or common.pixels(200), root.AbsoluteSize.X - padding * 2))
+				local width = math.max(minimum, math.min(maximum, math.ceil(P.measureText(item.label, { role = "small" }).X) + theme.space.md * 2 + theme.space.xs + (close and target or 0)))
+				cell.root.Position, cell.root.Size = UDim2.fromOffset(x, theme.space.xxs), UDim2.new(0, width, 1, -theme.space.xxs * 2)
 				cell.button.SelectionOrder = index
-				cell.label.Size = UDim2.new(1, close and -40 or -24, 1, 0)
+				cell.label.Size = UDim2.new(1, -theme.space.md * 2, 1, 0)
 				if cell.close then
 					cell.close.Visible = close
 					cell.close.Position, cell.close.Size = UDim2.new(1, -target, 0, 0), UDim2.new(0, target, 1, 0)
-					cell.button.Size = UDim2.new(1, close and -target or 0, 1, 0); cell.label.Size = UDim2.new(1, -24, 1, 0)
+					cell.button.Size = UDim2.new(1, close and -target or 0, 1, 0)
 				end
 				cell.x, cell.width = x, width
 				if item.id == selected then selectedCell = cell end

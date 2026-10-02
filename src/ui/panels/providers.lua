@@ -139,7 +139,7 @@ return function(env)
 			title = adding and "Add a provider" or ("Connection for " .. tostring(editing.label)),
 			description = "Any endpoint that speaks /v1/chat/completions, or Anthropic's Messages API.",
 			width = theme.size.modalWide,
-			height = 620,
+			height = theme.size.modalTall,
 			-- Six labelled rows, two segmented pickers and a footer do not fit on a phone,
 			-- and an unbounded modal is centred -- so what did not fit went off the top and
 			-- the bottom at once, taking the title and the Save button with it. Bounded and
@@ -152,7 +152,7 @@ return function(env)
 			name = "Form",
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
-			gap = responsive.isMobile() and theme.space.md or theme.space.lg,
+			gap = theme.space.lg,
 			layoutOrder = 1,
 		})
 
@@ -814,7 +814,7 @@ return function(env)
 			local card = P.card(parent, {
 				name = "Featured",
 				gap = theme.space.sm,
-				padding = responsive.isMobile() and theme.space.sm or theme.space.lg,
+				padding = theme.space.lg,
 				layoutOrder = type(nextOrder) == "function" and nextOrder() or 1,
 				-- The accent border is the one thing that says "start here" on a panel
 				-- that is otherwise all neutral surfaces; P.card has already drawn a
@@ -957,8 +957,7 @@ return function(env)
 
 		-- Two columns where there is room for two, stacked where there is not. Same rule
 		-- and same threshold as the settings dialog, which solved this first.
-		local wide = responsive.mode == "window" and not responsive.isMobile()
-			and parent.AbsoluteSize.X >= (theme.size.dialogNav * 3)
+		local wide = parent.AbsoluteSize.X >= (theme.size.dialogNav * 3)
 
 		local root, rootLayout = P.row(parent, { name = "ProvidersRoot", size = UDim2.fromScale(1, 1), gap = 0 })
 		rootLayout.FillDirection = wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
@@ -977,21 +976,6 @@ return function(env)
 			gap = theme.space.xs,
 			padding = theme.space.xs,
 		})
-		local mobileRail = P.row(railHolder, { name = "MobileProviderNavigation", size = UDim2.fromScale(1, 1),
-			padding = theme.space.xs, gap = theme.space.xs, visible = responsive.isMobile() })
-		local mobilePicker = P.rowButton(mobileRail, { name = "ProviderPicker", height = railHeight,
-			size = UDim2.fromOffset(0, railHeight), flex = "Fill", layoutOrder = 1, onClick = function(button)
-				local options, active = {}, registry.active()
-				for _, record in ipairs(registry.list()) do
-					options[#options + 1] = { label = record.label, value = record.id, selected = record.id == selected,
-						detail = active and active.id == record.id and "Active provider" or nil }
-				end
-				overlay.menu({ target = button.instance, title = "Providers", options = options, onSelect = panel.select })
-			end })
-		local mobileLabel = mobilePicker.label("Choose provider", 1, nil, "small")
-		mobilePicker.icon("chevron", 2)
-		P.button(mobileRail, { name = "MobileAddProvider", text = "Add", size = "sm", variant = "secondary", layoutOrder = 2,
-			onClick = function() M.add(function(id) panel.select(id) end) end })
 		local railScrollHolder = P.frame(rail, {
 			size = UDim2.new(1, 0, 0, 0),
 			flex = "Fill",
@@ -1036,9 +1020,8 @@ return function(env)
 		local detail = P.scroll(detailHolder, {
 			name = "DetailScroll",
 			size = UDim2.fromScale(1, 1),
-			gap = responsive.isMobile() and theme.space.md or theme.space.lg,
-			padding = { x = responsive.isMobile() and theme.space.sm or theme.space.lg,
-				top = responsive.isMobile() and theme.space.sm or theme.space.lg, bottom = theme.space.xl },
+			gap = theme.space.lg,
+			padding = { x = theme.space.lg, top = theme.space.lg, bottom = theme.space.xl },
 		})
 
 		-- Rail -----------------------------------------------------------------
@@ -1139,15 +1122,13 @@ return function(env)
 		local function reflow()
 			local width = root.AbsoluteSize.X
 			if width <= 0 then return end
-			local nextWide = responsive.mode == "window" and not responsive.isMobile() and width >= theme.size.dialogNav * 3
+			local nextWide = width >= theme.size.dialogNav * 3
 			local changed = nextWide ~= wide
 			wide = nextWide
-			local mobile = responsive.isMobile()
-			rail.Visible, mobileRail.Visible = not mobile, mobile
 			rootLayout.FillDirection = wide and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 			rootLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 			railHolder.Size = wide and UDim2.new(0, theme.size.dialogNav, 1, 0)
-				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + (mobile and 0 or theme.size.scrollbar))
+				or UDim2.new(1, 0, 0, railHeight + theme.space.xs * 2 + theme.size.scrollbar)
 			addButton.instance.Visible = wide
 			divider.Size = wide and UDim2.new(0, theme.stroke.hair, 1, 0)
 				or UDim2.new(1, 0, 0, theme.stroke.hair)
@@ -1290,7 +1271,7 @@ return function(env)
 			local title = P.text(titleColumn, {
 				name = "ProviderTitle",
 				text = record.label,
-				role = responsive.isMobile() and "title" or "display",
+				role = "display",
 				color = theme.color.text,
 				wrap = true,
 				auto = "Y",
@@ -1639,8 +1620,6 @@ return function(env)
 				selected = (active and active.id) or (list[1] and list[1].id) or nil
 			end
 			panel.renderRail()
-			local current = selected and registry.get(selected)
-			mobileLabel.Text = current and current.label or "Choose provider"
 			panel.renderDetail()
 			detail.instance.CanvasPosition = previous == selected and position or Vector2.new(0, 0)
 		end

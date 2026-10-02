@@ -6,7 +6,6 @@ return function(env)
 	local util = env.require("runtime/util")
 	local clock = env.require("runtime/clock")
 	local theme = env.require("ui/theme")
-	local responsive = env.require("ui/responsive")
 	local P = env.require("ui/primitives")
 	local C = env.require("ui/controls")
 	local message = env.require("ui/chat/message")
@@ -15,15 +14,12 @@ return function(env)
 
 	function M.new(parent, props)
 		props = props or {}
-		local mobile = responsive.isMobile()
 
 		local scroll = P.scroll(parent, {
 			name = "Transcript",
 			size = props.size or UDim2.new(1, 0, 1, 0),
-			gap = mobile and theme.space.sm or theme.space.lg,
-			padding = { x = mobile and theme.space.sm or theme.space.lg,
-				top = mobile and theme.space.sm or theme.space.xl,
-				bottom = mobile and theme.space.sm or theme.space.lg },
+			gap = theme.space.lg,
+			padding = { x = theme.space.lg, top = theme.space.xl, bottom = theme.space.lg },
 			fade = false,
 		})
 
@@ -162,10 +158,6 @@ return function(env)
 			iconDirection = "down",
 			radius = theme.radius.pill,
 			size = "sm",
-			-- Over a touch transcript there is no hover to fill the pill, so a bordered
-			-- but transparent control reads as stray text sitting on the reply beneath
-			-- it. A solid raised surface makes it a floating button on a phone.
-			fillColor = mobile and theme.color.surfaceOverlay or nil,
 			anchor = Vector2.new(0.5, 1),
 			position = UDim2.new(0.5, 0, 1, -theme.space.sm),
 			zIndex = theme.z.raised,
@@ -416,15 +408,7 @@ return function(env)
 			end
 			view.welcomeCard = env.require("ui/panels/home").card(scroll.instance, nextOrder(), props)
 			scroll.instance.CanvasPosition = Vector2.new(0, 0)
-			if mobile then
-				local setup = P.button(view.welcomeCard, { name = "MobileSetup", text = "Connect a provider", icon = "sliders",
-					variant = "secondary", layoutOrder = 5, onClick = function() env.require("ui/app").show("providers") end })
-				setup.instance.Size = UDim2.new(1, 0, 0, responsive.minTarget())
-				local function syncSetup() setup.instance.Visible = providers.count() == 0 end
-				local unsubscribe = providers.changed:connect(syncSetup)
-				setup.instance.Destroying:Connect(unsubscribe)
-				syncSetup()
-			elseif providers.count() == 0 then
+			if providers.count() == 0 then
 				C.emptyState(view.welcomeCard, {
 					title = "No provider configured",
 					description = "Add an OpenAI-compatible endpoint to start. Anything that speaks /v1/chat/completions works: a hosted API, a relay, or a local server.",
