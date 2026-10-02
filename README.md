@@ -9,6 +9,8 @@ layout dimensions, spacing and radii reduced to 55% before density settings.
 Text has a 10px minimum before text scaling, and standard icons start at 12px.
 Auto, Sheet, Panel and Window change placement while keeping live fields and
 drafts. Forms and Code panels adapt through reflow and scrolling.
+Ten new script project tools add scaffolding, source maps, coordinated file edits,
+syntax/dependency diagnostics, managed tests and standalone Lua bundles.
 UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
@@ -180,6 +182,15 @@ the work is independent; this reduces model round trips and unnecessary local
 scanning without changing the inference provider's speed.
 The prompt asks for successive batches of normally 1–4 independent calls, with
 results inspected between batches. Tool-call limits and concurrency stay unchanged.
+
+**Script projects.** Stage modular scripts with `project_scaffold`, inspect their
+file hashes and dependencies with `project_map`, and apply coordinated edits with
+`project_patch`. `script_analyze` reports syntax/dependency diagnostics;
+`project_build` exports one runnable Lua file; `script_test` runs declared cases
+through the managed client engine. Proposals include temporary, conditional
+recovery checkpoints. See [the script project guide](docs/SCRIPT_PROJECTS.md) for
+the manifest, test API and limits. These are native tools, without an LSP or an
+isolated test process.
 
 **Long inputs are files.** Inputs over 8,000 UTF-8 bytes are saved intact under
 `UAI/pastes/`, up to 2 MiB per file. The AI receives a compact path reference and

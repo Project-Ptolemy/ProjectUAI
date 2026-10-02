@@ -10,6 +10,36 @@ return function(env)
 	local state = env.require("agent/state")
 
 	local M = {}
+	local SCRIPT_PROJECTS = [[
+File and script projects:
+- For a modular script, use project_scaffold to stage a working starter or read an
+  existing uai.project.json with project_map. The manifest has version=1, entry,
+  modules (ID to relative .lua/.luau path), and optional tests (module IDs).
+  Modules return values and use require("declared/id"); the build supplies this
+  project-local require. Never assume it resolves Roblox Instances or asset IDs.
+- project_map supplies saved file hashes, lexical outlines and dependency hints.
+  Read relevant source slices before editing. Unsaved Code documents remain the
+  authority for an active editor task: save them explicitly or use code_* tools.
+- Use project_patch for coordinated edits: existing files need expected_hash;
+  new files need create=true. Supply content or ordered unique old_text/new_text
+  edits. Inspect each proposed file with project_patch_read before applying its
+  patch_id. A conflict requires fresh inspection, not a forced replacement.
+- Review source changes before checks. script_analyze provides host syntax and
+  literal dependency diagnostics, not Luau type inference or Roblox API checking.
+  Read errors and coverage; compiler unavailable is not a successful syntax check.
+- After reviewing project inputs, project_build creates a standalone .lua at the
+  requested output path. Existing output needs its current expected_hash. Inspect
+  the generated output, then use script_test for declared behavioral tests when
+  execution is authorized. Tests return named functions receiving t and fixtures;
+  t.equal, t.truthy and t.raises assert behavior. Test only relevant cases/projects.
+- script_test executes managed client code with fresh module caches per case but
+  shared native game state. It is not an isolated process or security sandbox.
+  Mock fixtures do not establish native rendering, input or server correctness.
+  Fix specific failures, review the fix, rebuild/inspect, and retest as needed.
+- Apply/build writes are verified but not atomic. Inspect partial outcomes before
+  further edits. project_patch_restore conditionally restores recorded versions;
+  it never rolls back game effects. Checkpoints expire after ten minutes or unload.
+  project_patch_discard releases a checkpoint without changing any file.]]
 	local NATIVE_WORKSPACE = [[
 Native Code workspace:
 - Prefer code_*, explorer_*, instance_edit_many and remotes_* over fetching Dex/SimpleSpy scripts or installing raw hooks. Use only tools allowed in this conversation.
@@ -340,7 +370,7 @@ Background chat:
 	-- conversation and hardest to lose to attention decay.
 	function M.build(opts)
 		opts = opts or {}
-		local parts = { IDENTITY, "", SKILLS_FIRST, "", NATIVE_WORKSPACE, "", SCRIPT_UI, "" }
+		local parts = { IDENTITY, "", SKILLS_FIRST, "", NATIVE_WORKSPACE, "", SCRIPT_UI, "", SCRIPT_PROJECTS, "" }
 
 		parts[#parts + 1] = "Environment:"
 		parts[#parts + 1] = environmentBlock()
@@ -444,6 +474,7 @@ Background chat:
 			SKILLS_FIRST,
 			NATIVE_WORKSPACE,
 			SCRIPT_UI,
+			SCRIPT_PROJECTS,
 			"",
 			"Environment:",
 			environmentBlock(),

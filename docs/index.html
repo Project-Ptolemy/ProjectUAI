@@ -159,7 +159,7 @@
     <!-- Metrics Band -->
     <section class="statband" aria-label="Current release capabilities">
       <div class="statband-inner">
-        <div class="stat"><b data-count="159"><!-- site:tool-count:start -->160<!-- site:tool-count:end --></b><span>Registered tools</span></div>
+        <div class="stat"><b data-count="159"><!-- site:tool-count:start -->170<!-- site:tool-count:end --></b><span>Registered tools</span></div>
         <div class="stat"><b data-count="21"><!-- site:group-count:start -->21<!-- site:group-count:end --></b><span>Tool groups</span></div>
         <div class="stat"><b data-count="12">12</b><span>Files per batch read</span></div>
         <div class="stat"><b data-count="20">20</b><span>Edits in one write</span></div>
@@ -300,7 +300,7 @@
       </div>
       <div class="catalog-toolbar" id="toolFilters" role="search" aria-label="Search the tool catalog" hidden>
         <div class="search-field"><label for="toolSearch">Find a tool</label><input type="search" id="toolSearch" placeholder="Try files, raycast, or Luau" autocomplete="off" spellcheck="false" aria-controls="toolCatalog"></div>
-        <div class="category-field"><label for="toolCategory">Category</label><select id="toolCategory" aria-controls="toolCatalog"><option value="">All categories</option><!-- site:categories:start --><option value="instance">Instance tree (25)</option><option value="script">Code (5)</option><option value="fs">Files (9)</option><option value="agentself">Agent (13)</option><option value="character">Character (4)</option><option value="coding">Code workspace (14)</option><option value="perf">Diagnostics (3)</option><option value="net">HTTP (3)</option><option value="chat">In-game chat (8)</option><option value="iy">Infinite Yield (10)</option><option value="gui">Interface (8)</option><option value="meta">Metadata (4)</option><option value="players">Players (3)</option><option value="gravity">Project Gravity (13)</option><option value="remotes">Remotes (20)</option><option value="screen">Screen &amp; aiming (1)</option><option value="skills">Skills (5)</option><option value="templates">Templates (2)</option><option value="input">Virtual input (2)</option><option value="web">Web (2)</option><option value="world">World (6)</option><!-- site:categories:end --></select></div>
+        <div class="category-field"><label for="toolCategory">Category</label><select id="toolCategory" aria-controls="toolCatalog"><option value="">All categories</option><!-- site:categories:start --><option value="instance">Instance tree (25)</option><option value="script">Code (5)</option><option value="fs">Files (9)</option><option value="agentself">Agent (13)</option><option value="character">Character (4)</option><option value="coding">Code workspace (24)</option><option value="perf">Diagnostics (3)</option><option value="net">HTTP (3)</option><option value="chat">In-game chat (8)</option><option value="iy">Infinite Yield (10)</option><option value="gui">Interface (8)</option><option value="meta">Metadata (4)</option><option value="players">Players (3)</option><option value="gravity">Project Gravity (13)</option><option value="remotes">Remotes (20)</option><option value="screen">Screen &amp; aiming (1)</option><option value="skills">Skills (5)</option><option value="templates">Templates (2)</option><option value="input">Virtual input (2)</option><option value="web">Web (2)</option><option value="world">World (6)</option><!-- site:categories:end --></select></div>
         <button class="button button-outline clear-filters" type="button" id="clearFilters" disabled>Clear filters</button>
         <div class="catalog-actions" id="catalogActions" hidden>
           <button class="button button-outline button-small" type="button" id="catalogExpandAll">Expand all</button>
@@ -313,7 +313,7 @@
           <button class="chip" type="button" data-risk="danger" aria-pressed="false">High impact</button>
         </div>
       </div>
-      <div class="catalog-meta"><p id="catalogStatus" role="status" aria-live="polite" aria-atomic="true"><!-- site:tool-count:start -->160<!-- site:tool-count:end --> tools across <!-- site:group-count:start -->21<!-- site:group-count:end --> groups</p><span>v<!-- site:version:start -->2.5.0<!-- site:version:end --> · press <kbd>/</kbd> to search</span></div>
+      <div class="catalog-meta"><p id="catalogStatus" role="status" aria-live="polite" aria-atomic="true"><!-- site:tool-count:start -->170<!-- site:tool-count:end --> tools across <!-- site:group-count:start -->21<!-- site:group-count:end --> groups</p><span>v<!-- site:version:start -->2.5.0<!-- site:version:end --> · press <kbd>/</kbd> to search</span></div>
       <noscript><p class="catalog-help">Open a category to browse its tools. Enable JavaScript to search and filter.</p></noscript>
       <div id="toolCatalog" class="tool-catalog">
         <!-- site:catalog:start -->
@@ -567,7 +567,7 @@
             </ul>
           </details>
           <details class="tool-group" data-group="coding">
-            <summary><span class="tool-group-label">Code workspace</span><span class="tool-group-count">14 tools</span><span class="disclosure" aria-hidden="true">+</span></summary>
+            <summary><span class="tool-group-label">Code workspace</span><span class="tool-group-count">24 tools</span><span class="disclosure" aria-hidden="true">+</span></summary>
             <ul class="tool-list">
               <li class="tool-row" data-tool-name="code_action_list">
                 <div class="tool-row-heading"><code>code_action_list</code><span class="risk risk-read">Read</span></div>
@@ -620,6 +620,46 @@
               <li class="tool-row" data-tool-name="code_write">
                 <div class="tool-row-heading"><code>code_write</code><span class="risk risk-write">Write</span></div>
                 <p>Create or conditionally replace shared source. Existing nonempty source requires expected_revision. Saves a recoverable checkpoint and never changes the user&#39;s selection.</p>
+              </li>
+              <li class="tool-row" data-tool-name="project_build">
+                <div class="tool-row-heading"><code>project_build</code><span class="risk risk-write">Write</span></div>
+                <p>Compile/check a saved project and export one deterministic .lua bundle without running it. Module-local require resolves declared IDs only. Refuses output paths that overwrite project inputs. Existing output requires expected_hash; new output is created. Returns source line locations and a recovery checkpoint. Review inputs before building and output before tests.</p><span class="tool-needs">Requires fs, exec</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_map">
+                <div class="tool-row-heading"><code>project_map</code><span class="risk risk-read">Read</span></div>
+                <p>Read a version-1 project manifest and return file hashes, lexical function/local outlines and literal require dependencies without full source. Modules map IDs to relative .lua/.luau files; entry names an ID; tests is an optional array of test IDs. Use project_scaffold for a working example. Lexical hints are not type analysis.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_patch">
+                <div class="tool-row-heading"><code>project_patch</code><span class="risk risk-write">Write</span></div>
+                <p>Stage 1-20 coordinated file creates/replacements/exact edits without writing files. Existing targets require expected_hash from project_map or script_analyze; new targets require create=true. Review with project_patch_read, then apply. Proposals/checkpoints are conversation-owned, expire in ten minutes and do not persist across unload.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_patch_apply">
+                <div class="tool-row-heading"><code>project_patch_apply</code><span class="risk risk-write">Write</span></div>
+                <p>Apply the exact staged proposal after all file versions and unsaved editor drafts are checked. Writes are verified one by one, not filesystem-atomic. Partial failures retain original and proposed source for conditional recovery; inspect results before continuing.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_patch_discard">
+                <div class="tool-row-heading"><code>project_patch_discard</code><span class="risk risk-write">Write</span></div>
+                <p>Release a staged proposal or recovery checkpoint. Does not change files; discarded recovery source is no longer available.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_patch_read">
+                <div class="tool-row-heading"><code>project_patch_read</code><span class="risk risk-read">Read</span></div>
+                <p>Read a staged file&#39;s before/after source or a bounded line diff. Without path, list proposal metadata. Follow source continuation offsets or retained workspace_result_read fields. Reading never applies a proposal.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_patch_restore">
+                <div class="tool-row-heading"><code>project_patch_restore</code><span class="risk risk-danger">High impact</span></div>
+                <p>Restore an applied checkpoint only while files still match its recorded versions. Removes files that checkpoint created. Refuses external changes and unverified partial bytes; never claims to undo executed scripts or game effects.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="project_scaffold">
+                <div class="tool-row-heading"><code>project_scaffold</code><span class="risk risk-write">Write</span></div>
+                <p>Stage a working modular script project: uai.project.json, main.lua, settings.lua and tests/settings.lua. All destinations must be new. Returns a proposal for review/apply; nothing runs. Generated require uses declared project IDs. Add interfaces through Project UAI UI LIB.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="script_analyze">
+                <div class="tool-row-heading"><code>script_analyze</code><span class="risk risk-read">Read</span></div>
+                <p>Compile saved source without executing it and return hashes, lexical outlines and structured diagnostics. Supply path for one file or manifest for project-wide syntax and literal require checks. Explicitly reports compiler availability; does NOT claim Luau type checking or Roblox API validation.</p><span class="tool-needs">Requires fs</span>
+              </li>
+              <li class="tool-row" data-tool-name="script_test">
+                <div class="tool-row-heading"><code>script_test</code><span class="risk risk-danger">High impact</span></div>
+                <p>Run declared project test modules (tables of named functions receiving t and fixtures). t.equal, t.truthy and t.raises are provided. Fresh module cache/fixtures per case; native game state is shared. Uses managed run_luau deadlines, not a security sandbox or isolated Roblox process. Returns assertions, errors and bundle source locations. Review source before running.</p><span class="tool-needs">Requires fs, exec</span>
               </li>
               <li class="tool-row" data-tool-name="workspace_result_read">
                 <div class="tool-row-heading"><code>workspace_result_read</code><span class="risk risk-read">Read</span></div>

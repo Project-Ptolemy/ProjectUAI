@@ -500,6 +500,46 @@ surrounding whitespace. Known `Character`, `CurrentCamera`, and `PrimaryPart`
 links can resolve when no named child exists. String property coercion preserves
 whitespace, and scalar numeric coercion rejects nonfinite values.
 
+### Script projects
+
+The existing `coding` group also registers `project_scaffold`, `project_map`,
+`project_patch`, `project_patch_read`, `project_patch_apply`,
+`project_patch_restore`, `project_patch_discard`, `script_analyze`, `script_test`
+and `project_build`. Runtime modules own project snapshots, lexical outlines and
+proposals; tool modules own permission-aware execution and editor-draft checks.
+See [docs/SCRIPT_PROJECTS.md](docs/SCRIPT_PROJECTS.md) for their public contract.
+
+Version-1 JSON manifests explicitly map module IDs to relative source files,
+declare an entry and optional tests. Sources remain under `files/`; paths reject
+traversal and case aliases. Limits are 64 modules, 16 test modules, 256,000 bytes
+per source, 1 MiB per project and 32,000 bytes per manifest/fixture JSON. Builds
+produce deterministic editable bundles up to 256,000 bytes with source locations;
+they compile without executing and cannot overwrite project inputs.
+
+Project patches retain complete original/proposed bytes, require observed hashes
+for existing files, preflight all targets and verify individual writes. Hashes are
+conflict identifiers, not cryptographic proofs. Apply and restore refuse unsaved
+bound Code drafts. Clean editor views keep their existing Save conflict detection.
+Eight conversation-owned proposals/checkpoints retain at most 8 MiB (2 MiB each),
+expire after ten minutes/unload, and never persist to disk. Writes are not atomic;
+partial results retain recovery source. Restore refuses external or unverified
+partial bytes and removes only files whose recorded current content still matches.
+
+Analysis explicitly distinguishes host syntax compilation, lexical outlines and
+literal dependency checks from unsupported type/API inference. Missing compilers
+are reported; build/test require one. Lexical scanning caps at 50,000 tokens and
+256 symbols/imports each, reports omissions, and treats interpolation as opaque.
+Columns are byte positions. Literal cycles are conservatively rejected; shadowed
+requires can produce false dependency reports. Bundled require resolves only
+declared project IDs, memoizes false, converts nil to true and detects active cycles.
+
+Test modules return named functions receiving assertions and fixture data. Each
+case gets fresh module caches/fixtures, but native client state is shared. Tests
+use the existing managed execution engine, high-impact permission, cancellation
+and 1–60 second deadline, with at most 100 cases per run. They are not a security
+sandbox, isolated process or native Roblox validation. Main and subagent prompts
+describe review, build, output inspection and focused test/repair workflows.
+
 ## 6. Event stream
 
 `agent/loop` never touches the interface. It emits into `agent/session`, which

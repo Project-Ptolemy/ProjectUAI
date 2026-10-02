@@ -2,7 +2,8 @@
 
 ## 2.5.0 — October 2, 2026
 
-The desktop interface on mobile, clearer small text, and working layout choices.
+The desktop interface on mobile, clearer small text, working layout choices, and
+ten tools for creating modular scripts.
 
 - Use the original desktop interface on mobile with layout dimensions, spacing
   and radii reduced to 55%. Keep the normal sidebar, header, welcome view,
@@ -21,6 +22,26 @@ The desktop interface on mobile, clearer small text, and working layout choices.
 - Scroll the original Code and inspector composition when height is limited,
   keeping its normal tabs, action rows and native inputs. Keep shared menus and
   form actions bounded above the keyboard, and retain Settings category drafts.
+- Add `project_scaffold` and `project_map` to stage a working modular script and
+  inspect saved file hashes, function outlines and literal dependencies.
+- Add `project_patch`, `project_patch_read` and `project_patch_apply` for reviewed,
+  coordinated file changes with version checks and verified writes. Refuse
+  conflicting files and unsaved bound editor drafts before applying.
+- Add `project_patch_restore` and `project_patch_discard` for conditional recovery
+  and checkpoint cleanup. Checkpoints belong to the conversation and expire after
+  ten minutes or unload. Multi-file writes are not atomic; partial results are
+  reported and unknown or externally changed bytes are never blindly restored.
+- Add `script_analyze` for host syntax diagnostics and literal project dependency
+  checks. Report missing compilers explicitly; full Luau type and Roblox API
+  analysis are not included.
+- Add `script_test` for declared behavioral tests with assertions, fixture data,
+  fresh module caches per case and failure reports. Tests use managed client
+  execution and share native game state; they are not an isolated test process.
+- Add `project_build` to compile and export a deterministic standalone `.lua`
+  bundle with source line locations and a recovery checkpoint, without running it.
+- Update the main and subagent prompts for source review, coordinated edits,
+  build inspection and focused testing. Document the manifest, tool API and limits
+  in the [script project guide](docs/SCRIPT_PROJECTS.md).
 
 ## 2.4.0 — October 1, 2026
 

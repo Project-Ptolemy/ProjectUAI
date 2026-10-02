@@ -20,11 +20,20 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.5.0",
-			revision = "2026-10-02",
+			revision = "2026-10-02-script-projects",
 			date = "October 2, 2026",
-			title = "Desktop layout on mobile, clearer text and layout choices",
-			highlights = "The original desktop interface fits mobile with smaller native dimensions, clearer text and icons, working layout choices, and retained drafts.",
+			title = "Desktop layout on mobile and script projects",
+			highlights = "The desktop interface fits mobile with clearer text, working layout choices and retained drafts. Ten new tools help create, review, test and bundle modular scripts.",
 			sections = {
+				{ category = "added", label = "Script creation tools", items = {
+					"project_scaffold stages a working modular script; project_map reads saved file hashes, function outlines and literal dependencies.",
+					"project_patch, project_patch_read and project_patch_apply stage, review and apply coordinated file edits with version checks and verified writes. Conflicting files and unsaved bound editor drafts are protected.",
+					"project_patch_restore conditionally recovers recorded versions; project_patch_discard releases a checkpoint. Checkpoints expire after ten minutes or unload. Writes are not atomic, and partial results or external changes are reported.",
+					"script_analyze reports host syntax errors and literal dependency problems. Compiler availability is explicit; full Luau type and Roblox API analysis are not included.",
+					"script_test runs declared cases with assertions, fixture data, fresh module caches and failure reports. It uses managed client execution with shared native game state, not an isolated test process.",
+					"project_build compiles and exports one deterministic Lua bundle with source line locations and a recovery checkpoint. Building never runs the script.",
+					"Main and subagent prompts now explain source review, coordinated edits, build inspection and focused testing. The script project guide documents the manifest, tool API and limits.",
+				} },
 				{ category = "improved", label = "Shared mobile interface", items = {
 					"Mobile uses the desktop layout at 55% dimensions, spacing and radii. Keep the normal sidebar, header, welcome view, composer, Quick Chat, Settings, Providers and Code tabs.",
 					"Remove the separate mobile navigation and destination, document, category and provider pickers. Short Code and inspector panels scroll their original tabs, action rows and native inputs.",

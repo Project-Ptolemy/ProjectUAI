@@ -97,5 +97,6 @@ return function(env)
 		local snapshot, why = runner.actionSnapshot(args.action_id, args.expected_revision, args.inputs or {}, "tool"); if not snapshot then return N.fail(why) end; return runner.run(snapshot, ctx, args.timeout)
 	end)
 	actionRun.needs, actionRun.timeout = { "exec" }, 65
+	for _, tool in ipairs(env.require("tools/project")) do tools[#tools + 1] = tool end
 	return tools
 end
