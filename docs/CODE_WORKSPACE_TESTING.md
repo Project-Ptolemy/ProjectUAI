@@ -1,6 +1,6 @@
 # Code workspace: native testing guide
 
-Current testing guide for release 2.4.0, October 1, 2026. Use synthetic workspaces
+Current testing guide for release 2.5.0, October 2, 2026. Use synthetic workspaces
 and an isolated fixture place; do not touch a user's live Roblox session or private
 usage/accounting files. Current features and limits are in
 [NATIVE_CLIENT.md](NATIVE_CLIENT.md), with internal contracts in [SPEC.md](../SPEC.md).
@@ -37,7 +37,7 @@ command checks freshness before tests and never rebuilds those outputs. Review
 each fix, rebuild if needed, inspect outputs and restart verification. Neither
 command generates image previews.
 
-For 2.4.0, exercise 320/390px portrait phones, 667/844px landscape phones and a
+For 2.5.0, exercise 320/390px portrait phones, 667/844px landscape phones and a
 tablet in both orientations, with the keyboard open and closed. Check compact
 typing, explicit expansion, long model names, wrapped attachments, history
 search, provider forms, category switching, Code tabs and Find. Confirm that the

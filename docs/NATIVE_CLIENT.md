@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.4.0**, October 1, 2026.
+Current native feature contract for **2.5.0**, October 2, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).

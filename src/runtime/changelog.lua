@@ -19,6 +19,26 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.5.0",
+			revision = "2026-10-02",
+			date = "October 2, 2026",
+			title = "Desktop layout on mobile, clearer text and layout choices",
+			highlights = "The original desktop interface fits mobile with smaller native dimensions, clearer text and icons, working layout choices, and retained drafts.",
+			sections = {
+				{ category = "improved", label = "Shared mobile interface", items = {
+					"Mobile uses the desktop layout at 55% dimensions, spacing and radii. Keep the normal sidebar, header, welcome view, composer, Quick Chat, Settings, Providers and Code tabs.",
+					"Remove the separate mobile navigation and destination, document, category and provider pickers. Short Code and inspector panels scroll their original tabs, action rows and native inputs.",
+					"Rotation, keyboard changes and sidebar toggles preserve live fields, drafts, selections and reading positions. The shared header keeps Minimize, Maximise and Close; the launcher appears after minimizing.",
+					"Shared menus and form actions stay above the keyboard. Settings categories retain their drafts and scroll positions.",
+				} },
+				{ category = "fixed", label = "Clarity and layout settings", items = {
+					"Handheld text starts at a 10px minimum before the user's text scale; standard icons start at 12px. Tiny drawn strokes keep whole-pixel bounds and at least one-pixel thickness.",
+					"The mobile Layout setting now changes placement: Sheet at the bottom, Panel at the right, and Window in the centre. Each explicit layout remembers its own placement per orientation.",
+					"Auto retains its compact placement. Changing mobile layouts keeps the same fields and drafts and leaves desktop window settings independent.",
+				} },
+			},
+		},
+		{
 			version = "2.4.0",
 			revision = "2026-10-01",
 			date = "October 1, 2026",

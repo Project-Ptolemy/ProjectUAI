@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.5.0 — October 2, 2026
+
+The desktop interface on mobile, clearer small text, and working layout choices.
+
+- Use the original desktop interface on mobile with layout dimensions, spacing
+  and radii reduced to 55%. Keep the normal sidebar, header, welcome view,
+  composer, Quick Chat, Settings, Providers and Code tabs. Remove the separate
+  mobile navigation and destination, document, category and provider pickers.
+- Keep the compact layout while raising the text baseline to at least 10px
+  before the user's text scale and standard icons to at least 12px. Give tiny
+  drawn icon strokes whole-pixel bounds and a minimum one-pixel thickness.
+- Make the Layout setting take effect on mobile: Sheet uses the bottom, Panel
+  the right edge, and Window the centre. Each explicit layout remembers its own
+  placement per orientation. Auto retains its compact placement, and desktop
+  window settings remain independent.
+- Preserve live fields, drafts, selections and scroll positions through rotation,
+  keyboard changes and sidebar toggles. Keep Minimize, Maximise and Close in the
+  shared header, with the launcher available after minimizing.
+- Scroll the original Code and inspector composition when height is limited,
+  keeping its normal tabs, action rows and native inputs. Keep shared menus and
+  form actions bounded above the keyboard, and retain Settings category drafts.
+
 ## 2.4.0 — October 1, 2026
 
 Mobile spacing, touch workflows, provider recovery, and community access.

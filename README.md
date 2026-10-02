@@ -4,12 +4,11 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.4.0 — October 1, 2026.** A mobile-focused release with tighter spacing,
-compact typing in portrait and landscape, more room for history and Code, and
-forms that preserve drafts as the screen changes. Touch targets remain at least
-44px. OpenCode and AgentRouter can recover from an explicit unauthorized-client
-error through the Project UAI proxy. HCNSEC setup offers an optional shared free
-key, and the Discord invitation has a two-week cooldown and a permanent opt-out.
+**Version 2.5.0 — October 2, 2026.** Mobile shares the desktop interface, with
+layout dimensions, spacing and radii reduced to 55% before density settings.
+Text has a 10px minimum before text scaling, and standard icons start at 12px.
+Auto, Sheet, Panel and Window change placement while keeping live fields and
+drafts. Forms and Code panels adapt through reflow and scrolling.
 UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
@@ -287,18 +286,20 @@ collapsed; consecutive trace updates share a disclosure until a tool separates t
 The model picker keeps search and selection stable, and its provider selector and
 the composer's model chip size to their actual labels.
 
-**Mobile layout.** Built for landscape play: a compact header and multiline
-composer leave room for chat and the game, with 44px touch targets. Enter adds a
-line; the Send button submits. Expand the composer for a longer draft, or use
-Message options for models, attachments and context. The app menu has searchable
-conversation history, direct opening and separate rename/delete controls.
-Settings use a category picker and a full-width form.
+**Mobile layout.** The desktop header, sidebar, welcome view, composer, Quick Chat
+and Code tabs share one structure at 55% layout dimensions, spacing and radii
+before density settings. Controls have a 15px minimum, text starts at 10px before
+text scaling, and standard icons at 12px. Enter adds a line; the Send button
+submits. Expand the composer for a longer draft, or use Message options for
+models, attachments and context. The sidebar and app menu keep conversation
+search. Settings categories and providers reflow between columns and scrolling
+strips while preserving their mounted forms.
 
-Drag the title to move the panel, use the header grip to resize it, or expand it
-to fill the available screen. Landscape and portrait remember separate placements.
-Rotation preserves drafts, selections and open forms; the keyboard temporarily
-lifts the panel and keeps focused fields in view. The launcher returns when the
-panel is minimized. Desktop layout and geometry remain independent.
+Auto keeps a compact placement; Sheet, Panel and Window select bottom, right
+and centred placement, with separate saved positions. Drag the title to move,
+use the corner grip to resize, or expand to fill the available screen. Rotation
+preserves drafts, selections and open forms; the keyboard temporarily lifts the
+window and keeps focused fields in view. The launcher returns when minimized.
 
 **Managed in-game chat loops.** Ask for a quiz, rotating announcements, or keyword
 replies. `quiz_bot`, `auto_chat`, and `auto_reply` return a background job immediately;
@@ -460,11 +461,11 @@ provider has left, and the extra headers, body fields and query parameters the r
 sends. The API key is never rendered: it is set through a prompt and shown as its last
 four characters.
 
-The layout follows the live viewport rather than a boot-time guess: a bottom sheet
-on a phone, a full-height dock on a tablet or in portrait, a floating resizable
-window on a desktop, a large centred panel on a console. It re-lays-out on rotation
-and resize, lifts above the on-screen keyboard, respects `ReducedMotionEnabled`, and
-uses 44px hit targets on touch and 28px with a pointer.
+The layout follows the live viewport: compact desktop controls on handhelds,
+a floating resizable window on a desktop, and a large centred panel on a console.
+It reflows on rotation and resize, lifts above the on-screen keyboard, and
+respects `ReducedMotionEnabled`. Handheld placement follows the selected Auto,
+Sheet, Panel or Window mode.
 
 ## Layout
 
