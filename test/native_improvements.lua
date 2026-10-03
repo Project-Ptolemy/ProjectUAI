@@ -728,4 +728,42 @@ case("deferred callbacks keep the executor identity captured at boot", function(
 	f.healthy(); f.close()
 end)
 
+case("mid-turn checkpoints save prompt and tool progress before turn settles", function()
+	local f = F.new()
+	local sessions = f.env.require("agent/session")
+	local fs = f.env.require("runtime/fsx")
+	local session = sessions.newThread()
+
+	check("session exposes a callable persist method", type(session.persist) == "function")
+
+	local path = "sessions/" .. session.id .. ".json"
+	check("file does not exist before turn starts", fs.read(path) == nil)
+
+	session.ctx.pushUser("Build a tree")
+	session.persist()
+	check("prompt checkpoint creates file on disk immediately", fs.read(path) ~= nil)
+	local data = fs.readJson(path)
+	check("checkpointed file contains user prompt", data and data.context and #data.context.messages == 1 and data.context.messages[1].content == "Build a tree")
+
+	session.ctx.pushAssistant({
+		content = "Working on it",
+		toolCalls = {
+			{ id = "call_1", ["function"] = { name = "file_write", arguments = '{"path":"tree.lua"}' } }
+		}
+	})
+	session.ctx.pushToolResult("call_1", "file_write", "wrote tree.lua")
+	session.persist()
+
+	data = fs.readJson(path)
+	check("intermediate tool step is checkpointed to disk", data and data.context and #data.context.messages == 3 and data.context.messages[3].role == "tool")
+
+	local restored = f.env.require("agent/session").create({ id = session.id })
+	restored.ctx.restore(data.context)
+	check("restored conversation retains all steps before the simulated crash", #restored.ctx.messages == 3)
+	local wire = restored.ctx.wire()
+	check("wire form succeeds and is ready for next model turn", #wire >= 3)
+
+	f.healthy(); f.close()
+end)
+
 suite.finish()

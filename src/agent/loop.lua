@@ -241,6 +241,9 @@ return function(env)
 		if not session.headless then usage.startTurn() end
 		ctx.pushUser(text, images)
 		session.emit("turn:start", { turns = unlimited and 0 or maxTurns, unlimited = unlimited })
+		-- Checkpoint the prompt before any provider call: a host crash mid-turn
+		-- otherwise loses the message and, for a new chat, the whole conversation.
+		if session.persist then session.persist() end
 
 		local lastSignature, streak = "", 0
 		local finalText = nil
@@ -431,8 +434,15 @@ return function(env)
 						}
 						ctx.pushToolResult(call.id, outcome.name, outcome.text)
 					end
-					if session.aborted() then return stopped(session) end
+					if session.aborted() then
+						if session.persist then session.persist() end
+						return stopped(session)
+					end
 				end
+				-- Checkpoint each settled batch (results or repeat refusals). Tools can
+				-- run for minutes; a crash on a later step keeps every earlier one, and
+				-- ctx.repair() answers any call that never recorded a result.
+				if session.persist then session.persist() end
 			end
 		end
 

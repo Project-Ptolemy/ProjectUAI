@@ -459,6 +459,16 @@ return function(env)
 			return session.ephemeral
 		end
 
+		-- Mid-turn checkpoint. A turn used to reach disk only when it settled, so a
+		-- host crash during a long tool run lost the prompt and every completed step.
+		-- The loop calls this at step boundaries; M.persist still refuses headless,
+		-- child, ephemeral and removed sessions, and a failed write never ends a turn.
+		function session.persist()
+			local ok, saved = pcall(M.persist, session)
+			if not ok then log.warn("session", "checkpoint failed", saved) end
+			return ok and saved or false
+		end
+
 		function session.stats()
 			local stats = session.ctx.stats()
 			stats.busy = session.busy
