@@ -759,10 +759,12 @@ shell has no entrance `UIScale`; hide/show is synchronous. Centered dimensions
 retain whole-pixel parity through `handle.centred`. Maximize changes geometry and
 its icon in place, keeping the transcript, live preview, focus and drafts mounted.
 
-Entrance scales on plain frames (the modal card, the settings dialog, quick chat) are
-allowed -- a `UIScale` there re-lays-out rather than resampling -- but each one snaps to
-exactly 1 on `Completed`, because an interrupted tween otherwise leaves the surface
-laid out at 98% of its own metrics for as long as it is open.
+Modal cards, the settings dialog and Quick Chat use bounded, unscaled CanvasGroups
+that fade as a unit at their final geometry. Modals reveal after the caller fills
+their content and the first layout pass settles. Their entrances and exits never
+tween size, position or text metrics. Replacements release the outgoing surface;
+Quick Chat reverses its current fade without flashing or losing its draft. Reduced
+motion suppresses the transition. The main window and transcript remain plain frames.
 
 The transcript canvas uses `UIListLayout.AbsoluteContentSize` plus vertical padding.
 Lightweight spacers preserve the measured size of unmounted dialogue. Drawing

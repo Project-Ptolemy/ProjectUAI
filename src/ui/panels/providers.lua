@@ -152,7 +152,7 @@ return function(env)
 			name = "Form",
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
-			gap = theme.space.lg,
+			gap = theme.space.md,
 			layoutOrder = 1,
 		})
 
@@ -161,6 +161,7 @@ return function(env)
 		local protocolControl, authControl, keyHintLabel
 		local docsRow, docsNoteRow, presetNoteRow
 		local proxyNote, communityRow, keyLabel, setKeyButton
+		local urlColumn, keyColumn
 		local function refreshConnectionInfo()
 			if proxyNote then
 				local target = registry.proxyTarget(editing)
@@ -173,10 +174,6 @@ return function(env)
 			end
 			if communityRow then communityRow.Visible = communityKey.eligible(editing) end
 		end
-		-- The form slot after the key row, where the hint, docs link and preset note
-		-- live. Declared here because refreshDocs -- which writes into it -- is
-		-- defined before the rows are built but only called once they have been.
-		local rowAfterKey = 0
 		-- Any connection edit invalidates fetched choices and in-flight discovery,
 		-- including changing away and back before the old response arrives.
 		local forgetFetchedModels
@@ -189,9 +186,7 @@ return function(env)
 			return ok
 		end
 
-		-- Rows carry explicit, sequential orders: the form also holds the key hint and
-		-- the preset's docs link and note, which are rebuilt on a preset change and
-		-- have to land back in their slots rather than at the end of whatever is there.
+		-- Stable field order is independent of a preset's optional help and links.
 		local rowOrder = 0
 		local function row(label, hint, build)
 			rowOrder = rowOrder + 1
@@ -225,9 +220,8 @@ return function(env)
 		-- carried over when it still matches the old preset's own name, which is the case
 		-- where it was never edited.
 		--
-		-- The docs link and the note are rebuilt rather than updated: they are whole
-		-- rows a preset may or may not have, so the row count itself changes with the
-		-- pick. Rebuilt into the same slots so the layout order they hold is kept.
+		-- Optional links and notes stay inside the key field group, so related help
+		-- does not acquire a whole form-row gap apiece. Preserve its order on refresh.
 		local function refreshDocs()
 			refreshConnectionInfo()
 			if docsRow then docsRow:Destroy() docsRow = nil end
@@ -240,12 +234,12 @@ return function(env)
 				-- a client GUI, so "get a key here" has to be text a person can select or
 				-- one press away from the clipboard -- a "click here" label with the
 				-- destination hidden behind it is neither.
-				docsRow = P.row(form, {
+				docsRow = P.row(keyColumn, {
 					name = "KeyLink",
 					size = UDim2.new(1, 0, 0, 0),
 					auto = "Y",
 					gap = theme.space.xs,
-					layoutOrder = rowAfterKey + 2,
+					layoutOrder = 11,
 				})
 				local linkText = P.text(docsRow, {
 					name = "KeyLinkUrl",
@@ -271,14 +265,14 @@ return function(env)
 						end,
 					})
 				end
-				docsNoteRow = R.paragraph(form,
+				docsNoteRow = R.paragraph(keyColumn,
 					presetRecord.authStyle == "none"
 						and "Server setup and API documentation are at the address above."
 						or "Keys for this provider are issued at the address above.",
-					{ layoutOrder = rowAfterKey + 3 })
+					{ layoutOrder = 12 })
 			end
 			if presetRecord.note then
-				presetNoteRow = R.paragraph(form, presetRecord.note, { layoutOrder = rowAfterKey + 4 })
+				presetNoteRow = R.paragraph(keyColumn, presetRecord.note, { layoutOrder = 13 })
 			end
 		end
 
@@ -317,6 +311,7 @@ return function(env)
 				keyHintLabel.Text = preset.keyHint
 					and ("Key hint: " .. tostring(preset.keyHint))
 					or ""
+				keyHintLabel.Visible = keyHintLabel.Text ~= ""
 			end
 			refreshDocs()
 			if forgetFetchedModels then forgetFetchedModels() end
@@ -365,6 +360,7 @@ return function(env)
 
 		local normalisedNote
 		row("Base URL", nil, function(column)
+			urlColumn = column
 			urlField = P.field(column, {
 				name = "BaseUrl",
 				text = editing.baseUrl,
@@ -384,12 +380,14 @@ return function(env)
 					if normalisedNote then
 						normalisedNote.Text = (normalised ~= "" and normalised ~= util.trim(text))
 							and ("Saved as " .. normalised) or ""
+						normalisedNote.Visible = normalisedNote.Text ~= ""
 					end
 				end,
 				onBlur = showProblems,
 			})
 			normalisedNote = P.text(column, {
 				text = "",
+				visible = false,
 				role = "caption",
 				color = theme.color.textTertiary,
 				wrap = true,
@@ -398,7 +396,7 @@ return function(env)
 			normalisedNote.Size = UDim2.new(1, 0, 0, 0)
 			return urlField
 		end)
-		proxyNote = R.paragraph(form, "", { name = "ProxyFallbackNotice", layoutOrder = rowOrder * 10 + 1 })
+		proxyNote = R.paragraph(urlColumn, "", { name = "ProxyFallbackNotice", layoutOrder = 10 })
 
 		row("Protocol", "Choose the API exposed by the server. Most local servers offer Chat completions; "
 			.. "Anthropic and compatible gateways may offer Messages. Other native APIs need an adapter.",
@@ -438,6 +436,7 @@ return function(env)
 		-- better property that the secret is on screen only while it is being typed.
 		row("API key", "Saved on this device. Sent to this provider and any configured gateway or relay; "
 			.. "key values are masked in the request log.", function(column)
+			keyColumn = column
 			local line = P.row(column, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.sm })
 			local shown, tone = maskedKey(editing)
 			keyLabel = P.text(line, {
@@ -504,10 +503,9 @@ return function(env)
 		-- not a field: the shape of an OpenAI key is not the shape of a Gemini key, and
 		-- the person pasting one wants to know they are pasting the right kind of thing
 		-- before the request fails on the far end. The docs link and the preset note sit
-		-- with it, in the slots after the key row, because all three are things the
+		-- with it inside the key row, because all three are things the
 		-- preset decides and a preset change has to move together.
-		rowAfterKey = rowOrder * 10
-		keyHintLabel = P.text(form, {
+		keyHintLabel = P.text(keyColumn, {
 			name = "KeyHint",
 			text = (catalog.get(editing.preset) or {}).keyHint
 				and ("Key hint: " .. tostring((catalog.get(editing.preset) or {}).keyHint)) or "",
@@ -515,9 +513,10 @@ return function(env)
 			color = theme.color.textTertiary,
 			wrap = true,
 			auto = "Y",
-			layoutOrder = rowAfterKey + 1,
+			layoutOrder = 10,
 		})
 		keyHintLabel.Size = UDim2.new(1, 0, 0, 0)
+		keyHintLabel.Visible = keyHintLabel.Text ~= ""
 
 		-- Model.
 		--
@@ -814,7 +813,7 @@ return function(env)
 			local card = P.card(parent, {
 				name = "Featured",
 				gap = theme.space.sm,
-				padding = theme.space.lg,
+				padding = theme.space.md,
 				layoutOrder = type(nextOrder) == "function" and nextOrder() or 1,
 				-- The accent border is the one thing that says "start here" on a panel
 				-- that is otherwise all neutral surfaces; P.card has already drawn a

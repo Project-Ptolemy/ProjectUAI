@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.5.0**, October 2, 2026.
+Current native feature contract for **2.5.5**, October 3, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -8,6 +8,12 @@ Internal APIs are described in
 In-game release notes are under **App menu → What's new**, also available from
 **About → What's new**. Reload the updated native bundle to see the latest notes.
 Revised notes restore the unread marker even when the client version stays the same.
+
+Modals, Settings and Quick Chat enter and exit with short opacity transitions at
+their final dimensions. They do not scale their text or reflow controls during
+the animation. Reduced motion applies the final state immediately. Form labels,
+inputs and help text stay grouped, with compact headers and consistent section
+spacing; description-only confirmations reserve no empty content band.
 
 The optional Discord invitation waits for five minutes of use and at least 30
 seconds without input. It appears only in visible idle Chat/Home, with no active

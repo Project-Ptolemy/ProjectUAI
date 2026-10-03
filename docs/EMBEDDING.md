@@ -2,7 +2,7 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.0.0** in **Project UAI 2.5.0**, alongside **UI LIB
+documents **embedding SDK 1.0.0** in **Project UAI 2.5.5**, alongside **UI LIB
 1.2.1**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
 bundle with its own version and lifetime.
 

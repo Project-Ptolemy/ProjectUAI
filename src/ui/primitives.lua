@@ -32,9 +32,15 @@ return function(env)
 			end)
 		end
 		if state.finished then state.finished:Disconnect() end
+		state.finished = nil
 		local previous = state.tween
 		state.tween = nil
 		if previous then previous:Cancel() end
+		if responsive.reduceMotion then
+			for property, value in pairs(goals) do instance[property] = value end
+			if onComplete then onComplete() end
+			return nil
+		end
 		local tween = env.tween:Create(instance, theme.tween(motion), goals)
 		state.tween = tween
 		state.finished = tween.Completed:Connect(function(playback)
@@ -129,6 +135,12 @@ return function(env)
 	function P.frame(parent, props)
 		local frame = Instance.new("Frame", parent)
 		return base(frame, props)
+	end
+
+	-- Bounded overlay cards can fade as one surface without scaling their layout.
+	-- Keep long-lived windows and transcripts on P.frame.
+	function P.group(parent, props)
+		return base(Instance.new("CanvasGroup", parent), props)
 	end
 
 	local function stack(parent, props, direction)

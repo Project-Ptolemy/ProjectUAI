@@ -19,7 +19,7 @@ return function(env)
 			name = "Transcript",
 			size = props.size or UDim2.new(1, 0, 1, 0),
 			gap = theme.space.lg,
-			padding = { x = theme.space.lg, top = theme.space.xl, bottom = theme.space.lg },
+			padding = theme.space.lg,
 			fade = false,
 		})
 

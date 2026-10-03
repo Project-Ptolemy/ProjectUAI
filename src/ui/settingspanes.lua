@@ -73,23 +73,13 @@ return function(env)
 			order = order + 1
 			return order
 		end
-		-- A heading and its card go in one wrapper with a tight gap.
-		--
-		-- They used to be two siblings of the pane's own column, which means the distance
-		-- from a heading to the card it labels was the pane's uniform gap -- exactly the
-		-- distance from that heading to the card *above* it. Nothing in the layout said
-		-- which block a heading belonged to, and a pane of six sections read as twelve
-		-- unrelated things.
+		-- Share the same heading/card rhythm as the provider and settings panels.
 		function api.section(title, description)
-			local group = P.column(container, {
-				name = "Group",
-				size = UDim2.new(1, 0, 0, 0),
-				auto = "Y",
-				gap = theme.space.xs,
+			return R.section(container, {
+				title = title,
+				description = description,
 				layoutOrder = api.order(),
 			})
-			P.sectionHeader(group, { title = title, description = description, layoutOrder = 1 })
-			return P.card(group, { layoutOrder = 2, gap = theme.space.md, padding = theme.space.lg })
 		end
 		function api.note(text, colour)
 			return R.paragraph(container, text, { color = colour, layoutOrder = api.order() })

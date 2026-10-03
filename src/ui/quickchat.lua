@@ -20,6 +20,7 @@ return function(env)
 	local sessions = env.require("agent/session")
 
 	local M = { visible = false, mounted = false }
+	local visibilityGeneration = 0
 
 	local DEFAULT_KEY = "Semicolon"
 
@@ -69,7 +70,7 @@ return function(env)
 		M.scrim = scrim
 		scrim.Activated:Connect(function() M.hide() end)
 
-		local card = P.frame(M.root, {
+		local card = P.group(M.root, {
 			name = "QuickCard",
 			size = UDim2.new(0, math.min(math.max(responsive.viewport.X * 0.5, theme.size.modal), theme.size.reading * 0.6), 0, 0),
 			anchor = Vector2.new(0.5, 0.5),
@@ -80,10 +81,9 @@ return function(env)
 			zIndex = theme.z.quick + 1,
 		})
 		card.Active = true
+		card.GroupTransparency = 1
 		local outline = P.stroke(card, theme.color.borderStrong)
 		M.card = card
-		M.scale = Instance.new("UIScale", card)
-		M.scale.Scale = theme.scale.enter
 		local scroll = P.scroll(card, { name = "QuickBody", size = UDim2.fromScale(1, 1), padding = pad, gap = 0 })
 		local content, contentLayout = P.column(scroll.instance, {
 			name = "QuickContent", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = gap,
@@ -145,6 +145,7 @@ return function(env)
 		P.iconButton(footer, {
 			name = "OpenFullChat", icon = "windowMaximize", diameter = theme.size.controlSmall, layoutOrder = 2,
 			onClick = function()
+				if not M.visible then return end
 				local text = M.field.get()
 				local app = env.require("ui/app")
 				app.show("chat")
@@ -227,43 +228,42 @@ return function(env)
 	function M.show()
 		if not M.mounted or M.visible then return end
 		M.visible = true
+		visibilityGeneration = visibilityGeneration + 1
 		refreshHint()
 		if M.layout then M.layout() end
+		-- Retarget an in-progress exit from its current opacity. Resetting it here
+		-- made rapid reopen flash and restarted a scale-driven layout on every key.
 		M.root.Visible = true
-		if responsive.reduceMotion then
-			P.animate(M.scale, "instant", { Scale = 1 })
-			P.animate(M.scrim, "instant", { BackgroundTransparency = theme.opacity.scrim })
-		else
-			M.scale.Scale = theme.scale.enter
-			M.scrim.BackgroundTransparency = 1
-			-- Snapped on completion: a card left mid-tween keeps its field laid out at
-			-- 98% of its metrics until the next time it opens.
-			P.animate(M.scale, "enter", { Scale = 1 }, function()
-				if M.visible then M.scale.Scale = 1 end
-			end)
-			P.animate(M.scrim, "enter", { BackgroundTransparency = theme.opacity.scrim })
-		end
+		M.card.Interactable = true
+		local card = M.card
+		P.animate(card, "modalEnter", { GroupTransparency = 0 }, function()
+			if M.visible and M.card == card then card.GroupTransparency = 0 end
+		end)
+		P.animate(M.scrim, "modalEnter", { BackgroundTransparency = theme.opacity.scrim })
 		-- One frame late: capturing focus in the same frame the surface becomes
 		-- visible is unreliable.
 		local root = M.root
+		local generation = visibilityGeneration
 		clock.delay(theme.duration("fast"), function()
-			if M.visible and M.root == root then M.field.focus() end
+			if M.visible and M.root == root and visibilityGeneration == generation then M.field.focus() end
 		end)
 	end
 
 	function M.hide()
 		if not M.mounted or not M.visible then return end
 		M.visible = false
+		visibilityGeneration = visibilityGeneration + 1
 		pcall(function() M.field.instance:ReleaseFocus() end)
+		M.card.Interactable = false
 		if responsive.reduceMotion then
-			P.animate(M.scale, "instant", { Scale = 1 })
+			P.animate(M.card, "instant", { GroupTransparency = 1 })
 			P.animate(M.scrim, "instant", { BackgroundTransparency = 1 })
 			M.root.Visible = false
 			return
 		end
-		P.animate(M.scale, "exit", { Scale = theme.scale.enter })
+		P.animate(M.card, "modalExit", { GroupTransparency = 1 })
 		local root = M.root
-		P.animate(M.scrim, "exit", { BackgroundTransparency = 1 }, function()
+		P.animate(M.scrim, "modalExit", { BackgroundTransparency = 1 }, function()
 			-- Only hide if nothing reopened it while the tween ran.
 			if not M.visible and M.root == root then root.Visible = false end
 		end)
@@ -274,6 +274,7 @@ return function(env)
 	end
 
 	function M.submit(text)
+		if not M.mounted or not M.visible then return end
 		local message = util.trim(tostring(text or ""))
 		if message == "" then return end
 		-- The same session the Chat panel is bound to, so the message and its reply

@@ -18,6 +18,52 @@ return function(env)
 	local TOAST_LIMIT = 3
 
 	local M = { toasts = {}, open = {} }
+	local closingSurfaces = {}
+
+	local function finishClosingSurfaces()
+		-- A replacement starts with one scrim. Letting its predecessor finish a
+		-- separate exit briefly doubles the dimming and leaves old controls on top.
+		for scrim in pairs(closingSurfaces) do scrim:Destroy() end
+	end
+
+	local function revealSurface(handle, relayout)
+		local pending
+		pending = task.defer(function()
+			-- Callers fill the card after receiving its handle. Keep the entire
+			-- surface transparent through that first native layout pass, then fade
+			-- it at its final size without rescaling text or moving hit targets.
+			task.wait()
+			pending = nil
+			if handle.closed then return end
+			relayout()
+			P.animate(handle.card, "modalEnter", { GroupTransparency = 0 }, function()
+				if not handle.closed then handle.card.GroupTransparency = 0 end
+			end)
+			P.animate(handle.scrim, "modalEnter", { BackgroundTransparency = theme.opacity.scrim })
+		end)
+		handle.scrim.Destroying:Connect(function()
+			if pending then pcall(task.cancel, pending); pending = nil end
+			closingSurfaces[handle.scrim] = nil
+		end)
+	end
+
+	local function retireSurface(handle)
+		local card, scrim = handle.card, handle.scrim
+		card.Interactable = false
+		for _, control in ipairs(card:GetDescendants()) do
+			if control:IsA("GuiButton") or control:IsA("TextBox") then
+				control.Active, control.Selectable, control.Interactable = false, false, false
+				if control:IsA("TextBox") then control.TextEditable = false end
+			end
+		end
+		if responsive.reduceMotion or card.GroupTransparency == 1 then
+			scrim:Destroy()
+			return
+		end
+		closingSurfaces[scrim] = true
+		P.animate(card, "modalExit", { GroupTransparency = 1 })
+		P.animate(scrim, "modalExit", { BackgroundTransparency = 1 }, function() scrim:Destroy() end)
+	end
 
 	local function releaseFocusWithin(surface)
 		pcall(function()
@@ -374,6 +420,7 @@ return function(env)
 	function M.modal(props)
 		props = props or {}
 		if not ensure() then return nil end
+		finishClosingSurfaces()
 
 		local scrim = P.frame(M.layer, {
 			name = "Scrim",
@@ -399,7 +446,7 @@ return function(env)
 			dismiss.AutoButtonColor = false
 		end
 
-		local card = P.frame(scrim, {
+		local card = P.group(scrim, {
 			name = "Modal",
 			size = UDim2.fromOffset(math.min(props.width or theme.size.modal, rect.width), math.min(props.height or theme.size.modalTall, rect.height)),
 			bg = theme.color.surfaceRaised,
@@ -409,23 +456,23 @@ return function(env)
 		})
 		-- Active so clicks and touches inside the card never fall through to the dismiss button.
 		card.Active = true
+		card.GroupTransparency = 1
 		P.stroke(card, theme.color.border)
-		local scale = Instance.new("UIScale", card)
-		scale.Scale = responsive.reduceMotion and 1 or theme.scale.enter
 
 		local closeDiameter = math.max(theme.size.control, responsive.minTarget())
 		local headerContentHeight = math.max(closeDiameter,
 			theme.text.title.height + (props.description and (theme.space.hair + theme.text.small.height) or 0))
 		local footerContentHeight = math.max(theme.size.control, responsive.minTarget())
 		local pad = theme.space.lg
+		local headerPad = theme.space.sm
 		local footerPad = theme.space.sm
-		local headerTotal = headerContentHeight + pad * 2
+		local headerTotal = headerContentHeight + headerPad * 2
 		local footerTotal = footerContentHeight + footerPad * 2
 
 		local header = P.row(card, {
 			name = "Header",
 			size = UDim2.new(1, 0, 0, headerTotal),
-			padding = { x = pad, y = pad },
+			padding = { x = pad, y = headerPad },
 			gap = theme.space.sm,
 			alignY = "Top",
 			layoutOrder = 1,
@@ -481,8 +528,7 @@ return function(env)
 			handle.closed = true
 			releaseFocusWithin(card)
 			unregister()
-			P.animate(scale, "exit", { Scale = responsive.reduceMotion and 1 or theme.scale.enter })
-			P.animate(scrim, "exit", { BackgroundTransparency = 1 }, function() scrim:Destroy() end)
+			retireSurface(handle)
 			if confirmed ~= true and props.onClose then pcall(props.onClose) end
 		end
 
@@ -602,10 +648,11 @@ return function(env)
 				footerTotal = hasFooter and (footerHeight + footerPad * 2) or 0
 				local bodyBounds = bodyLayout.AbsoluteContentSize
 				local bodyHeight = bodyBounds and bodyBounds.Y or handle.content.AbsoluteSize.Y
-				local chromePad = roomNow < (headerTotal + footerTotal + closeDiameter) and theme.space.xs or pad
+				local chromePad = roomNow < (headerTotal + footerTotal + closeDiameter) and theme.space.xs or headerPad
 				local wantedHeader = math.max(closeDiameter, titleHeight) + chromePad * 2
+				local bodyPadding = bodyHeight > 0 and (theme.space.sm + theme.space.xxs) or 0
 				local preferred = props.height or (props.scroll == true and theme.size.modalTall
-					or (wantedHeader + footerTotal + bodyHeight + theme.space.sm + theme.space.xxs))
+					or (wantedHeader + footerTotal + bodyHeight + bodyPadding))
 				local cardHeight = math.max(1, math.floor(math.min(preferred, roomNow)))
 				-- Reserve a control's height for the body only when the body actually
 				-- has content. A description-only confirmation has none, and reserving
@@ -614,7 +661,7 @@ return function(env)
 				local bodyRoom = bodyHeight > 0 and closeDiameter or 0
 				local measured = math.min(cardHeight, wantedHeader, math.max(closeDiameter + chromePad * 2,
 					cardHeight - footerTotal - bodyRoom))
-				local minimumBody = theme.space.xxs + theme.space.sm
+				local minimumBody = bodyPadding
 				for _, child in ipairs(handle.content:GetChildren()) do
 					if child:IsA("GuiObject") and child.Visible then minimumBody = minimumBody + closeDiameter; break end
 				end
@@ -626,7 +673,7 @@ return function(env)
 					measured = math.min(cardHeight, wantedHeader, math.max(closeDiameter + chromePad * 2,
 						cardHeight - minimumBody))
 				end
-				local pinnedFooter = inlineFooter and 0 or math.min(footerTotal, math.max(0, cardHeight - measured - 1))
+				local pinnedFooter = inlineFooter and 0 or math.min(footerTotal, math.max(0, cardHeight - measured))
 				card.Size = UDim2.fromOffset(card.Size.X.Offset, cardHeight)
 				local padding = header:FindFirstChildOfClass("UIPadding")
 				padding.PaddingTop = UDim.new(0, chromePad)
@@ -707,13 +754,7 @@ return function(env)
 
 		relayout()
 		M.open[#M.open + 1] = handle
-		P.animate(scrim, "enter", { BackgroundTransparency = theme.opacity.scrim })
-		-- Snapped on completion. A card left mid-tween sits at 0.98 for as long as it is
-		-- open, which re-lays-out every label inside it at 98% of its metrics -- the same
-		-- family of bug as the window's own scale, one step less visible.
-		P.animate(scale, "enter", { Scale = 1 }, function()
-			if not handle.closed then scale.Scale = 1 end
-		end)
+		revealSurface(handle, relayout)
 		return handle
 	end
 
@@ -891,6 +932,7 @@ return function(env)
 	function M.dialog(props)
 		props = props or {}
 		if not ensure() then return nil end
+		finishClosingSurfaces()
 
 		local margin = theme.space.lg * 2
 		local width = math.min(props.width or theme.size.dialog, responsive.viewport.X - margin)
@@ -914,7 +956,7 @@ return function(env)
 		dismiss.AutoButtonColor = false
 		dismiss.ZIndex = theme.z.modal
 
-		local card = P.frame(scrim, {
+		local card = P.group(scrim, {
 			name = props.name or "Dialog",
 			size = UDim2.fromOffset(width, height),
 			anchor = Vector2.new(0.5, 0.5),
@@ -925,9 +967,8 @@ return function(env)
 			clip = true,
 		})
 		card.Active = true
+		card.GroupTransparency = 1
 		P.stroke(card, theme.color.border)
-		local scale = Instance.new("UIScale", card)
-		scale.Scale = responsive.reduceMotion and 1 or theme.scale.enter
 
 		local handle = { card = card, scrim = scrim, closed = false, width = width, height = height }
 		local unbindResponsive
@@ -951,8 +992,7 @@ return function(env)
 			for index, item in ipairs(M.open) do
 				if item == handle then table.remove(M.open, index) end
 			end
-			P.animate(scale, "exit", { Scale = responsive.reduceMotion and 1 or theme.scale.enter })
-			P.animate(scrim, "exit", { BackgroundTransparency = 1 }, function() scrim:Destroy() end)
+			retireSurface(handle)
 			if props.onClose then pcall(props.onClose) end
 		end
 		scrim.Destroying:Connect(function()
@@ -989,10 +1029,7 @@ return function(env)
 		handle.closeInset = closeDiameter + closePad * 2
 
 		M.open[#M.open + 1] = handle
-		P.animate(scrim, "enter", { BackgroundTransparency = theme.opacity.scrim })
-		P.animate(scale, "enter", { Scale = 1 }, function()
-			if not handle.closed then scale.Scale = 1 end
-		end)
+		revealSurface(handle, relayout)
 		return handle
 	end
 

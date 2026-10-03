@@ -19,6 +19,27 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.5.5",
+			revision = "2026-10-03-client-spacing-motion",
+			date = "October 3, 2026",
+			title = "Tighter spacing and calmer dialogs",
+			highlights = "Modals, Settings and Quick Chat fade in at their final size. Forms, welcome cards, release notes and the sidebar use tighter, more consistent spacing.",
+			sections = {
+				{ category = "improved", label = "Dialog transitions", items = {
+					"Replace entrance scaling with a short fade so text and controls keep their final geometry. Rapid close and reopen settle cleanly; reduced motion is immediate.",
+					"Tighten modal headers and remove the unused body band from description-only confirmations. Fields and actions remain reachable above the keyboard.",
+				} },
+				{ category = "improved", label = "Layout and spacing", items = {
+					"Keep settings labels, inputs and help text together, use consistent section spacing, and keep compact rows side by side when they fit.",
+					"Tighten provider notes, welcome cards and release-note groups. Empty provider hints no longer take up space, and starter actions adapt to the available width.",
+				} },
+				{ category = "fixed", label = "Chat and navigation", items = {
+					"Remove doubled gaps around fenced code blocks and the blank sidebar gap below collapsed navigation.",
+					"Align conversation headings and folder actions with the other sidebar rows. UI LIB remains v1.2.1 and the embedding SDK remains v1.0.0.",
+				} },
+			},
+		},
+		{
 			version = "2.5.0",
 			revision = "2026-10-02-script-projects",
 			date = "October 2, 2026",

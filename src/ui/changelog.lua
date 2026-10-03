@@ -51,7 +51,7 @@ return function(env)
 				auto = "Y",
 				bg = theme.color.canvas,
 				radius = theme.radius.lg,
-				padding = { x = theme.space.lg, y = theme.space.lg },
+				padding = theme.space.md,
 				gap = theme.space.md,
 				layoutOrder = index,
 			})
@@ -149,9 +149,16 @@ return function(env)
 			for sectionIndex, section in ipairs(release.sections or {}) do
 				local tone = CATEGORY_TONE[section.category] or "neutral"
 				local badgeColor = theme.toneColor(tone)
+				local group = P.column(card, {
+					name = "Category_" .. section.category,
+					size = UDim2.new(1, 0, 0, 0),
+					auto = "Y",
+					gap = theme.space.xs,
+					layoutOrder = 10 + sectionIndex,
+				})
 
 				-- Category title: pure colored text without pill background or outline
-				P.text(card, {
+				P.text(group, {
 					name = "Section_" .. section.category,
 					text = section.label or section.category,
 					role = "heading",
@@ -159,20 +166,19 @@ return function(env)
 					color = badgeColor,
 					auto = "Y",
 					size = UDim2.new(1, 0, 0, 0),
-					layoutOrder = 10 + sectionIndex * 2,
+					layoutOrder = 1,
 				})
 
-				local list = P.column(card, {
+				local list = P.column(group, {
 					name = "Items_" .. section.category,
 					size = UDim2.new(1, 0, 0, 0),
 					auto = "Y",
 					gap = theme.space.xs,
-					padding = { left = theme.space.xs },
-					layoutOrder = 10 + sectionIndex * 2 + 1,
+					layoutOrder = 2,
 				})
 
 				local smallRole = theme.textRole("small")
-				local markerWidth = 10
+				local markerWidth = theme.space.sm
 				for _, item in ipairs(section.items or {}) do
 					local itemRow = P.row(list, {
 						size = UDim2.new(1, 0, 0, 0),

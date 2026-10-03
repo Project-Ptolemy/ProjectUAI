@@ -408,17 +408,14 @@ return function(env)
 		for position, block in ipairs(blocks) do
 			local index = position + (first or 1) - 1
 			if block.kind == "code" then
-				-- A fenced block is an object in the prose rather than another paragraph of
-				-- it, so it gets more air than the uniform paragraph gap -- above and below
-				-- both. At the bare gap the sentence introducing the code sat exactly as
-				-- close to it as the next paragraph did, which is what makes a reply read as
-				-- one column with a slab dropped into it.
+				-- The Markdown column owns the gap around every block. Extra padding
+				-- here doubles up between adjacent fences and leaves blank leading or
+				-- trailing space on a reply containing only code.
 				local slot = P.column(column, {
 					name = "CodeSlot",
 					size = UDim2.new(1, 0, 0, 0),
 					auto = "Y",
 					gap = 0,
-					padding = { y = theme.space.xs },
 					layoutOrder = index,
 				})
 				M.codeBlock(slot, {

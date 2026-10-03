@@ -8,7 +8,7 @@ mounting the native app and exposes owned tools, requests, and teardown.
 
 Read [Embedding Project UAI](../../docs/EMBEDDING.md) for the runtime reference and
 [UI_LIBRARY.md](../../docs/UI_LIBRARY.md) for the UI API. The example targets
-Project UAI 2.5.0 with embedding SDK 1.0.0 and UI LIB 1.2.1.
+Project UAI 2.5.5 with embedding SDK 1.0.0 and UI LIB 1.2.1.
 
 ## UI-free SDK example
 

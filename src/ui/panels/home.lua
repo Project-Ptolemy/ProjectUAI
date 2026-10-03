@@ -326,8 +326,8 @@ return function(env)
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			alignX = "Center",
-			gap = theme.space.xl,
-			padding = { top = theme.space.xxl, bottom = theme.space.lg },
+			gap = theme.space.lg,
+			padding = { top = theme.space.lg, bottom = theme.space.md },
 			layoutOrder = order,
 		})
 
@@ -336,7 +336,7 @@ return function(env)
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			alignX = "Center",
-			gap = theme.space.md,
+			gap = theme.space.sm,
 			layoutOrder = 1,
 		})
 		local brandSlot = P.frame(greeting, {
@@ -369,7 +369,8 @@ return function(env)
 			local cards = {}
 			local minStarterWidth = 0
 			for index, entry in ipairs(env.require("ui/chat/prompts").items) do
-				minStarterWidth = math.max(minStarterWidth, P.measureText(entry.label, { role = "label" }).X + theme.space.md * 2)
+				minStarterWidth = math.max(minStarterWidth, P.measureText(entry.label, { role = "label" }).X
+					+ theme.size.icon + theme.space.sm + theme.space.md * 2)
 				local card = P.rowButton(grid, {
 					name = "Starter_" .. entry.id, vertical = true, size = UDim2.fromOffset(0, theme.size.promptCard),
 					bg = theme.color.surface, stroke = true,
@@ -378,23 +379,28 @@ return function(env)
 					alignX = "Left", alignY = "Top",
 					onClick = function() props.onInsert(entry.text) end,
 				})
-				card.icon(entry.icon, 1, theme.color.accentHot, theme.size.icon)
-				P.text(card.row, { text = entry.label, role = "label", layoutOrder = 2,
-					size = UDim2.new(1, 0, 0, theme.text.label.height), truncate = true })
+				local head = P.row(card.row, {
+					name = "StarterHead", size = UDim2.new(1, 0, 0, math.max(theme.size.icon, theme.text.label.height)),
+					gap = theme.space.sm, layoutOrder = 1,
+				})
+				local icon = P.frame(head, { size = UDim2.fromOffset(theme.size.icon, theme.size.icon), layoutOrder = 1 })
+				icons.draw(entry.icon, icon, theme.size.icon, theme.color.accentHot)
+				P.text(head, { text = entry.label, role = "label", layoutOrder = 2,
+					size = UDim2.new(0, 0, 0, theme.text.label.height), flex = "Fill", truncate = true })
 				P.text(card.row, { text = entry.detail, role = "caption", color = theme.color.textTertiary,
-					layoutOrder = 3, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true })
+					layoutOrder = 2, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true })
 				cards[index] = { instance = card.instance, detail = entry.detail }
 			end
 			local function fitStarters()
 				local gap = theme.space.sm
 				local columns = grid.AbsoluteSize.X >= math.max(minStarterWidth * 2 + gap, theme.size.promptColumns) and 2 or 1
 				local width = math.max(1, (grid.AbsoluteSize.X - gap * (columns - 1)) / columns - theme.space.md * 2)
-				local detailHeight = theme.text.caption.height * 2
+				local detailHeight = theme.text.caption.height
 				for _, card in ipairs(cards) do
 					detailHeight = math.max(detailHeight, P.measureText(card.detail, { role = "caption", width = width }).Y)
 				end
 				local height = math.max(theme.size.promptCard,
-					theme.size.icon + theme.text.label.height + detailHeight + theme.space.md * 2 + theme.space.xs * 2)
+					math.max(theme.size.icon, theme.text.label.height) + detailHeight + theme.space.md * 2 + theme.space.xs)
 				for index, card in ipairs(cards) do
 					local col = (index - 1) % columns
 					local row = math.floor((index - 1) / columns)

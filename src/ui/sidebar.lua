@@ -214,9 +214,11 @@ return function(env)
 		})
 		local foldersButton = P.rowButton(actions, { name = "ConversationFolders", padding = { x = ROW_INSET },
 			layoutOrder = 4, onClick = function() host.manageFolders() end })
-		foldersButton.label("Conversation folders", 1, theme.color.textSecondary)
+		foldersButton.icon("folder", 1, theme.color.textSecondary, ROW_ICON)
+		foldersButton.label("Conversation folders", 2, theme.color.textSecondary)
 
 		function handle.renderMore()
+			moreList.Visible = expanded
 			for _, child in ipairs(moreList:GetChildren()) do
 				if child:IsA("GuiObject") then child:Destroy() end
 			end
@@ -387,7 +389,7 @@ return function(env)
 					-- The same inset as the rows it heads. It was xxs against their xs, so
 					-- a group's name sat two pixels left of every conversation under it.
 					padding = { x = ROW_INSET },
-					gap = theme.space.xxs,
+					gap = theme.space.xs,
 					layoutOrder = 1,
 					onClick = function()
 						setCollapsed(group, not isCollapsed(group))

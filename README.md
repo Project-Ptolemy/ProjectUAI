@@ -4,13 +4,11 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.5.0 — October 2, 2026.** Mobile shares the desktop interface, with
-layout dimensions, spacing and radii reduced to 55% before density settings.
-Text has a 10px minimum before text scaling, and standard icons start at 12px.
-Auto, Sheet, Panel and Window change placement while keeping live fields and
-drafts. Forms and Code panels adapt through reflow and scrolling.
-Ten new script project tools add scaffolding, source maps, coordinated file edits,
-syntax/dependency diagnostics, managed tests and standalone Lua bundles.
+**Version 2.5.5 — October 3, 2026.** Modals, Settings and Quick Chat use short
+fades at their final size, with clean close/reopen behavior and reduced-motion
+support. Forms, welcome cards, release notes, chat and the sidebar have tighter,
+more consistent spacing. Mobile keeps the shared desktop interface, compact
+dimensions and live drafts through layout changes.
 UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 

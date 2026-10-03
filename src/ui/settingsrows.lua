@@ -31,7 +31,7 @@ return function(env)
 			name = props.name and (props.name .. "Group") or "Group",
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
-			gap = theme.space.sm,
+			gap = theme.space.xs,
 			layoutOrder = props.layoutOrder,
 		})
 		P.sectionHeader(group, {
@@ -43,7 +43,7 @@ return function(env)
 			name = props.name,
 			layoutOrder = 2,
 			gap = theme.space.md,
-			padding = theme.space.lg,
+			padding = theme.space.md,
 		})
 	end
 
@@ -290,9 +290,10 @@ return function(env)
 		local function reflow()
 			local width = row.AbsoluteSize.X
 			if width <= 0 then return end
-			local stacked = width < controlWidth + theme.size.modalMin
+			local stacked = width < controlWidth + theme.size.menuMin + theme.space.md
 			layout.FillDirection = stacked and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
 			layout.VerticalAlignment = stacked and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Center
+			layout.Padding = UDim.new(0, stacked and theme.space.xs or theme.space.md)
 			left.Size = UDim2.new(1, stacked and 0 or -(controlWidth + theme.space.md), 0, 0)
 			right.Size = UDim2.new(stacked and 1 or 0, stacked and 0 or math.min(controlWidth, width), 0, 0)
 		end
@@ -392,19 +393,31 @@ return function(env)
 		return control
 	end
 
-	-- A field bound to a config path, written on blur rather than per keystroke: a
-	-- port typed one digit at a time would otherwise restart the bridge four times.
-	function R.field(parent, props)
+	-- Keep a field's label and help together inside the surrounding row rhythm.
+	local function fieldGroup(parent, props)
+		local group = P.column(parent, {
+			name = props.name and (props.name .. "Group") or "FieldGroup",
+			size = UDim2.new(1, 0, 0, 0),
+			auto = "Y",
+			gap = theme.space.xs,
+			layoutOrder = props.layoutOrder,
+		})
 		if props.label then
-			P.text(parent, { text = props.label, role = "small", layoutOrder = props.layoutOrder })
+			P.text(group, { text = props.label, role = "small", wrap = true, auto = "Y", layoutOrder = 1 })
 		end
+		return group
+	end
+
+	-- Write on blur: typing a port should not restart the bridge per keystroke.
+	function R.field(parent, props)
+		local group = fieldGroup(parent, props)
 		local field
-		field = P.field(parent, {
+		field = P.field(group, {
 			name = props.name,
 			text = tostring(props.value ~= nil and props.value or config.get(props.path, "")),
 			placeholder = props.placeholder,
 			size = props.size,
-			layoutOrder = props.layoutOrder and (props.layoutOrder + 1) or nil,
+			layoutOrder = 2,
 			onBlur = function(text)
 				local clean = util.trim(text)
 				if props.transform then clean = props.transform(clean) end
@@ -419,8 +432,7 @@ return function(env)
 			field.instance:SetAttribute("UAIConfigPath", props.path)
 			field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
 		end
-		if props.hint then R.paragraph(parent, props.hint,
-			{ layoutOrder = props.layoutOrder and (props.layoutOrder + 2) or nil }) end
+		if props.hint then R.paragraph(group, props.hint, { layoutOrder = 3 }) end
 		return field
 	end
 
@@ -429,17 +441,15 @@ return function(env)
 	-- top-aligned, Enter inserts a newline -- and every caller so far wants exactly
 	-- one of the two. The custom instructions box is the first textarea in the client.
 	function R.textarea(parent, props)
-		if props.label then
-			P.text(parent, { text = props.label, role = "small", layoutOrder = props.layoutOrder })
-		end
+		local group = fieldGroup(parent, props)
 		local field
-		field = P.field(parent, {
+		field = P.field(group, {
 			name = props.name,
 			multiline = true,
 			height = props.height or theme.size.controlLarge * 2,
 			text = tostring(props.value ~= nil and props.value or config.get(props.path, "")),
 			placeholder = props.placeholder,
-			layoutOrder = props.layoutOrder and (props.layoutOrder + 1) or nil,
+			layoutOrder = 2,
 			-- Written on blur rather than per keystroke, same as R.field: the value is
 			-- read by the next request, not this frame.
 			onBlur = function(text)
@@ -454,8 +464,7 @@ return function(env)
 			field.instance:SetAttribute("UAIConfigPath", props.path)
 			field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
 		end
-		if props.hint then R.paragraph(parent, props.hint,
-			{ layoutOrder = props.layoutOrder and (props.layoutOrder + 2) or nil }) end
+		if props.hint then R.paragraph(group, props.hint, { layoutOrder = 3 }) end
 		return field
 	end
 

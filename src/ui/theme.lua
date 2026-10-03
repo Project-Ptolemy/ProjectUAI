@@ -412,6 +412,10 @@ return function(env)
 		instant = TweenInfo.new(0.01, Enum.EasingStyle.Linear),
 		enter = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 		exit = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		-- Bounded overlays fade as a unit at their final geometry. A short,
+		-- non-overshooting curve keeps repeated prompts calm and responsive.
+		modalEnter = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		modalExit = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 		hover = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		press = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		slide = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),

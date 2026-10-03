@@ -233,8 +233,19 @@ setting.Size = dt.UDim2.fromOffset(180, 40)
 setting:GetPropertyChangedSignal("AbsoluteSize"):Fire()
 check("narrow setting stacks and clamps its control", slot.AbsoluteSize.X == 180
 	and setting:FindFirstChildOfClass("UIListLayout").FillDirection == Enum.FillDirection.Vertical)
-R.field(parent, { name = "OrderedField", label = "Field", hint = "Ordered hint", value = "", layoutOrder = 4 })
-check("field hint follows its input", labels(parent, "Ordered hint")[1].LayoutOrder == 6)
+setting.Size = dt.UDim2.fromOffset(440, 40)
+setting:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+check("a medium setting keeps its label and preferred control on one line", slot.AbsoluteSize.X == 240
+	and setting:FindFirstChildOfClass("UIListLayout").FillDirection == Enum.FillDirection.Horizontal)
+local orderedField = R.field(parent, { name = "OrderedField", label = "Field", hint = "Ordered hint", value = "", layoutOrder = 4 })
+local fieldHint = labels(parent, "Ordered hint")[1]
+check("field label and help stay with their input in the section order", fieldHint.Parent == orderedField.shell.Parent
+	and labels(parent, "Field")[1].Parent == fieldHint.Parent and fieldHint.Parent.LayoutOrder == 4
+	and labels(parent, "Field")[1].LayoutOrder < orderedField.shell.LayoutOrder
+	and fieldHint.LayoutOrder > orderedField.shell.LayoutOrder)
+local textarea = R.textarea(parent, { name = "Instructions", label = "Instructions", hint = "Multiline help", path = "instructions", layoutOrder = 5 })
+check("multiline settings share the field grouping and config identity", labels(parent, "Multiline help")[1].Parent == textarea.shell.Parent
+	and textarea.shell.Parent.LayoutOrder == 5 and textarea.instance:GetAttribute("UAIConfigPath") == "instructions")
 local number = R.number(parent, "Long numeric setting label", nil, "number", 0, 10, 1)
 check("numeric setting label can grow vertically", labels(number, "Long numeric setting label")[1].AutomaticSize == Enum.AutomaticSize.Y)
 local actionsRow = R.actions(parent, { { text = string.rep("Remove long provider ", 10) } })
@@ -280,7 +291,9 @@ local paneBuilds = 0
 local entries = { { id = "one", label = "One", icon = "gear" }, { id = "two", label = "Second category", icon = "gear" } }
 cache["ui/settingspanes"] = { PANES = entries, pane = function(id) for _, entry in ipairs(entries) do if entry.id == id then return entry end end end,
 	sections = function() return { { title = "Test", panes = entries } } end,
+	observeChanges = function(callback) return config.changed:connect(callback) end,
 	render = function(_, container) paneBuilds = paneBuilds + 1; P.field(container, { name = "LiveInput" }) end }
+local configObservers = config.changed:count()
 local dialog = env.require("ui/panels/settingsdialog").open("one")
 local nav = find(dialog.card, "Categories")
 local input = find(dialog.card, "LiveInput")
@@ -294,6 +307,7 @@ dialog.card.AbsoluteSize = dt.Vector2.new(360, 600)
 check("settings resize retains active input", nav.ScrollingDirection == Enum.ScrollingDirection.X
 	and paneBuilds == 1 and find(dialog.card, "LiveInput") == input)
 dialog.close()
+check("settings dialog releases pane observers", config.changed:count() == configObservers)
 
 parent = mount(240)
 local sidebar = env.require("ui/sidebar").new(parent, { panel = "chat", canBack = function() return false end,

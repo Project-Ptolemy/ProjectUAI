@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.5.5 — October 3, 2026
+
+Tighter client spacing and calmer modal transitions.
+
+- Open modals, Settings and Quick Chat with a short fade at their final size.
+  Remove entrance scaling that repeatedly reflows text and controls. Closing or
+  reopening during a transition settles cleanly, and reduced motion is immediate.
+- Reduce modal header padding and remove unused body space from confirmations
+  that contain only a description. Keep actions and fields reachable above the
+  keyboard.
+- Group settings labels, inputs and help text together, use consistent section
+  spacing, and keep compact rows side by side when their contents fit.
+- Tighten provider form notes, welcome cards and release-note groups; hide empty
+  provider hints. Keep starter actions readable as the available width changes.
+- Remove doubled gaps around fenced code blocks and the empty sidebar space
+  below collapsed navigation. Align conversation headings and folder actions
+  with the other sidebar rows.
+- UI LIB remains v1.2.1; the embedding SDK remains v1.0.0.
+
 ## 2.5.0 — October 2, 2026
 
 The desktop interface on mobile, clearer small text, working layout choices, and
