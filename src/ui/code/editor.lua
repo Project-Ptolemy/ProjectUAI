@@ -58,10 +58,15 @@ return function(env)
 			local line = cache.lines[index]
 			return metrics.at(measurements[line], line, offset - cache.starts[index] + 1)
 		end
-		local function drawCaret()
+		local function blinkCaret()
 			local offset = box.CursorPosition
-			caret.Visible = focused and handle.visible and document ~= nil and offset > 0 and (clock.ms() - caretMovedAt) % 1000 < 550
-			if caret.Visible and cache then
+			local visible = focused and handle.visible and document ~= nil and offset > 0 and (clock.ms() - caretMovedAt) % 1000 < 550
+			if caret.Visible ~= visible then caret.Visible = visible end
+		end
+		local function drawCaret()
+			blinkCaret()
+			local offset = box.CursorPosition
+			if focused and handle.visible and document and offset > 0 and cache then
 				local index = lineAt(offset)
 				caret.Position = UDim2.fromOffset(gutterWidth + theme.space.sm + advance(index, offset), theme.space.sm + (index - 1) * lineHeight)
 				caret.Size = UDim2.fromOffset(2, math.max(role.size, lineHeight))
@@ -237,7 +242,7 @@ return function(env)
 		handle.revealCursor = revealCursor
 		box:GetPropertyChangedSignal("CursorPosition"):Connect(function() caretMovedAt = clock.ms(); revealCursor(); matchCount(); draw(); saveView(); if options.onStatus then options.onStatus(handle.syntax) end end)
 		box:GetPropertyChangedSignal("SelectionStart"):Connect(function() caretMovedAt = clock.ms(); draw(); saveView() end)
-		local blink = env.run.Heartbeat:Connect(function() if handle.alive and handle.visible and focused then drawCaret() end end)
+		local blink = env.run.Heartbeat:Connect(function() if handle.alive and handle.visible and focused then blinkCaret() end end)
 		scroll.instance:GetPropertyChangedSignal("CanvasPosition"):Connect(function() draw(); saveView() end)
 		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(queue)
 		function handle.select(doc, requestedView)

@@ -9,7 +9,7 @@ return function(env)
 	Signal.__index = Signal
 
 	function M.new(name)
-		return setmetatable({ name = name or "signal", handlers = {}, firing = false }, Signal)
+		return setmetatable({ name = name or "signal", handlers = {}, firing = false, dirty = false }, Signal)
 	end
 
 	function Signal:connect(fn)
@@ -17,8 +17,9 @@ return function(env)
 		local entry = { fn = fn, alive = true }
 		self.handlers[#self.handlers + 1] = entry
 		return function()
+			if not entry.alive then return end
 			entry.alive = false
-			entry.fn = nil; self:compact()
+			entry.fn = nil; self.dirty = true; self:compact()
 		end
 	end
 
@@ -31,17 +32,17 @@ return function(env)
 		return disconnect
 	end
 
-	-- Handlers are copied before the walk so a handler that connects or
-	-- disconnects during a fire cannot reshape the list underneath it. Errors are
-	-- contained: one broken subscriber must not stop the rest of the interface
-	-- from seeing an event.
+	-- Capture the array and its boundary: connections append, disconnections only
+	-- mark entries while a dispatch is active, and clear replaces the array. This
+	-- preserves snapshot ordering without allocating a list for every event.
+	-- Errors in one subscriber must not stop the rest from seeing the event.
 	function Signal:fire(...)
 		self.depth = (self.depth or 0) + 1
 		if self.depth > 32 then self.depth = self.depth - 1; self.dropped = (self.dropped or 0) + 1; return end
 		self.firing = true
-		local snapshot = {}
-		for index, entry in ipairs(self.handlers) do snapshot[index] = entry end
-		for _, entry in ipairs(snapshot) do
+		local handlers, limit = self.handlers, #self.handlers
+		for index = 1, limit do
+			local entry = handlers[index]
 			if entry.alive then
 				local ok, err = pcall(entry.fn, ...)
 				if not ok and self.onError then pcall(self.onError, err) end
@@ -51,12 +52,13 @@ return function(env)
 	end
 
 	function Signal:compact()
-		if self.firing then return end
-		local kept = {}
-		for _, entry in ipairs(self.handlers) do
-			if entry.alive then kept[#kept + 1] = entry end
+		if self.firing or not self.dirty then return end
+		local handlers, kept = self.handlers, 0
+		for _, entry in ipairs(handlers) do
+			if entry.alive then kept = kept + 1; handlers[kept] = entry end
 		end
-		self.handlers = kept
+		for index = #handlers, kept + 1, -1 do handlers[index] = nil end
+		self.dirty = false
 	end
 
 	function Signal:count()
@@ -70,6 +72,7 @@ return function(env)
 	function Signal:clear()
 		for _, entry in ipairs(self.handlers) do entry.alive, entry.fn = false, nil end
 		self.handlers = {}
+		self.dirty = false
 	end
 
 	return M

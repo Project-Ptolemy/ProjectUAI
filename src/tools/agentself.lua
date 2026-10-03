@@ -13,6 +13,121 @@ return function(env)
 	-- the start of a turn and the user may be mid-game, while a permission prompt
 	-- arrives during work they are already watching.
 	local ASK_TIMEOUT = 600
+	local reportReads = setmetatable({}, { __mode = "k" })
+	local function isLive(record)
+		return record.status == "queued" or record.status == "running"
+	end
+	local function aborted(ctx)
+		return ctx and ctx.aborted and ctx.aborted()
+	end
+	local function backgroundReceipt(record)
+		reportReads[record] = nil
+		return { text = string.format("Subagent %s started in the background (%s). Continue your own independent work. "
+			.. "Use agent_status with id=\"%s\" to check progress and collect its report before your final answer.",
+			record.id, record.status, record.id),
+			data = { id = record.id, status = record.status, background = true, run = record.runs or 0 } }
+	end
+	local function callCounts(record)
+		return math.max(0, (record.calls or 0) - (record.runCallBase or 0)),
+			math.max(0, (record.finishedCalls or 0) - (record.runFinishedBase or 0))
+	end
+	local function progressText(record)
+		local calls, finished = callCounts(record)
+		local lines = {
+			"Status: " .. tostring(record.status) .. (record.stopping and " (stopping)" or ""),
+			"Task: " .. util.ellipsis(record.currentTask or record.task or record.label, 240),
+			string.format("Calls: %d of %d finished", finished, calls),
+			"Current step: " .. util.ellipsis(record.statusText or record.currentTool or "Waiting for a slot", 240),
+		}
+		local shown = 0
+		for _, item in ipairs(record.activity or {}) do
+			if not item.done and shown < 4 then
+				shown = shown + 1
+				lines[#lines + 1] = util.ellipsis(item.name, 100) .. ": " .. util.ellipsis(item.progress or "In progress", 300)
+			end
+		end
+		local preview = record.preview
+		local latest = preview and preview.text ~= "" and preview.text or record.latestText
+		if latest and latest ~= "" then lines[#lines + 1] = "Latest delivered message: " .. util.ellipsis(latest, 1000) end
+		local reasoning = preview and preview.reasoning ~= "" and preview.reasoning or record.latestReasoning
+		if reasoning and reasoning ~= "" then lines[#lines + 1] = "Latest reasoning: " .. util.ellipsis(reasoning, 600) end
+		return table.concat(lines, "\n")
+	end
+	local function statusResult(args, ctx)
+		local parent = ctx and ctx.session
+		if not parent then return H.fail("there is no conversation to inspect subagents for") end
+		local id = args.id and util.trim(args.id)
+		if id == "" then return H.fail("id must name a subagent, or be omitted to list this conversation's subagents") end
+		local function selected()
+			if id then
+				local record = subagent.get(id)
+				if not record or record.parent ~= parent then return nil end
+				return { record }
+			end
+			local records = {}
+			for _, record in ipairs(subagent.list()) do
+				if record.parent == parent then records[#records + 1] = record end
+			end
+			return records
+		end
+		local records = selected()
+		if not records then return H.fail("no subagent with that id belongs to this conversation") end
+		local seconds = tonumber(args.wait_seconds) or 0
+		if seconds ~= seconds or seconds == math.huge or seconds == -math.huge then return H.fail("wait_seconds must be between 0 and 30") end
+		seconds = seconds > 0 and math.max(1, math.min(30, seconds)) or 0
+		local waiting = {}
+		for _, record in ipairs(records) do
+			if isLive(record) then waiting[#waiting + 1] = record
+			elseif record.collectedRun ~= (record.runs or 0) then seconds = 0 end
+		end
+		local waited = 0
+		while #waiting > 0 and waited < seconds do
+			if aborted(ctx) then return H.fail("subagent status wait was aborted") end
+			local finished = false
+			for _, record in ipairs(waiting) do
+				if subagent.get(record.id) ~= record or record.parent ~= parent or not isLive(record) then finished = true; break end
+			end
+			if finished then break end
+			local step = math.min(0.25, seconds - waited)
+			waited = waited + (clock.wait(step) or step)
+		end
+		if aborted(ctx) then return H.fail("subagent status wait was aborted") end
+		records = selected()
+		if not records then return H.fail("the subagent is no longer available to this conversation") end
+		if id then
+			local record = records[1]
+			local live, run = isLive(record), record.runs or 0
+			local body = live and progressText(record) or tostring(record.report or "No report was retained.")
+			local result = H.readSlice("Subagent " .. record.id .. " " .. record.status .. (live and " activity" or " report"), body, args, 3500)
+			if live then reportReads[record] = nil end
+			if result.data then
+				local data = result.data
+				data.id, data.status, data.run, data.complete = record.id, record.status, run, not live
+				data.calls, data.finishedCalls = callCounts(record)
+				data.resumable, data.waited = not live and record.session ~= nil, waited
+				if not live then
+					local read = reportReads[record]
+					local epoch = record.runEpoch
+					if not read or read.run ~= run or read.epoch ~= epoch then read = { run = run, epoch = epoch, through = 1 }; reportReads[record] = read end
+					if data.offset <= read.through then read.through = math.max(read.through, data.nextOffset or (#body + 1)) end
+					if data.eof and read.through >= #body + 1 then data.collected = subagent.markCollected(record, parent, run, epoch) end
+				end
+			end
+			return result
+		end
+		local lines, live = {}, 0
+		for _, record in ipairs(records) do
+			local calls, finished = callCounts(record)
+			if isLive(record) then live = live + 1 end
+			lines[#lines + 1] = string.format("[%s] %s: %s; %d/%d calls finished%s", record.id, record.status,
+				util.ellipsis(record.label or record.currentTask or record.task, 80), finished, calls,
+				isLive(record) and ("; " .. util.ellipsis(record.statusText or record.currentTool or "Waiting", 120))
+					or "; read its report with agent_status id=\"" .. record.id .. "\"")
+		end
+		local result = H.readSlice("Subagents owned by this conversation", #lines > 0 and table.concat(lines, "\n") or "No subagents belong to this conversation.", args, 3500)
+		if result.data then result.data.total, result.data.live, result.data.waited = #records, live, waited end
+		return result
+	end
 
 	-- A previous conversation rendered for review by the agent. Built from the
 	-- durable transcript (the full persisted history), falling back to the model
@@ -498,11 +613,8 @@ return function(env)
 		{
 			name = "dispatch_agent",
 			risk = "write",
-			description = "Hand a self-contained investigation to a subagent with its own context, and get back a written report. Use for wide searches, repetitive inspection, or anything that would otherwise fill this conversation with tool output. Call it several times in one step to run that many subagents at once: they work in parallel and you wait once, not once each. A subagent cannot ask questions, so state the task completely. The call blocks until its report is ready. The report carries an id you can send follow-ups to with agent_followup, so ask for the first slice of a big job rather than describing all of it.",
-			-- Not the generic tool timeout. A subagent runs for minutes by design, and a
-			-- caller that gives up first throws away work the user has paid for: the
-			-- child cannot be killed, so it finishes into a void.
-			timeout = function() return subagent.toolTimeout() end,
+			description = "Start a self-contained task in a background subagent and immediately receive its id. Keep doing your own independent work while it runs; check agent_status periodically and collect its report before your final answer. Give each worker a distinct scope and avoid concurrent edits to the same file or runtime state. A subagent cannot ask questions, so include the full task and completion criteria. Set background=false only when this tool call must wait for the report.",
+			timeout = function(args) return args and args.background == false and subagent.toolTimeout() or 10 end,
 			parameters = {
 				type = "object",
 				properties = {
@@ -516,11 +628,14 @@ return function(env)
 						description = "Which tools it gets. 'read' cannot change anything; 'full' can. Unset uses the configured default, which is 'full'.",
 					},
 					turns = { type = "integer", description = "Step limit, 1-30. Default 14.", minimum = 1, maximum = 30 },
+					background = { type = "boolean", description = "Defaults to true: return an id immediately so you can continue working. False waits for the report." },
 				},
 				required = { "task" },
 			},
 			run = function(args, ctx)
-				local result, err = subagent.dispatch({
+				if aborted(ctx) then return H.fail("the turn was stopped before dispatch") end
+				local launch = args.background == false and subagent.dispatch or subagent.start
+				local result, err = launch({
 					parent = ctx and ctx.session or nil,
 					-- Which call this is, so the transcript can nest the subagent's live
 					-- feed under the row the user is already looking at.
@@ -534,6 +649,7 @@ return function(env)
 					turns = args.turns,
 				})
 				if not result then return H.fail(err) end
+				if args.background ~= false then return backgroundReceipt(result) end
 				-- The id, in both branches. Without it the report is a dead end: a child
 				-- that stopped at its step limit says so in its own words and the parent
 				-- had no way to say "carry on" -- the only move left was to describe the
@@ -553,8 +669,8 @@ return function(env)
 		{
 			name = "agent_followup",
 			risk = "write",
-			description = "Send another message to a subagent that has already reported, keeping everything it found. Use this instead of dispatching a fresh one whenever you want more from the same investigation: 'you stopped at the step limit, carry on', 'now check X as well', 'quote that line verbatim'. It is far cheaper than a new dispatch, which would have to rediscover what this one already knows. Takes the id from the report. Blocks until it answers again.",
-			timeout = function() return subagent.toolTimeout() end,
+			description = "Continue a completed subagent with its existing context. Returns its id immediately by default; do independent work while it runs, check agent_status periodically and collect the new report. Use the id from dispatch_agent or agent_status. Set background=false only when this call must wait for the answer.",
+			timeout = function(args) return args and args.background == false and subagent.toolTimeout() or 10 end,
 			parameters = {
 				type = "object",
 				properties = {
@@ -572,11 +688,14 @@ return function(env)
 						minimum = 1,
 						maximum = 30,
 					},
+					background = { type = "boolean", description = "Defaults to true: return immediately while the follow-up runs. False waits for the answer." },
 				},
 				required = { "agent", "message" },
 			},
 			run = function(args, ctx)
-				local result, err = subagent.followUp({
+				if aborted(ctx) then return H.fail("the turn was stopped before the follow-up") end
+				local launch = args.background == false and subagent.followUp or subagent.startFollowUp
+				local result, err = launch({
 					parent = ctx and ctx.session or nil,
 					callId = ctx and ctx.callId or nil,
 					id = args.agent,
@@ -584,6 +703,7 @@ return function(env)
 					turns = args.turns,
 				})
 				if not result then return H.fail(err) end
+				if args.background ~= false then return backgroundReceipt(result) end
 				if result.aborted then
 					return string.format("Subagent %s stopped early (%s). What it had:\n\n%s",
 						result.id, util.formatDuration(result.ms), result.text)
@@ -593,6 +713,23 @@ return function(env)
 					result.resumable and " Still open for another follow-up." or "",
 					result.text)
 			end,
+		},
+		{
+			name = "agent_status",
+			risk = "read",
+			description = "Check subagents owned by this conversation. Omit id for compact statuses; give an exact id for current progress or its completed report. Reports and lists use bounded UTF-8 byte pages: follow nextOffset with offset until eof. Check after 2-3 work batches or about 15-30 seconds, while continuing independent work. When no independent work remains, wait_seconds=1-30 waits for a selected child to finish or the deadline; 0 returns immediately. Never tight-poll. Waiting does not stop the children.",
+			timeout = 35,
+			parameters = {
+				type = "object",
+				properties = {
+					id = { type = "string", description = "Exact subagent id; omit to list this conversation's children without their reports." },
+					wait_seconds = { type = "integer", minimum = 0, maximum = 30, description = "0 returns now; 1-30 waits up to that many seconds for one selected live child to finish." },
+					offset = { type = "integer", minimum = 1, description = "UTF-8 byte continuation offset from nextOffset; begin at 1." },
+					limit = { type = "integer", minimum = 200, maximum = 6000, description = "Maximum page bytes, additionally bounded by the configured tool result budget." },
+				},
+				required = {},
+			},
+			run = statusResult,
 		},
 		{
 			name = "wait",

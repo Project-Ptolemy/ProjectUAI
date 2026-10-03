@@ -607,10 +607,40 @@ the child `session` that `stop` sets `abortFlag` on. `status` is one of `queued`
 `running`, `done`, `stopped`, `failed`. A stop is noticed between steps, not on the
 instant -- Luau cannot kill a thread.
 
-A dispatch is a conversation, not a single question. `dispatch_agent` creates the
-child and returns its id in the report; `agent_followup` runs the same session again
-against the context it already has, which is what `followUp(id, task)` does and what
-`runs` counts. `parent` and `callId` live on the record rather than in a closure
+The live monitor reads `currentTask`, `provider`, `model`, `request`, `preview`,
+`latestText`, `latestReasoning` and `activity` from that same record. Text and
+reasoning previews retain UTF-8-safe latest excerpts within 4 KiB each; truncation
+is disclosed. Activity retains at most 24 call entries, preferring active calls,
+with progress and result summaries bounded to 1 KiB each. Progress matches its
+call ID; unscoped legacy progress applies only with one outstanding call.
+Completion clears the current tool, and follow-ups reset the current activity.
+The register and open Details monitors preserve their rows and coalesce changes
+to at most ten refreshes per second; hidden registers suspend drawing. Closing
+the view releases its subscriptions. Genuine transport previews appear when
+delivered, while buffered HTTP cannot expose text before the response arrives.
+
+A dispatch is a conversation, not a single question. The `dispatch_agent` and
+`agent_followup` tools default to background work: register or reserve the child
+synchronously, return its ID, then run it in an owned worker. `background=false`
+retains blocking report delivery. Runtime `dispatch` and `followUp` stay blocking;
+`start` and `startFollowUp` return the registered record immediately. Follow-up
+reuses the child's existing context, and `runs` counts these turns.
+
+The parent continues independent work and calls `agent_status` every two or three
+work batches or roughly 15–30 seconds. Status reads belong to its own children,
+support optional waits of at most 30 seconds and UTF-8 report pagination, and never
+put child context into the parent. Reading every report page contiguously through
+the final page acknowledges that run, including after child context expires.
+Live or uncollected background work in the current parent epoch prevents a prose
+reply from being classified as final: an internal coordination reminder asks the
+parent to continue work or collect the report. Ordinary step and time budgets
+still apply. Positive bounded status waits may repeat; tight zero-wait polling
+still meets the repeat breaker. Stop and all terminal parent exits stop unfinished
+descendants. Preparation captures the parent epoch before scheduling, so a queued
+worker cannot revive after Stop or adopt a later turn. Admissions and uncollected
+reports are bounded; excess starts fail before creating a worker.
+
+`parent` and `callId` live on the record rather than in a closure
 because the turn asking a follow-up is a different tool call, possibly in a different
 conversation, and the live card has to appear under the row the user is looking at
 now. Only the newest `RESUMABLE` (6) finished records keep their `session`; past that
@@ -618,7 +648,8 @@ the record keeps its report and the context behind it is released, so `followUp`
 refuses with a reason rather than resuming something that is no longer there.
 
 `agent.subagentUnlimited` lifts a child's step limit and wall-clock budget and makes
-the dispatching tool call wait as long as the child takes. It is separate from
+an explicitly blocking dispatch wait as long as the child takes. Background work
+still belongs to its parent turn. The setting is separate from
 `agent.unlimitedTurns`, which the loop applies only to a session with no step budget
 of its own: the dispatcher passes its decision down as `session.unlimited`, so a
 delegated child is lifted only when that has been asked for in those words. What

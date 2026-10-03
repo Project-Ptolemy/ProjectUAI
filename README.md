@@ -4,11 +4,12 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.5.5 — October 3, 2026.** Modals, Settings and Quick Chat use short
-fades at their final size, with clean close/reopen behavior and reduced-motion
-support. Forms, welcome cards, release notes, chat and the sidebar have tighter,
-more consistent spacing. Mobile keeps the shared desktop interface, compact
-dimensions and live drafts through layout changes.
+**Version 2.5.6 — October 3, 2026.** The main agent can keep working while
+subagents run and check their progress periodically. Subagent details show current
+work, tool progress, delivered messages and reports as they arrive. Modal
+fitting avoids recursive deferred layout work, event delivery allocates less,
+and idle code editors blink their caret without redrawing syntax. The sidebar
+profile keeps the name and provider together.
 UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 

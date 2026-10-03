@@ -549,7 +549,7 @@ return function(env)
 
 		-- A distinct identity control, with room for a headshot and two readable lines.
 		local identity = profileUI.identity()
-		local identityHeight = theme.text.heading.height + theme.text.caption.height + theme.space.hair
+		local identityHeight = theme.text.heading.height + theme.text.caption.height
 		local profile, profileMenu, chevron
 		profile = P.rowButton(sidebar, {
 			name = "ProfileBar",
@@ -558,7 +558,8 @@ return function(env)
 			-- within it at control + sm*2; the profile bar is a bordered box that fills
 			-- its whole height. Sizing to the surface is what makes the two read as the
 			-- same height where they dock side by side at the bottom of the window.
-			height = math.max(theme.size.control, responsive.minTarget()) + theme.space.sm * 2,
+			height = math.max(math.max(theme.size.control, responsive.minTarget()) + theme.space.sm * 2,
+				identityHeight + theme.space.hair * 2),
 			bg = theme.color.surface,
 			radius = theme.radius.lg,
 			stroke = true,
@@ -583,7 +584,8 @@ return function(env)
 			name = "ProfileIdentity",
 			size = UDim2.new(0, 0, 0, identityHeight),
 			flex = "Fill",
-			gap = theme.space.hair,
+			gap = theme.space.none,
+			alignY = "Center",
 			layoutOrder = 2,
 		})
 		P.text(profileText, {
@@ -591,6 +593,7 @@ return function(env)
 			text = identity.name,
 			role = "heading",
 			size = UDim2.new(1, 0, 0, theme.text.heading.height),
+			alignY = "Bottom",
 			color = theme.color.text,
 			truncate = true,
 			layoutOrder = 1,
@@ -600,6 +603,7 @@ return function(env)
 			text = profileUI.providerLabel(),
 			role = "caption",
 			size = UDim2.new(1, 0, 0, theme.text.caption.height),
+			alignY = "Top",
 			color = theme.color.textTertiary,
 			truncate = true,
 			layoutOrder = 2,
@@ -679,15 +683,19 @@ return function(env)
 			-- The place decides a group's label, which the signature covers.
 			handle.syncHistory()
 		end)
-		-- The count on the Subagents row. Debounced, because the register changes on
-		-- every tool call a child makes and this rebuilds a list of rows -- and
-		-- debounced rather than throttled so the last change in a burst, which is the
-		-- one that drops the count back to nothing, is not the one that gets dropped.
+		-- Only count changes affect navigation. Streaming text and tool progress must
+		-- not schedule a new delayed task or postpone the count indefinitely.
+		local agentCount = #subagent.running()
 		local refreshAgents, cancelAgents = clock.debounce(function()
 			if not sidebar.Parent then return end
 			handle.syncMore()
 		end, 0.3)
-		local unsubscribeAgents = subagent.changed:connect(refreshAgents)
+		local unsubscribeAgents = subagent.changed:connect(function()
+			local count = #subagent.running()
+			if count == agentCount then return end
+			agentCount = count
+			refreshAgents()
+		end)
 
 		sidebar.Destroying:Connect(function()
 			pcall(unsubscribeSessions)

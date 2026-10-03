@@ -1150,7 +1150,7 @@ return function(env)
 			path = "agent.requestUnlimited",
 		})
 		R.number(agent, "Subagent budget",
-			"Seconds one subagent may work for before it wraps up. The call that dispatched it waits this long plus a minute, so a finished report is never thrown away. Ignored while the switch below is on.",
+			"Seconds one subagent may work before it wraps up. The main agent can continue its own work and check progress while the child runs. Ignored while the switch below is on.",
 			"agent.subagentBudget", 30, 900, 30)
 		-- The switch the step-limit message asks for. A subagent that stops mid-job and
 		-- says "I reached this session's step limit" has spent the whole dispatch and
@@ -1159,7 +1159,7 @@ return function(env)
 		-- user is watching.
 		R.toggle(agent, {
 			label = "Unlimited subagents",
-			hint = "Let a dispatched subagent run with no step limit and no clock, and make the call that dispatched it wait as long as the child takes. The repeat breaker, each tool's own timeout, the two ceilings below and Stop still apply -- and the Subagents panel can stop one on its own without ending the turn.",
+			hint = "Let a dispatched subagent run with no step limit or clock while its parent continues working. The repeat breaker, each tool's timeout, the ceilings below and Stop still apply. The Subagents panel can stop one child, and ending the parent turn stops unfinished children.",
 			path = "agent.subagentUnlimited",
 		})
 		R.number(agent, "Parallel subagents",

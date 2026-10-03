@@ -42,6 +42,36 @@ return function(env)
 		return table.concat(parts, "|")
 	end
 
+	local function waitingForSubagents(calls)
+		if #calls == 0 then return false end
+		for _, call in ipairs(calls) do
+			local fn = call["function"] or {}
+			if fn.name ~= "agent_status" then return false end
+			local args = type(fn.arguments) == "table" and fn.arguments or util.decode(fn.arguments or "")
+			local seconds = type(args) == "table" and args.wait_seconds
+			if type(seconds) ~= "number" or seconds < 1 or seconds > 30 or seconds ~= math.floor(seconds) then return false end
+		end
+		return true
+	end
+
+	local function delegationReminder(session)
+		local children = env.loadedModules and env.loadedModules["agent/subagent"]
+		if not children then return nil end
+		local pending = children.pending(session)
+		if #pending == 0 then return nil end
+		local lines = { "[UAI delegation status] Internal update: " .. #pending .. " subagent task(s) still require coordination." }
+		for index = 1, math.min(24, #pending) do
+			local record = pending[index]
+			lines[#lines + 1] = tostring(record.id) .. ": " .. tostring(record.status)
+				.. ((record.status == "running" or record.status == "queued") and "" or " (report not collected)")
+		end
+		if #pending > 24 then lines[#lines + 1] = tostring(#pending - 24) .. " more; list them with agent_status." end
+		lines[#lines + 1] = "Continue your independent work and check subagents periodically with agent_status. "
+			.. "Use a bounded wait of 1-30 seconds only when no independent work remains. Read each finished report by exact ID "
+			.. "through its final page and incorporate it before the final answer. This is an internal coordination update, not a new user request."
+		return table.concat(lines, "\n")
+	end
+
 	-- One completion, walking the provider chain. Returns result, error, record.
 	--
 	-- A provider that fails is demoted by the registry and the next one is tried,
@@ -303,13 +333,14 @@ return function(env)
 				session.emit("assistant:reasoning", { text = result.reasoning, requestId = result.requestId, streamId = result.streamId, model = result.model })
 			end
 			local displayed = result.content or ""
+			local coordination = #result.toolCalls == 0 and delegationReminder(session) or nil
 			if #result.toolCalls == 0 and result.finish == "length" then
 				displayed = displayed .. "\n\n[The provider reached its output limit before finishing this reply.]"
 			elseif #result.toolCalls == 0 and result.finish == "content_filter" then
 				displayed = displayed .. "\n\n[The provider filtered part of this reply.]"
 			end
 			if util.trim(displayed) ~= "" then
-				session.emit("assistant:text", { text = displayed, final = #result.toolCalls == 0, requestId = result.requestId, streamId = result.streamId, model = result.model })
+				session.emit("assistant:text", { text = displayed, final = #result.toolCalls == 0 and coordination == nil, requestId = result.requestId, streamId = result.streamId, model = result.model })
 			end
 			session.emit("assistant:complete", { streamId = result.streamId })
 
@@ -321,78 +352,87 @@ return function(env)
 			ctx.pushAssistant(result)
 
 			if #result.toolCalls == 0 then
-				finalText = displayed
-				break
-			end
-
-			-- Identical batches mean the model is stuck. Rather than let it burn the
-			-- turn budget, the results are replaced with a refusal that names the
-			-- problem, which is enough for most models to change tack.
-			local signature = callSignature(result.toolCalls)
-			if signature == lastSignature then
-				streak = streak + 1
-			else
-				lastSignature, streak = signature, 1
-			end
-
-			if streak >= repeatLimit then
-				for _, call in ipairs(result.toolCalls) do
-					local name = (call["function"] or {}).name or "tool"
-					ctx.pushToolResult(call.id, name,
-						"This exact call has already been made " .. tostring(streak) ..
-						" times with the same arguments. It will not be run again. Change the approach, or answer with what you already know.")
-				end
-				session.emit("status", { text = "Breaking a repeat loop" })
-				log.warn("loop", "repeat limit hit on " .. util.ellipsis(signature, 120))
-			else
-				for _, call in ipairs(result.toolCalls) do
-					local fn = call["function"] or {}
-					local tool = registry.get(fn.name)
-					session.emit("tool:call", {
-						id = call.id,
-						name = fn.name,
-						group = tool and tool.group or nil,
-						risk = tool and tool.risk or "write",
-						arguments = fn.arguments,
-					})
-				end
-
-				session.emit("status", { text = result.finish == "length" and "Requesting smaller tool calls" or #result.toolCalls == 1
-					and ("Running " .. ((result.toolCalls[1]["function"] or {}).name or "tool"))
-					or ("Running " .. util.pluralise(#result.toolCalls, "tool")) })
-
-				-- The transcript sees a result as soon as that call finishes. Keep the
-				-- model's results in original call order after the entire batch settles.
-				local results
-				if result.finish == "length" then
-					-- Even a complete first call may depend on a later one that was cut
-					-- off. Return a result for every id so the next request can recover.
-					results = {}
-					for index, call in ipairs(result.toolCalls) do
-						results[index] = {
-							id = call.id, name = (call["function"] or {}).name or "tool",
-							ok = false, error = "truncated arguments", ms = 0,
-							text = "The provider cut off this tool batch at its token limit. No calls in this batch ran. "
-								.. "Send smaller complete calls; split large scripts into sequential file_write/file_append calls or targeted file_edit edits.",
-						}
-						session.emit("tool:error", results[index])
-					end
+				if coordination then
+					-- A continuation message keeps Messages-compatible request order;
+					-- it is not a user transcript event or a permanent system directive.
+					ctx.push({ role = "user", content = coordination, internal = true })
+					session.emit("status", { text = "Coordinating subagents" })
 				else
-					results = registry.runAll(result.toolCalls, session.toolContext(), function(outcome)
-						session.emit(outcome.ok and "tool:result" or "tool:error", outcome)
-					end)
+					finalText = displayed
+					break
+				end
+			else
+				-- Identical batches mean the model is stuck. Rather than let it burn the
+				-- turn budget, the results are replaced with a refusal that names the
+				-- problem, which is enough for most models to change tack.
+				local signature = callSignature(result.toolCalls)
+				if waitingForSubagents(result.toolCalls) then
+					lastSignature, streak = "", 0
+				elseif signature == lastSignature then
+					streak = streak + 1
+				else
+					lastSignature, streak = signature, 1
 				end
 
-				for index, call in ipairs(result.toolCalls) do
-					local outcome = results[index] or {
-						id = call.id,
-						name = (call["function"] or {}).name or "tool",
-						ok = false,
-						text = "The tool produced no result.",
-					}
-					ctx.pushToolResult(call.id, outcome.name, outcome.text)
+				if streak >= repeatLimit then
+					for _, call in ipairs(result.toolCalls) do
+						local name = (call["function"] or {}).name or "tool"
+						ctx.pushToolResult(call.id, name,
+							"This exact call has already been made " .. tostring(streak) ..
+							" times with the same arguments. It will not be run again. Change the approach, or answer with what you already know.")
+					end
+					session.emit("status", { text = "Breaking a repeat loop" })
+					log.warn("loop", "repeat limit hit on " .. util.ellipsis(signature, 120))
+				else
+					for _, call in ipairs(result.toolCalls) do
+						local fn = call["function"] or {}
+						local tool = registry.get(fn.name)
+						session.emit("tool:call", {
+							id = call.id,
+							name = fn.name,
+							group = tool and tool.group or nil,
+							risk = tool and tool.risk or "write",
+							arguments = fn.arguments,
+						})
+					end
+
+					session.emit("status", { text = result.finish == "length" and "Requesting smaller tool calls" or #result.toolCalls == 1
+						and ("Running " .. ((result.toolCalls[1]["function"] or {}).name or "tool"))
+						or ("Running " .. util.pluralise(#result.toolCalls, "tool")) })
+
+					-- The transcript sees a result as soon as that call finishes. Keep the
+					-- model's results in original call order after the entire batch settles.
+					local results
+					if result.finish == "length" then
+						-- Even a complete first call may depend on a later one that was cut
+						-- off. Return a result for every id so the next request can recover.
+						results = {}
+						for index, call in ipairs(result.toolCalls) do
+							results[index] = {
+								id = call.id, name = (call["function"] or {}).name or "tool",
+								ok = false, error = "truncated arguments", ms = 0,
+								text = "The provider cut off this tool batch at its token limit. No calls in this batch ran. "
+									.. "Send smaller complete calls; split large scripts into sequential file_write/file_append calls or targeted file_edit edits.",
+							}
+							session.emit("tool:error", results[index])
+						end
+					else
+						results = registry.runAll(result.toolCalls, session.toolContext(), function(outcome)
+							session.emit(outcome.ok and "tool:result" or "tool:error", outcome)
+						end)
+					end
+
+					for index, call in ipairs(result.toolCalls) do
+						local outcome = results[index] or {
+							id = call.id,
+							name = (call["function"] or {}).name or "tool",
+							ok = false,
+							text = "The tool produced no result.",
+						}
+						ctx.pushToolResult(call.id, outcome.name, outcome.text)
+					end
+					if session.aborted() then return stopped(session) end
 				end
-				if session.aborted() then return stopped(session) end
 			end
 		end
 

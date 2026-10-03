@@ -1,6 +1,6 @@
 # Code workspace: native testing guide
 
-Current testing guide for release 2.5.5, October 3, 2026. Use synthetic workspaces
+Current testing guide for release 2.5.6, October 3, 2026. Use synthetic workspaces
 and an isolated fixture place; do not touch a user's live Roblox session or private
 usage/accounting files. Current features and limits are in
 [NATIVE_CLIENT.md](NATIVE_CLIENT.md), with internal contracts in [SPEC.md](../SPEC.md).
@@ -43,6 +43,19 @@ the prior card exits. Confirm that text stays at its final size, focus follows
 the current surface, and reduced motion settles immediately. Check grouped
 labels/help text, long provider notes and collapsed sidebar navigation at both
 densities. Offline lifecycle checks do not verify Roblox fade quality.
+
+For 2.5.6, resize an open modal repeatedly and change wrapped descriptions and
+footer content. Confirm fitting settles without deferred re-entrancy errors,
+including closing during layout. Run parallel subagents and check their Details
+monitor while tools start, report progress and finish out of order. Confirm the
+main agent performs independent work, checks status periodically, reads completed
+reports and only then finishes. Stop, unload and parent limits must also stop
+queued children. Repeat with buffered HTTP and genuine streaming; output cannot
+appear before the transport delivers it. Check profile name/provider spacing at
+both densities and enlarged text settings. Focused offline regressions are in
+`modal_fit.lua`, `subagent_activity.lua`, `subagent_background.lua`,
+`subagent_tools.lua`, `subagent_coordination.lua` and `native_performance.lua` under
+`test/`; these do not establish native rendering or frame-time measurements.
 
 Exercise 320/390px portrait phones, 667/844px landscape phones and a
 tablet in both orientations, with the keyboard open and closed. Check compact

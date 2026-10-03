@@ -123,6 +123,14 @@ local function messagesBody(opts)
 end
 
 local function toolCall(id, name, args)
+	-- These legacy provider scenarios exercise blocking delegation/report ordering.
+	-- Default background work is covered by the focused subagent coordination suites.
+	if name == "dispatch_agent" or name == "agent_followup" then
+		local explicit = {}
+		for key, value in pairs(args or {}) do explicit[key] = value end
+		if explicit.background == nil then explicit.background = false end
+		args = explicit
+	end
 	return {
 		id = id,
 		type = "function",
@@ -1686,10 +1694,10 @@ scenario("a slow subagent is not cut off by the generic tool timeout", function(
 	local subagent = handle.env.require("agent/subagent")
 	local tool = handle.env.require("agent/registry").get("dispatch_agent")
 	check("the tool states a timeout of its own", type(tool.timeout), "function")
-	check("resolved from the subagent budget", tool.timeout(), subagent.toolTimeout())
-	truthy("which is far past the generic one", tool.timeout() > handle.config.get("agent.toolTimeout"))
+	check("resolved from the subagent budget", tool.timeout({ background = false }), subagent.toolTimeout())
+	truthy("which is far past the generic one", tool.timeout({ background = false }) > handle.config.get("agent.toolTimeout"))
 	handle.config.set("agent.subagentBudget", 60)
-	check("and follows the setting", tool.timeout(), 120)
+	check("and follows the setting", tool.timeout({ background = false }), 120)
 	handle.config.set("agent.subagentBudget", 240)
 
 	local session = handle.sessions.current()

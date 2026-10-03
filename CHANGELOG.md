@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.5.6 — October 3, 2026
+
+Live subagent monitoring and lower client overhead.
+
+- Start delegated work in the background by default, returning an agent ID
+  immediately. The main agent continues independent work and checks progress
+  periodically with `agent_status`, using bounded waits only when it needs a
+  child's result. Collect reports before the final answer; Stop and terminal
+  parent exits stop unfinished children. Explicit blocking dispatch remains available.
+- Revamp subagent details with the current step, provider/model, tool progress
+  and results, latest delivered text and reasoning, elapsed time, and final
+  report. Keep Stop available while working. Buffered connections show output
+  when the provider response arrives.
+- Update existing subagent cards and detail rows at a bounded rate, preserving
+  reading position and controls. Limit retained activity and previews; release
+  view subscriptions when closed and reset current activity on follow-up runs.
+- Fix modal fitting that could trigger `Maximum re-entrancy depth (80) exceeded
+  calling task.defer`. Coalesce layout events into one pending fit across frames,
+  skip unchanged dimensions, reuse header measurements, and cancel work on close.
+- Remove per-event listener-list copies while preserving nested events,
+  subscription changes and yielding callbacks. Idle code editors and previews
+  blink their caret without rescanning syntax or measuring unchanged text.
+- Refresh the sidebar subagent count only when the count changes. Tighten the
+  spacing between the profile name and provider, including larger text settings.
+- UI LIB remains v1.2.1; the embedding SDK remains v1.0.0.
+
 ## 2.5.5 — October 3, 2026
 
 Tighter client spacing and calmer modal transitions.

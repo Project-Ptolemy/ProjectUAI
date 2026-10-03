@@ -203,24 +203,27 @@ check("reopened logs leave no subscriptions", http.changed:count() == 0 and cach
 local live = { id = "child", label = "Worker", task = "Work", status = "running", preset = "read", startedAt = 0 }
 local agents = { changed = signal.new("agents"), PRESETS = { read = { test = true } },
 	list = function() return { live } end, running = function() return { live } end,
-	concurrencyLimit = function() return 3 end, unlimited = function() return false end,
+	concurrencyLimit = function() return config.get("agent.subagentConcurrency", 3) end, unlimited = function() return false end,
 	budgetSeconds = function() return 60 end }
 cache["agent/subagent"] = agents
+env.run = h.services.RunService
+local function agentFrames(seconds) for _ = 1, math.ceil(seconds * 60) do h.frame(1 / 60) end end
 parent = mount()
 env.require("ui/panels/agents").new(parent)
 local stopButton = find(parent, "Stop")
 local elapsedLabel = find(parent, "Elapsed")
 check("agent action buttons wrap within narrow cards", stopButton.Parent:FindFirstChildOfClass("UIListLayout").Wraps == true)
 local listeners = responsive.changed:count()
-h.settle(1.1)
+agentFrames(1.1)
 check("agent clock preserves card and button identity", find(parent, "Stop") == stopButton and find(parent, "Elapsed") == elapsedLabel)
 check("agent clock does not add spinner subscriptions", responsive.changed:count() == listeners)
 config.set("agent.subagentConcurrency", 4)
-h.settle(0.3)
-check("agent settings still refresh without clock rebuilds", find(parent, "Stop") ~= stopButton)
+agentFrames(0.3)
+check("agent settings refresh without replacing cards", find(parent, "Stop") == stopButton
+	and find(parent, "CapacityText").Text == "1 of 4 slots in use")
 agents.changed:fire()
 parent:Destroy()
-h.settle(0.4)
+agentFrames(0.4)
 check("agents release timer and pending redraw", agents.changed:count() == 0 and responsive.changed:count() == 0)
 
 -- Settings controls are tested at actual row widths, without a layout-engine mock.
@@ -318,6 +321,18 @@ check("sidebar mode targets retain floor after padding", mode.Size.Y.Offset - th
 local actions = find(parent, "ActionRows")
 sidebar.renderHistory()
 check("history refresh preserves navigation", find(parent, "ActionRows") == actions)
+local delay, delayed = h.sandbox.task.delay, 0
+h.sandbox.task.delay = function(...)
+	delayed = delayed + 1
+	return delay(...)
+end
+for _ = 1, 200 do agents.changed:fire(live) end
+check("subagent progress schedules no sidebar work while the count is unchanged", delayed == 0)
+agents.running = function() return {} end
+agents.changed:fire(live)
+for _ = 1, 200 do agents.changed:fire(live) end
+check("subagent completion schedules one sidebar update despite continued progress", delayed == 1)
+h.sandbox.task.delay = delay
 parent:Destroy()
 h.settle(0.5)
 for _, floor in ipairs({ 15, 28, 44, 48 }) do

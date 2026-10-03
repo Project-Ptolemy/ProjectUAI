@@ -19,6 +19,28 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.5.6",
+			revision = "2026-10-03-live-subagents-performance",
+			date = "October 3, 2026",
+			title = "Live subagents and lower client overhead",
+			highlights = "The main agent keeps working while subagents run and checks their progress periodically. Watch their work in a live monitor, with lower modal, editor and event overhead.",
+			sections = {
+				{ category = "added", label = "Live subagent details", items = {
+					"Delegation starts in the background by default. The main agent continues independent work, checks progress with agent_status and collects reports before answering. Stop and terminal parent exits stop unfinished children.",
+					"See the current step, provider and model, tool progress and results, latest delivered text and reasoning, elapsed time and final report. Stop remains available while an agent works.",
+					"Cards and details update in place with bounded activity and previews. Buffered connections display output when the provider response arrives; follow-up runs start with fresh current activity.",
+				} },
+				{ category = "improved", label = "Client performance", items = {
+					"Deliver events without copying the listener list on every event. Preserve nested events, subscription changes and yielding callbacks.",
+					"Blink editor and code-preview carets without rescanning syntax or measuring unchanged text. Update the sidebar subagent count only when the count changes.",
+				} },
+				{ category = "fixed", label = "Modal layout and profile", items = {
+					"Prevent modal fitting from chaining task.defer calls past Roblox's re-entrancy limit. Coalesce layout changes across frames, skip unchanged sizes, reuse header measurements and cancel pending fits on close.",
+					"Keep the sidebar profile name and provider together, with room for larger text settings. UI LIB remains v1.2.1 and the embedding SDK remains v1.0.0.",
+				} },
+			},
+		},
+		{
 			version = "2.5.5",
 			revision = "2026-10-03-client-spacing-motion",
 			date = "October 3, 2026",

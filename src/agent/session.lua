@@ -311,6 +311,15 @@ return function(env)
 					return env.require("agent/loop").run(session, clean, images)
 				end)
 				if not ok then session.abortFlag = true end
+				-- A turn owns its background children through its terminal settlement,
+				-- including limits and provider failures. Intermediate tools do not end
+				-- that lifetime; normal completion has already collected their reports.
+				local subagents = env.loadedModules and env.loadedModules["agent/subagent"]
+				if subagents then
+					local unfinished = #subagents.pending(session) > 0
+					subagents.stopAll(session)
+					if unfinished then session.toolEpoch = {} end
+				end
 				running = math.max(0, running - 1)
 				session.busy = false
 				if session.removed or not alive then return end
@@ -342,10 +351,12 @@ return function(env)
 			session.abortFlag = session.busy == true
 			local capture = env.loadedModules and env.loadedModules["runtime/remote_capture"]
 			if capture then capture.revokeAgent(session.id) end
+			local subagents = env.loadedModules and env.loadedModules["agent/subagent"]
+			local stoppedChildren = subagents and subagents.stopAll(session) or 0
 			if session.preparing then session.preparing = nil; return true end
 			local loops = env.loadedModules and env.loadedModules["runtime/chatloops"]
 			local stoppedLoops = loops and loops.stop(nil, session) or 0
-			if not session.busy then return stoppedLoops > 0 end
+			if not session.busy then return stoppedLoops > 0 or stoppedChildren > 0 end
 			session.abortFlag = true
 			session.emit("status", { text = "Stopping" })
 			permissions.denyAll("aborted", session)

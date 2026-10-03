@@ -11,12 +11,26 @@ return function(env)
 		local layer = P.frame(box, { name = "CodeSyntax", size = UDim2.fromScale(1, 1), zIndex = box.ZIndex + 1 })
 		layer.Active, layer.Selectable = false, false
 		local alive, pending, focused, cache, rows, connections = true, false, false, nil, {}, {}
-		local measured, caretAt = {}, clock.ms()
+		local measured, caretAt, lineHeight = {}, clock.ms(), theme.text.mono.height
 		local caret = P.frame(layer, { name = "PreviewCaret", bg = theme.color.codeText, size = UDim2.fromOffset(2, theme.text.mono.height), zIndex = layer.ZIndex + 2, visible = false })
 		caret.Active, caret.Selectable = false, false
 		local palette = {}; for _, key in ipairs({ "keyword", "string", "number", "comment", "call" }) do palette[key] = "#" .. theme.code[key]:ToHex() end
 		local scroll, ancestor = nil, box.Parent
 		while ancestor do if ancestor:IsA("ScrollingFrame") then scroll = ancestor; break end; ancestor = ancestor.Parent end
+		local function blinkCaret()
+			local visible = focused and box.CursorPosition > 0 and (clock.ms() - caretAt) % 1000 < 550
+			if caret.Visible ~= visible then caret.Visible = visible end
+		end
+		local function drawCaret()
+			blinkCaret()
+			if not focused or box.CursorPosition < 1 or not cache then return end
+			local cursor = text.clamp(box.Text, box.CursorPosition)
+			local index = text.lineAt(cache.starts, cursor)
+			local value = cache.lines[index]
+			measured[value] = measured[value] or metrics.line(value)
+			caret.Position = UDim2.fromOffset(metrics.at(measured[value], value, cursor - cache.starts[index] + 1), (index - 1) * lineHeight)
+			caret.Size = UDim2.fromOffset(2, lineHeight)
+		end
 		local function draw()
 			if not alive then return end
 			local previous = cache
@@ -25,6 +39,7 @@ return function(env)
 				measured = {}
 			end
 			local height = math.max(1, P.measureText("Mg", { role = "mono", line = 1 }).Y * box.LineHeight)
+			lineHeight = height
 			local viewport = scroll and scroll.AbsoluteSize.Y or box.AbsoluteSize.Y
 			local y = scroll and math.max(0, scroll.AbsolutePosition.Y - box.AbsolutePosition.Y) or 0
 			local first, count = math.max(1, math.floor(y / height) - 2), math.min(160, math.ceil(math.max(height, viewport) / height) + 6)
@@ -60,26 +75,25 @@ return function(env)
 				end
 			end
 			for i = count + 1, #rows do rows[i].label.Visible, rows[i].selection.Visible = false, false end
-			box.TextTransparency = #box.Text == 0 and 0 or 1
-			caret.Visible = focused and cursor > 0 and (clock.ms() - caretAt) % 1000 < 550
-			if caret.Visible then
-				local index = text.lineAt(cache.starts, text.clamp(box.Text, cursor))
-				local value = cache.lines[index]
-				measured[value] = measured[value] or metrics.line(value)
-				caret.Position = UDim2.fromOffset(metrics.at(measured[value], value, cursor - cache.starts[index] + 1), (index - 1) * height)
-				caret.Size = UDim2.fromOffset(2, height)
-			end
+			local transparency = #box.Text == 0 and 0 or 1
+			if box.TextTransparency ~= transparency then box.TextTransparency = transparency end
+			drawCaret()
 		end
 		local function queue()
 			if pending or not alive then return end; pending = true
 			clock.delay(0.015, function() pending = false; if alive then draw() end end)
 		end
-		for _, property in ipairs({ "Text", "AbsoluteSize", "CursorPosition", "SelectionStart", "TextTransparency", "TextWrapped" }) do connections[#connections + 1] = box:GetPropertyChangedSignal(property):Connect(queue) end
+		for _, property in ipairs({ "Text", "AbsoluteSize", "AbsolutePosition", "LineHeight", "CursorPosition", "SelectionStart", "TextTransparency", "TextWrapped" }) do connections[#connections + 1] = box:GetPropertyChangedSignal(property):Connect(queue) end
 		connections[#connections + 1] = box.Focused:Connect(function() focused = true; caretAt = clock.ms(); queue() end)
 		connections[#connections + 1] = box.FocusLost:Connect(function() focused = false; queue() end)
 		connections[#connections + 1] = box:GetPropertyChangedSignal("CursorPosition"):Connect(function() caretAt = clock.ms(); queue() end)
-		connections[#connections + 1] = env.run.Heartbeat:Connect(function() if alive and focused then queue() end end)
-		if scroll then connections[#connections + 1] = scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queue) end
+		-- Blinking changes only visibility; source, selection and geometry events
+		-- own syntax work and caret measurements.
+		connections[#connections + 1] = env.run.Heartbeat:Connect(function() if alive and focused then blinkCaret() end end)
+		if scroll then
+			connections[#connections + 1] = scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(queue)
+			connections[#connections + 1] = scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(queue)
+		end
 		local handle = {}
 		function handle.destroy()
 			if not alive then return end; alive = false

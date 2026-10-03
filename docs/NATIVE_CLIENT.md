@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.5.5**, October 3, 2026.
+Current native feature contract for **2.5.6**, October 3, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -14,6 +14,24 @@ their final dimensions. They do not scale their text or reflow controls during
 the animation. Reduced motion applies the final state immediately. Form labels,
 inputs and help text stay grouped, with compact headers and consistent section
 spacing; description-only confirmations reserve no empty content band.
+Modal fitting coalesces layout signals across frames, skips unchanged dimensions
+and releases pending work on close. The sidebar profile keeps its name and
+provider lines together.
+
+Subagent **Details** is a live monitor with the current step, provider/model,
+tool progress and results, latest delivered text and reasoning, elapsed time,
+final report and Stop. Existing cards update in place at most ten times per
+second; hidden register views suspend drawing. Activity and message previews
+are bounded. Streaming output appears when delivered; buffered connections
+cannot show text before their response arrives.
+
+`dispatch_agent` and `agent_followup` start background work by default and return
+an ID immediately. The main agent continues independent work, checks
+`agent_status` periodically, and reads the child's report before its final
+answer. Status checks support bounded waits and paginated reports; explicit
+`background=false` retains blocking dispatch. Stop and terminal parent exits
+stop unfinished descendants, including queued work. Background admissions and
+uncollected reports are bounded.
 
 The optional Discord invitation waits for five minutes of use and at least 30
 seconds without input. It appears only in visible idle Chat/Home, with no active

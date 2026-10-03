@@ -509,9 +509,11 @@ return function(env)
 
 		local handle = { card = card, scrim = scrim, closed = false, dismissable = props.dismissable ~= false }
 		local unbindResponsive
+		local stopFit
 		local fitChrome
 		local function unregister()
 			if unbindResponsive then unbindResponsive(); unbindResponsive = nil end
+			if stopFit then stopFit(); stopFit = nil end
 			for index = #M.open, 1, -1 do
 				if M.open[index] == handle then table.remove(M.open, index) end
 			end
@@ -532,15 +534,20 @@ return function(env)
 			if confirmed ~= true and props.onClose then pcall(props.onClose) end
 		end
 
+		local function setLayout(instance, property, value)
+			if not handle.closed and instance[property] ~= value then instance[property] = value end
+		end
 		local function relayout()
 			if handle.closed then return end
 			local isSheet = responsive.mode == "sheet"
 			local bounds = responsive.usableRect(M.layer, isSheet and theme.space.md or theme.space.lg)
-			card.AnchorPoint = isSheet and Vector2.new(0.5, 1) or Vector2.new(0.5, 0.5)
-			card.Position = UDim2.fromOffset(math.floor(bounds.x + bounds.width / 2),
-				math.floor(bounds.y + bounds.height * (isSheet and 1 or 0.5)))
-			card.Size = UDim2.fromOffset(math.floor(math.min(props.width or theme.size.modal, bounds.width)),
-				math.floor(math.min(props.height or theme.size.modalTall, bounds.height)))
+			setLayout(card, "AnchorPoint", isSheet and Vector2.new(0.5, 1) or Vector2.new(0.5, 0.5))
+			setLayout(card, "Position", UDim2.fromOffset(math.floor(bounds.x + bounds.width / 2),
+				math.floor(bounds.y + bounds.height * (isSheet and 1 or 0.5))))
+			-- fitChrome owns height. Resetting it to the preferred maximum first
+			-- invalidates the entire body even when the final bounds do not change.
+			setLayout(card, "Size", UDim2.fromOffset(math.floor(math.min(props.width or theme.size.modal, bounds.width)),
+				card.Size.Y.Offset))
 			if fitChrome then fitChrome(bounds.height) end
 		end
 
@@ -623,6 +630,9 @@ return function(env)
 			local footerShown = true
 			local footerLayout = handle.footer:FindFirstChildOfClass("UIListLayout")
 			local bodyLayout = handle.content:FindFirstChildOfClass("UIListLayout")
+			local headerPadding = header:FindFirstChildOfClass("UIPadding")
+			local footerPadding = handle.footer:FindFirstChildOfClass("UIPadding")
+			local textMeasurements = {}
 			fitChrome = function(roomHeight)
 				if handle.closed or fitting then return end
 				fitting = true
@@ -631,8 +641,14 @@ return function(env)
 				local width = math.max(1, card.Size.X.Offset - pad * 2
 					- (props.dismissable ~= false and (closeDiameter + theme.space.sm) or 0))
 				local function textHeight(label, role)
-					local measured = P.measureText(label.Text, { role = role, width = width }).Y
-					return math.max(theme.textRole(role).height, math.ceil(label.TextBounds.Y), math.ceil(measured))
+					local textRole = theme.textRole(role)
+					local measured = textMeasurements[label]
+					if not measured or measured.text ~= label.Text or measured.width ~= width or measured.role ~= textRole then
+						measured = { text = label.Text, width = width, role = textRole,
+							height = math.ceil(P.measureText(label.Text, { role = role, width = width }).Y) }
+						textMeasurements[label] = measured
+					end
+					return math.max(textRole.height, math.ceil(label.TextBounds.Y), measured.height)
 				end
 				local titleHeight = textHeight(titleLabel, "title")
 				if descriptionLabel then titleHeight = titleHeight + theme.space.hair + textHeight(descriptionLabel, "small") end
@@ -674,49 +690,66 @@ return function(env)
 						cardHeight - minimumBody))
 				end
 				local pinnedFooter = inlineFooter and 0 or math.min(footerTotal, math.max(0, cardHeight - measured))
-				card.Size = UDim2.fromOffset(card.Size.X.Offset, cardHeight)
-				local padding = header:FindFirstChildOfClass("UIPadding")
-				padding.PaddingTop = UDim.new(0, chromePad)
-				padding.PaddingBottom = UDim.new(0, chromePad)
-				header.Size = UDim2.new(1, 0, 0, measured)
-				handle.scroll.instance.Position = UDim2.fromOffset(0, measured)
-				handle.scroll.instance.Size = UDim2.new(1, 0, 0, math.max(0, cardHeight - measured - pinnedFooter))
+				setLayout(card, "Size", UDim2.fromOffset(card.Size.X.Offset, cardHeight))
+				setLayout(headerPadding, "PaddingTop", UDim.new(0, chromePad))
+				setLayout(headerPadding, "PaddingBottom", UDim.new(0, chromePad))
+				setLayout(header, "Size", UDim2.new(1, 0, 0, measured))
+				setLayout(handle.scroll.instance, "Position", UDim2.fromOffset(0, measured))
+				setLayout(handle.scroll.instance, "Size", UDim2.new(1, 0, 0, math.max(0, cardHeight - measured - pinnedFooter)))
 				local footerParent = inlineFooter and handle.scroll.instance or card
-				if handle.footer.Parent ~= footerParent then handle.footer.Parent = footerParent end
-				handle.footer.AnchorPoint = Vector2.new(0, inlineFooter and 0 or 1)
-				handle.footer.Position = inlineFooter and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1)
-				handle.footer.LayoutOrder = 2
-				handle.footer.Size = UDim2.new(1, 0, 0, inlineFooter and footerTotal or pinnedFooter)
-				local footerPadding = handle.footer:FindFirstChildOfClass("UIPadding")
-				footerPadding.PaddingLeft = UDim.new(0, inlineFooter and 0 or pad)
-				footerPadding.PaddingRight = UDim.new(0, inlineFooter and 0 or pad)
+				setLayout(handle.footer, "Parent", footerParent)
+				setLayout(handle.footer, "AnchorPoint", Vector2.new(0, inlineFooter and 0 or 1))
+				setLayout(handle.footer, "Position", inlineFooter and UDim2.fromOffset(0, 0) or UDim2.fromScale(0, 1))
+				setLayout(handle.footer, "LayoutOrder", 2)
+				setLayout(handle.footer, "Size", UDim2.new(1, 0, 0, inlineFooter and footerTotal or pinnedFooter))
+				setLayout(footerPadding, "PaddingLeft", UDim.new(0, inlineFooter and 0 or pad))
+				setLayout(footerPadding, "PaddingRight", UDim.new(0, inlineFooter and 0 or pad))
 				footerShown = hasFooter
-				handle.footer.Visible = footerShown
+				setLayout(handle.footer, "Visible", footerShown)
 				if divider then
-					divider.Visible = hasFooter and not inlineFooter
-					divider.Position = UDim2.new(0, 0, 1, -pinnedFooter)
+					setLayout(divider, "Visible", hasFooter and not inlineFooter)
+					setLayout(divider, "Position", UDim2.new(0, 0, 1, -pinnedFooter))
 				end
 				-- The footer follows the card's radius while it is pinned to the
 				-- card's bottom edge and drops it when it moves into the body scroll.
 				-- The edge fill squares the inner corners that radius leaves and keeps
 				-- the card's silhouette intact at the outer ones.
-				footerCorner.CornerRadius = UDim.new(0, inlineFooter and 0 or theme.radius.xl)
-				footerEdge.Size = UDim2.new(1, 0, 0, math.min(theme.radius.xl, pinnedFooter))
-				footerEdge.Position = UDim2.new(0, 0, 1, -pinnedFooter)
-				footerEdge.Visible = hasFooter and not inlineFooter and pinnedFooter > 0
+				setLayout(footerCorner, "CornerRadius", UDim.new(0, inlineFooter and 0 or theme.radius.xl))
+				setLayout(footerEdge, "Size", UDim2.new(1, 0, 0, math.min(theme.radius.xl, pinnedFooter)))
+				setLayout(footerEdge, "Position", UDim2.new(0, 0, 1, -pinnedFooter))
+				setLayout(footerEdge, "Visible", hasFooter and not inlineFooter and pinnedFooter > 0)
 				fitting = false
 			end
-			local scheduled = false
+			local pendingFit, fitScheduled, fitDirty
 			local function scheduleFit()
-				if scheduled or handle.closed then return end
-				scheduled = true
-				task.defer(function()
-					scheduled = false
-					if not handle.closed then fitChrome() end
+				if handle.closed then return end
+				fitDirty = true
+				if fitScheduled then return end
+				fitScheduled = true
+				-- Layout writes can report more layout changes. Keep one pending fit
+				-- through the entire pass, and let native layout settle between passes:
+				-- chaining task.defer here can exhaust Roblox's re-entrancy depth.
+				pendingFit = clock.delay(1 / 60, function()
+					-- A sizing signal may close the modal. Only queued work may be
+					-- cancelled; the active producer must finish releasing its lock.
+					pendingFit = nil
+					fitDirty = false
+					local ok, err = pcall(fitChrome)
+					fitScheduled = false
+					fitting = false
+					if not ok then
+						env.require("runtime/log").warn("overlay", "could not fit modal", err)
+					elseif fitDirty then
+						scheduleFit()
+					end
 				end)
 			end
+			local fitConnections = {}
+			local function listen(signal, callback)
+				fitConnections[#fitConnections + 1] = signal:Connect(callback)
+			end
 			for _, layout in ipairs({ bodyLayout, footerLayout }) do
-				layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(scheduleFit)
+				listen(layout:GetPropertyChangedSignal("AbsoluteContentSize"), scheduleFit)
 			end
 			-- A collapsed footer has no layout pass to report a child becoming visible.
 			-- Observe child state directly so hiding/showing actions always returns room
@@ -737,18 +770,23 @@ return function(env)
 				scheduleFit()
 			end
 			for _, child in ipairs(handle.footer:GetChildren()) do watchChild(child) end
-			handle.footer.ChildAdded:Connect(watchChild)
-			handle.footer.ChildRemoved:Connect(function(child) unwatchChild(child); scheduleFit() end)
-			handle.footer:GetPropertyChangedSignal("Visible"):Connect(function()
+			listen(handle.footer.ChildAdded, watchChild)
+			listen(handle.footer.ChildRemoved, function(child) unwatchChild(child); scheduleFit() end)
+			listen(handle.footer:GetPropertyChangedSignal("Visible"), function()
 				if fitting or handle.closed or handle.footer.Visible == footerShown then return end
 				footerEnabled = handle.footer.Visible
 				scheduleFit()
 			end)
-			handle.footer.Destroying:Connect(function()
+			stopFit = function()
+				if pendingFit then pcall(task.cancel, pendingFit); pendingFit = nil end
+				fitScheduled, fitDirty = false, false
+				for _, connection in ipairs(fitConnections) do connection:Disconnect() end
 				for child in pairs(childConnections) do unwatchChild(child) end
-			end)
-			titleLabel:GetPropertyChangedSignal("TextBounds"):Connect(scheduleFit)
-			if descriptionLabel then descriptionLabel:GetPropertyChangedSignal("TextBounds"):Connect(scheduleFit) end
+			end
+			for _, label in ipairs({ titleLabel, descriptionLabel }) do
+				listen(label:GetPropertyChangedSignal("Text"), scheduleFit)
+				listen(label:GetPropertyChangedSignal("TextBounds"), scheduleFit)
+			end
 			handle.relayout = relayout
 		end
 
