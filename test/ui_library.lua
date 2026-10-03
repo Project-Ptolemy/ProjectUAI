@@ -549,4 +549,40 @@ for _, name in ipairs({ "starter", "showcase" }) do
 	check(name .. " example runs with the public loadstring contract", result.Alive and fetched == 1 and #demo.errors() == 0 and #demo.instanceState.typeErrors == 0)
 	result:Destroy()
 end
+
+do
+	local idHarness = envMock.new()
+	local currentId = 7
+	local applied = {}
+	idHarness.sandbox.getidentity = function() return currentId end
+	idHarness.sandbox.setidentity = function(value)
+		currentId = value
+		applied[#applied + 1] = value
+	end
+	local idUI = assert(idHarness.boot("dist/uai-ui.lua"))
+	local win = idUI:CreateWindow({ Id = "identity_test", Title = "Identity Test" })
+	local tab = win:Tab({ Title = "Tab" })
+	local sec = tab:Section({ Title = "Sec" })
+	local badge = sec:Badge({ Id = "test_badge", Text = "Status", Default = "Init" })
+	check("library creates window under elevated boot identity", win.Alive)
+	applied = {}
+
+	currentId = 2
+	badge:Set("Active")
+	check("control:Set reclaims boot identity from unprivileged thread", applied[#applied] == 7 and badge:Get() == "Active")
+
+	currentId = 2
+	win:SetTitle("New Title")
+	check("window:SetTitle reclaims boot identity", applied[#applied] == 7)
+
+	local signal = require("instance").newSignal("Heartbeat")
+	win:Give(signal:Connect(function()
+		badge:Set("FromHeartbeat")
+	end))
+	currentId = 2
+	signal:Fire()
+	check("signal callback calling badge:Set reclaims boot identity", applied[#applied] == 7 and badge:Get() == "FromHeartbeat")
+
+	win:Destroy()
+end
 print("UI LIB: " .. passed .. " checks passed")

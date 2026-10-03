@@ -914,6 +914,7 @@ return function(env)
 			return env.require("controls").create(section, kind, options)
 		end
 	end
+	C.elevate(Tab); C.elevate(Section)
 	return M
 end
 end)()
@@ -1357,8 +1358,11 @@ return function(env)
 		control._default = C.copy(control._value)
 		control:SetDisabled(control.Disabled)
 		section._window:_Filter()
-		return control
+		-- Per-control methods (SetOptions, Press, Focus, Open, ...) live on the
+		-- instance; Control's shared methods are elevated once below.
+		return C.elevate(control)
 	end
+	C.elevate(Control)
 	return M
 end
 end)()
@@ -1369,6 +1373,48 @@ return function(env)
 	local tokens = env.require("theme")
 	local M = { services = env.services, tokens = tokens }
 	local unpackValues = table.unpack or unpack
+
+	-- Thread identity -----------------------------------------------------------
+	-- The window lives under gethui/CoreGui, where writes need the Plugin
+	-- capability. Engine signals (Heartbeat, RemoteEvents, input) and some
+	-- executors' task scheduling resume consumer code at game identity, so a
+	-- control update from such a thread is refused with "lacking capability
+	-- Plugin". The identity of the thread that loads the library is captured
+	-- here and re-applied before public methods and scheduled callbacks run. A
+	-- host without the identity functions keeps its previous behaviour.
+	local getIdentity = (type(getidentity) == "function" and getidentity)
+		or (type(getthreadidentity) == "function" and getthreadidentity) or nil
+	local setIdentity = (type(setidentity) == "function" and setidentity)
+		or (type(setthreadidentity) == "function" and setthreadidentity) or nil
+	local identity
+	if getIdentity and setIdentity then
+		local ok, value = pcall(getIdentity)
+		if ok and type(value) == "number" then identity = value end
+	end
+	M.identity = identity
+	function M.reclaim()
+		if identity then pcall(setIdentity, identity) end
+	end
+	function M.reclaimed(callback)
+		if not identity then return callback end
+		return function(...)
+			pcall(setIdentity, identity)
+			return callback(...)
+		end
+	end
+	-- Wraps each public method (a function field whose name starts with an
+	-- uppercase letter) stored directly on `target`. Inherited methods are left
+	-- to their own class table, so nothing is wrapped twice.
+	function M.elevate(target)
+		if not identity then return target end
+		local methods = {}
+		for key, value in pairs(target) do
+			if type(key) == "string" and type(value) == "function" and key:match("^%u") then methods[key] = value end
+		end
+		for key, value in pairs(methods) do rawset(target, key, M.reclaimed(value)) end
+		return target
+	end
+
 	local Scope = {}
 	Scope.__index = Scope
 
@@ -1398,7 +1444,7 @@ return function(env)
 	end
 	function Scope:Connect(signal, callback)
 		local connection = signal:Connect(function(...)
-			if self.alive then callback(...) end
+			if self.alive then M.reclaim(); callback(...) end
 		end)
 		self:Add(connection)
 		return connection
@@ -1408,7 +1454,7 @@ return function(env)
 		local thread = task.delay(seconds, function()
 			finished = true
 			if release then release(false) end
-			if self.alive then callback() end
+			if self.alive then M.reclaim(); callback() end
 		end)
 		if not finished then release = self:Add(thread) end
 		return function() if release then release(); release = nil end end
@@ -1416,7 +1462,7 @@ return function(env)
 	function Scope:Spawn(callback)
 		local release, finished
 		local thread = task.spawn(function()
-			if self.alive then callback() end
+			if self.alive then M.reclaim(); callback() end
 			finished = true
 			if release then release(false) end
 		end)
@@ -2926,6 +2972,7 @@ return function(env)
 		motion.reveal(self, self.Frame)
 		return self
 	end
+	C.elevate(Window)
 	return Window
 end
 end)()

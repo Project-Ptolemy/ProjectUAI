@@ -435,7 +435,10 @@ return function(env)
 		control._default = C.copy(control._value)
 		control:SetDisabled(control.Disabled)
 		section._window:_Filter()
-		return control
+		-- Per-control methods (SetOptions, Press, Focus, Open, ...) live on the
+		-- instance; Control's shared methods are elevated once below.
+		return C.elevate(control)
 	end
+	C.elevate(Control)
 	return M
 end

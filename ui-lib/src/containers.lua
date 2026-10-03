@@ -164,5 +164,6 @@ return function(env)
 			return env.require("controls").create(section, kind, options)
 		end
 	end
+	C.elevate(Tab); C.elevate(Section)
 	return M
 end

@@ -220,6 +220,9 @@ press. A keybind's `Set` updates the binding, not its active state.
 `GameName`, and optional `ReducedMotion`.
 Supply a PlayerGui/CoreGui-compatible parent only when embedding.
 The default parent is gethui, CoreGui, then PlayerGui, with capability detection.
+When running under gethui or CoreGui, the library captures the loading thread's
+security identity and re-applies it before control updates and scheduled callbacks
+so engine events like Heartbeat can update values without losing Plugin capabilities.
 When Height is omitted, narrow touch windows use the available screen height;
 an explicit Height retains the requested size within the safe viewport.
 

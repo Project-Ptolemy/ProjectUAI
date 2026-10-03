@@ -639,5 +639,6 @@ return function(env)
 		motion.reveal(self, self.Frame)
 		return self
 	end
+	C.elevate(Window)
 	return Window
 end
