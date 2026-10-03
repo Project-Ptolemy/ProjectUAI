@@ -34,7 +34,7 @@ return function(env)
 		Width = 780, Height = 580, Compact = 640,
 	}
 	M.Type = { Display = 26, Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11, Eyebrow = 10 }
-	M.Motion = { Fast = 0.12, Enter = 0.22, Toggle = 0.18, EntranceScale = 0.99 }
+	M.Motion = { Fast = 0.10, Enter = 0.16, Toggle = 0.14, Press = 0.06 }
 	function M.resolve(name, accent)
 		assert(name == nil or name == "Dark" or name == "Light", "Theme must be Dark or Light")
 		local result = {}

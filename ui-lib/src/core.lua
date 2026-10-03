@@ -148,6 +148,20 @@ return function(env)
 		node.Parent = parent
 		return node
 	end
+	-- UICorner rounds a surface, not its descendants. Crop an extended rounded
+	-- surface to keep only the outer corners and a straight join to the body.
+	-- The extension also prevents short footers from clamping the outer radius.
+	function M.chromeBand(owner, parent, props, bottom)
+		local band = M.node(owner, "Frame", parent, props)
+		band.BackgroundTransparency, band.ClipsDescendants = 1, true
+		local radius = tokens.Size.Radius
+		local surface = M.node(owner, "Frame", band, {
+			Name = "Surface", Position = UDim2.fromOffset(0, bottom and -radius or 0),
+			Size = UDim2.new(1, 0, 1, radius),
+		}, { BackgroundColor3 = "Chrome" })
+		M.corner(surface, radius)
+		return band
+	end
 	function M.stroke(owner, parent, color)
 		local node = M.node(owner, "UIStroke", parent, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, { Color = color or "Border" })
 		return node
@@ -283,11 +297,15 @@ return function(env)
 		local window, hovered, selected, pressed = owner._window, false, false, false
 		local motion = env.require("motion")
 		local stroke = M.node(owner, "UIStroke", button, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+		local function edgeColor(theme)
+			return (hovered or selected) and (not enabled or enabled()) and theme.Accent or theme.Edge
+		end
+		local function edgeOpacity()
+			return (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
+		end
+		local function edgeThickness() return selected and 2 or 1 end
 		local function paint(theme)
 			local active = not enabled or enabled()
-			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Edge
-			stroke.Thickness = selected and 2 or 1
-			stroke.Transparency = (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
 			if style == "Primary" or style == "Danger" then
 				if not active then return theme.Raised end
 				local base = style == "Primary" and theme.Primary or theme.Danger
@@ -298,8 +316,12 @@ return function(env)
 			return active and pressed and theme.Pressed or active and hovered and theme.Hover or style == "Field" and theme.Input or theme.Raised
 		end
 		M.bind(owner, button, { BackgroundColor3 = paint })
+		M.bind(owner, stroke, { Color = edgeColor, Transparency = edgeOpacity, Thickness = edgeThickness })
 		local function refresh()
-			if owner._scope.alive then motion.to(owner, button, { BackgroundColor3 = paint(window.Theme) }) end
+			if not owner._scope.alive then return end
+			local duration = pressed and tokens.Motion.Press or tokens.Motion.Fast
+			motion.to(owner, button, { BackgroundColor3 = paint(window.Theme) }, duration)
+			motion.to(owner, stroke, { Color = edgeColor(window.Theme), Transparency = edgeOpacity(), Thickness = edgeThickness() }, duration)
 		end
 		local function release() if pressed then pressed = false; refresh() end end
 		window._presses[release] = true
@@ -415,10 +437,10 @@ return function(env)
 		return x >= origin.X and y >= origin.Y and x <= origin.X + size.X and y <= origin.Y + size.Y
 	end
 	function M.footer(owner, parent)
-		local footer = M.node(owner, "Frame", parent, {
+		local footer = M.chromeBand(owner, parent, {
 			Name = "ProjectUAI_Footer", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 			Size = UDim2.new(1, 0, 0, tokens.Size.Footer),
-		}, { BackgroundColor3 = "Chrome" })
+		}, true)
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
 			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
 		})

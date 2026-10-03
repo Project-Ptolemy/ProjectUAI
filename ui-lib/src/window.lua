@@ -93,14 +93,13 @@ return function(env)
 		self._capture, self._captureControl = nil, nil
 	end
 	function Window:Show()
-		if not self.Alive then return self end
-		local opening = not self.Visible
+		if not self.Alive or self.Visible then return self end
 		motion.stopAll(self, true)
 		self.Visible = true
 		self.Frame.Visible, self._launcher.Visible = true, false
 		self._launcherDetail.Text = self._subtitle.Text ~= "" and self._subtitle.Text or "Minimized"
 		self:_Layout()
-		if opening then motion.reveal(self, self.Frame) end
+		motion.reveal(self, self.Frame)
 		return self
 	end
 	function Window:Hide()
@@ -130,7 +129,7 @@ return function(env)
 		if not self._launcher.Visible then return end
 		self._launcherDetail.Text = "New notification"
 		self._launcherStroke.Color = self.Theme.Accent
-		motion.to(self, self._launcherStroke, { Color = self.Theme.Border }, T.Motion.Enter)
+		motion.to(self, self._launcherStroke, { Color = self._launcherHovered and self.Theme.Accent or self.Theme.Border }, T.Motion.Enter)
 	end
 	function Window:Minimize()
 		if not self.Alive or not self.Visible then return self end
@@ -171,16 +170,18 @@ return function(env)
 		assert(tab and tab._window == self and tab.Alive, "Unknown tab")
 		if not tab.Visible then return self end
 		if self._activeTab == tab then return self end
-		if self._activeTab then C.releaseFocus(self, self._activeTab.Frame) end
+		local previous = self._activeTab
+		if previous then C.releaseFocus(self, previous.Frame) end
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
 		C.cancelGesture(self)
 		self._activeTab = tab
 		for _, candidate in ipairs(self.Tabs) do candidate.Frame.Visible = candidate == tab and candidate.Visible end
-		self:_Refresh(true)
+		if previous then previous._refresh() end
+		tab._refresh()
 		self:_Filter()
-		motion.reveal(tab, tab.Frame)
+		if previous then motion.reveal(self, self._content, self.Theme.Canvas, 14) end
 		return self
 	end
 	function Window:_Filter()
@@ -492,20 +493,20 @@ return function(env)
 			Size = UDim2.fromOffset(24, 24), Selectable = false,
 		})
 		for index = 1, 3 do
-			C.node(self, "Frame", self._resize, { Position = UDim2.fromOffset(8 + index * 3, 20), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
+			C.node(self, "Frame", self._resize, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(7 + index * 3, 16), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
 		end
 		-- The restore pill. It carries the mark, the window title and a status
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
 		C.corner(self._launcher, T.Size.Radius)
-		local launcherHover, launcherDragged = false, false
+		local launcherDragged = false
 		C.bind(self, self._launcher, {
-			BackgroundColor3 = function(theme) return launcherHover and theme.Hover or theme.Canvas end,
+			BackgroundColor3 = function(theme) return self._launcherHovered and theme.Hover or theme.Canvas end,
 		})
 		self._launcherStroke = C.stroke(self, self._launcher)
 		C.bind(self, self._launcherStroke, {
-			Color = function(theme) return launcherHover and theme.Accent or theme.Border end,
+			Color = function(theme) return self._launcherHovered and theme.Accent or theme.Border end,
 		})
 		self._launcherBrand = C.mark(self, self._launcher, 20)
 		self._launcherTitle = C.text(self, self._launcher, self.Title, "Heading", "Text", { Name = "RestoreTitle", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -84, 0, 20), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
@@ -513,14 +514,13 @@ return function(env)
 		self._launcherHint = C.text(self, self._launcher, "Open", "Caption", "Secondary", { Size = UDim2.fromOffset(44, 24), TextXAlignment = Enum.TextXAlignment.Right })
 		self._launcherHint.AnchorPoint = Vector2.new(1, 0.5)
 		C.footer(self, self._launcher)
-		self._scope:Connect(self._launcher.MouseEnter, function()
-			launcherHover = true
-			self._launcher.BackgroundColor3, self._launcherStroke.Color = self.Theme.Hover, self.Theme.Accent
-		end)
-		self._scope:Connect(self._launcher.MouseLeave, function()
-			launcherHover = false
-			self._launcher.BackgroundColor3, self._launcherStroke.Color = self.Theme.Canvas, self.Theme.Border
-		end)
+		local function hoverLauncher(value)
+			self._launcherHovered = value
+			motion.to(self, self._launcher, { BackgroundColor3 = value and self.Theme.Hover or self.Theme.Canvas })
+			motion.to(self, self._launcherStroke, { Color = value and self.Theme.Accent or self.Theme.Border })
+		end
+		self._scope:Connect(self._launcher.MouseEnter, function() hoverLauncher(true) end)
+		self._scope:Connect(self._launcher.MouseLeave, function() hoverLauncher(false) end)
 		-- A press that moved is a drag, not a restore. The flag is cleared when
 		-- the next press begins, so a drag released off the pill cannot swallow
 		-- the click after it.

@@ -494,8 +494,10 @@ return function(env)
 			local sv = C.node(panel, "TextButton", panel.Body, { Name = "SaturationBrightness", Size = UDim2.new(1, 0, 0, 200), ClipsDescendants = true, LayoutOrder = 0 })
 			C.corner(sv, 12)
 			local saturationLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1) })
+			C.corner(saturationLayer, 12)
 			C.node(panel, "UIGradient", saturationLayer, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
 			local valueLayer = C.node(panel, "Frame", sv, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0) })
+			C.corner(valueLayer, 12)
 			C.node(panel, "UIGradient", valueLayer, { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) })
 			local cursor = C.node(panel, "Frame", sv, { Name = "Cursor", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12) })
 			C.corner(cursor, 6)
@@ -748,6 +750,7 @@ end)()
 __UI_MODULES["containers"] = (function()
 return function(env)
 	local C = env.require("core")
+	local motion = env.require("motion")
 	local M, Tab, Section = {}, {}, {}
 	Tab.__index, Section.__index = Tab, Section
 	function M.tab(window, options)
@@ -789,23 +792,28 @@ return function(env)
 		tab._button = C.node(tab, "TextButton", window._nav, { Name = "Tab_" .. id, LayoutOrder = #window.Tabs + 1 })
 		C.corner(tab._button)
 		local selected, hovered = false, false
+		local function edgeOpacity() return selected and 0 or window._activeTab == tab and 0.72 or 1 end
+		local function textColor(theme) return window._activeTab == tab and theme.Text or theme.Secondary end
+		local function background(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end
 		local edge = C.stroke(tab, tab._button, "Accent")
-		C.bind(tab, edge, { Transparency = function() return selected and 0 or window._activeTab == tab and 0.72 or 1 end })
+		C.bind(tab, edge, { Transparency = edgeOpacity })
 		local indicator = C.node(tab, "Frame", tab._button, { Name = "ActiveIndicator", Size = UDim2.fromOffset(3, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) }, {
 			BackgroundColor3 = "Accent", BackgroundTransparency = function() return window._activeTab == tab and 0 or 1 end,
 		})
 		C.corner(indicator, 1)
 		-- Legacy Icon options are ignored. Navigation is always readable text.
-		C.text(tab, tab._button, title, "Body", function(theme) return window._activeTab == tab and theme.Text or theme.Secondary end, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.bind(tab, tab._button, { BackgroundColor3 = function(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end })
-		local function hover(value)
-			hovered = value
-			env.require("motion").to(tab, tab._button, { BackgroundColor3 = window._activeTab == tab and window.Theme.Selected or hovered and window.Theme.Hover or window.Theme.Sidebar })
+		local label = C.text(tab, tab._button, title, "Body", textColor, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.bind(tab, tab._button, { BackgroundColor3 = background })
+		tab._refresh = function()
+			motion.to(tab, tab._button, { BackgroundColor3 = background(window.Theme) })
+			motion.to(tab, label, { TextColor3 = textColor(window.Theme) })
+			motion.to(tab, edge, { Transparency = edgeOpacity() })
+			motion.to(tab, indicator, { BackgroundTransparency = window._activeTab == tab and 0 or 1 })
 		end
-		tab._scope:Connect(tab._button.MouseEnter, function() hover(true) end)
-		tab._scope:Connect(tab._button.MouseLeave, function() hover(false) end)
-		tab._scope:Connect(tab._button.SelectionGained, function() selected = true; edge.Transparency = 0 end)
-		tab._scope:Connect(tab._button.SelectionLost, function() selected = false; edge.Transparency = window._activeTab == tab and 0.72 or 1 end)
+		tab._scope:Connect(tab._button.MouseEnter, function() hovered = true; tab._refresh() end)
+		tab._scope:Connect(tab._button.MouseLeave, function() hovered = false; tab._refresh() end)
+		tab._scope:Connect(tab._button.SelectionGained, function() selected = true; tab._refresh() end)
+		tab._scope:Connect(tab._button.SelectionLost, function() selected = false; tab._refresh() end)
 		tab._scope:Connect(tab._button.Activated, function() window:SelectTab(tab) end)
 		window.Tabs[#window.Tabs + 1] = tab
 		window:_Layout()
@@ -821,6 +829,7 @@ return function(env)
 			self._window:_CloseOverlay()
 			for _, tab in ipairs(self._window.Tabs) do if tab.Visible then tab:Select(); break end end
 		end
+		self._refresh()
 		return self
 	end
 	function Tab:Destroy()
@@ -1506,6 +1515,20 @@ return function(env)
 		node.Parent = parent
 		return node
 	end
+	-- UICorner rounds a surface, not its descendants. Crop an extended rounded
+	-- surface to keep only the outer corners and a straight join to the body.
+	-- The extension also prevents short footers from clamping the outer radius.
+	function M.chromeBand(owner, parent, props, bottom)
+		local band = M.node(owner, "Frame", parent, props)
+		band.BackgroundTransparency, band.ClipsDescendants = 1, true
+		local radius = tokens.Size.Radius
+		local surface = M.node(owner, "Frame", band, {
+			Name = "Surface", Position = UDim2.fromOffset(0, bottom and -radius or 0),
+			Size = UDim2.new(1, 0, 1, radius),
+		}, { BackgroundColor3 = "Chrome" })
+		M.corner(surface, radius)
+		return band
+	end
 	function M.stroke(owner, parent, color)
 		local node = M.node(owner, "UIStroke", parent, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, { Color = color or "Border" })
 		return node
@@ -1641,11 +1664,15 @@ return function(env)
 		local window, hovered, selected, pressed = owner._window, false, false, false
 		local motion = env.require("motion")
 		local stroke = M.node(owner, "UIStroke", button, { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+		local function edgeColor(theme)
+			return (hovered or selected) and (not enabled or enabled()) and theme.Accent or theme.Edge
+		end
+		local function edgeOpacity()
+			return (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
+		end
+		local function edgeThickness() return selected and 2 or 1 end
 		local function paint(theme)
 			local active = not enabled or enabled()
-			stroke.Color = (hovered or selected) and active and theme.Accent or theme.Edge
-			stroke.Thickness = selected and 2 or 1
-			stroke.Transparency = (style == "Primary" or style == "Danger") and not selected and not hovered and 1 or 0
 			if style == "Primary" or style == "Danger" then
 				if not active then return theme.Raised end
 				local base = style == "Primary" and theme.Primary or theme.Danger
@@ -1656,8 +1683,12 @@ return function(env)
 			return active and pressed and theme.Pressed or active and hovered and theme.Hover or style == "Field" and theme.Input or theme.Raised
 		end
 		M.bind(owner, button, { BackgroundColor3 = paint })
+		M.bind(owner, stroke, { Color = edgeColor, Transparency = edgeOpacity, Thickness = edgeThickness })
 		local function refresh()
-			if owner._scope.alive then motion.to(owner, button, { BackgroundColor3 = paint(window.Theme) }) end
+			if not owner._scope.alive then return end
+			local duration = pressed and tokens.Motion.Press or tokens.Motion.Fast
+			motion.to(owner, button, { BackgroundColor3 = paint(window.Theme) }, duration)
+			motion.to(owner, stroke, { Color = edgeColor(window.Theme), Transparency = edgeOpacity(), Thickness = edgeThickness() }, duration)
 		end
 		local function release() if pressed then pressed = false; refresh() end end
 		window._presses[release] = true
@@ -1773,10 +1804,10 @@ return function(env)
 		return x >= origin.X and y >= origin.Y and x <= origin.X + size.X and y <= origin.Y + size.Y
 	end
 	function M.footer(owner, parent)
-		local footer = M.node(owner, "Frame", parent, {
+		local footer = M.chromeBand(owner, parent, {
 			Name = "ProjectUAI_Footer", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 			Size = UDim2.new(1, 0, 0, tokens.Size.Footer),
-		}, { BackgroundColor3 = "Chrome" })
+		}, true)
 		M.text(owner, footer, env.metadata.footer, "Small", "Muted", {
 			Name = "Attribution", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
 		})
@@ -1812,6 +1843,14 @@ return function(env)
 	local function assign(node, properties)
 		for key, value in pairs(properties) do node[key] = value end
 	end
+	local function visible(window, node)
+		local ancestor = node
+		while ancestor and ancestor ~= window.ScreenGui do
+			if ancestor:IsA("GuiObject") and not ancestor.Visible then return false end
+			ancestor = ancestor.Parent
+		end
+		return ancestor ~= nil and window.ScreenGui.Enabled
+	end
 	function M.stop(window, node, settle)
 		local entry = window._motions and window._motions[node]
 		if not entry then return end
@@ -1831,7 +1870,8 @@ return function(env)
 		if not owner._scope.alive or not window.Alive or not node.Parent then return end
 		local goals = {}
 		local previous = window._motions[node]
-		if previous then
+		local immediate = window.ReducedMotion or seconds == 0 or not visible(window, node)
+		if previous and not immediate then
 			local same = true
 			for key, value in pairs(properties) do if previous.goals[key] ~= value then same = false; break end end
 			if same then return end
@@ -1842,11 +1882,9 @@ return function(env)
 		local changed = false
 		for key, value in pairs(goals) do if node[key] ~= value then changed = true; break end end
 		if not changed then return end
-		local launcher = window._launcher
-		local shown = window.Visible or (launcher and launcher.Visible and (node == launcher or node:IsDescendantOf(launcher)))
-		if window.ReducedMotion or not shown or seconds == 0 then assign(node, goals); return end
+		if immediate then assign(node, goals); return end
 		local ok, tween = pcall(function()
-			return env.services.TweenService:Create(node, TweenInfo.new(seconds or T.Motion.Fast, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), goals)
+			return env.services.TweenService:Create(node, TweenInfo.new(seconds or T.Motion.Fast, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goals)
 		end)
 		if not ok or not tween then assign(node, goals); return end
 		local entry = { goals = goals, tween = tween }
@@ -1861,13 +1899,28 @@ return function(env)
 		local played = pcall(function() tween:Play() end)
 		if not played then M.stop(window, node, true) end
 	end
-	function M.reveal(owner, node)
+	-- Fade content at its final size. Scaling a scrolling page changes its
+	-- canvas, text rasterization and hit geometry throughout the transition.
+	function M.reveal(owner, node, color, radius)
 		local window = owner._window
-		local scale = node:FindFirstChild("EntranceScale")
-		if not scale then scale = Instance.new("UIScale"); scale.Name = "EntranceScale"; scale.Parent = node end
-		M.stop(window, scale, false)
-		scale.Scale = window.ReducedMotion and 1 or T.Motion.EntranceScale
-		M.to(owner, scale, { Scale = 1 }, T.Motion.Enter)
+		local veil = node:FindFirstChild("Reveal")
+		if window.ReducedMotion or not visible(window, node) then
+			if veil then M.to(owner, veil, { BackgroundTransparency = 1 }, 0) end
+			return
+		end
+		if not veil then
+			local C = env.require("core")
+			veil = C.node(owner, "Frame", node, {
+				Name = "Reveal", Size = UDim2.fromScale(1, 1), Active = false, Selectable = false, ZIndex = 50,
+			})
+			local corner = node:FindFirstChildOfClass("UICorner")
+			C.corner(veil, radius or (corner and corner.CornerRadius.Offset) or 0)
+		end
+		veil.BackgroundColor3 = color or node.BackgroundColor3
+		-- A quick second selection continues the existing fade instead of
+		-- flashing back to an opaque page. The host owns this single veil.
+		if not window._motions[veil] then veil.BackgroundTransparency = 0 end
+		M.to(owner, veil, { BackgroundTransparency = 1 }, T.Motion.Enter)
 	end
 	return M
 end
@@ -1895,8 +1948,7 @@ return function(env)
 		local scrim = C.node(panel, "TextButton", panel.Root, { Name = "Backdrop", Size = UDim2.fromScale(1, 1), BackgroundTransparency = options.Anchor and 1 or 0.4, Selectable = false, Modal = true }, { BackgroundColor3 = "Scrim" })
 		panel.Frame = C.node(panel, "Frame", panel.Root, { Name = "Panel", Active = true, ClipsDescendants = true, ZIndex = 2 }, { BackgroundColor3 = "Surface" })
 		C.corner(panel.Frame, C.tokens.Size.Radius); C.stroke(panel, panel.Frame, "Edge")
-		local headerSurface = C.node(panel, "Frame", panel.Frame, { Name = "PanelHeader", Size = UDim2.new(1, 0, 0, 54) }, { BackgroundColor3 = "Chrome" })
-		C.corner(headerSurface, C.tokens.Size.Radius)
+		local headerSurface = C.chromeBand(panel, panel.Frame, { Name = "PanelHeader", Size = UDim2.new(1, 0, 0, 54) })
 		C.node(panel, "Frame", headerSurface, { Position = UDim2.fromOffset(20, 0), Size = UDim2.fromOffset(40, 2) }, { BackgroundColor3 = "Accent" })
 		pcall(function()
 			panel.Frame.SelectionGroup = true
@@ -2212,7 +2264,7 @@ return function(env)
 		Width = 780, Height = 580, Compact = 640,
 	}
 	M.Type = { Display = 26, Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11, Eyebrow = 10 }
-	M.Motion = { Fast = 0.12, Enter = 0.22, Toggle = 0.18, EntranceScale = 0.99 }
+	M.Motion = { Fast = 0.10, Enter = 0.16, Toggle = 0.14, Press = 0.06 }
 	function M.resolve(name, accent)
 		assert(name == nil or name == "Dark" or name == "Light", "Theme must be Dark or Light")
 		local result = {}
@@ -2328,14 +2380,13 @@ return function(env)
 		self._capture, self._captureControl = nil, nil
 	end
 	function Window:Show()
-		if not self.Alive then return self end
-		local opening = not self.Visible
+		if not self.Alive or self.Visible then return self end
 		motion.stopAll(self, true)
 		self.Visible = true
 		self.Frame.Visible, self._launcher.Visible = true, false
 		self._launcherDetail.Text = self._subtitle.Text ~= "" and self._subtitle.Text or "Minimized"
 		self:_Layout()
-		if opening then motion.reveal(self, self.Frame) end
+		motion.reveal(self, self.Frame)
 		return self
 	end
 	function Window:Hide()
@@ -2365,7 +2416,7 @@ return function(env)
 		if not self._launcher.Visible then return end
 		self._launcherDetail.Text = "New notification"
 		self._launcherStroke.Color = self.Theme.Accent
-		motion.to(self, self._launcherStroke, { Color = self.Theme.Border }, T.Motion.Enter)
+		motion.to(self, self._launcherStroke, { Color = self._launcherHovered and self.Theme.Accent or self.Theme.Border }, T.Motion.Enter)
 	end
 	function Window:Minimize()
 		if not self.Alive or not self.Visible then return self end
@@ -2406,16 +2457,18 @@ return function(env)
 		assert(tab and tab._window == self and tab.Alive, "Unknown tab")
 		if not tab.Visible then return self end
 		if self._activeTab == tab then return self end
-		if self._activeTab then C.releaseFocus(self, self._activeTab.Frame) end
+		local previous = self._activeTab
+		if previous then C.releaseFocus(self, previous.Frame) end
 		self:_CloseOverlay()
 		self:_CancelCapture()
 		self:_ReleaseKeys()
 		C.cancelGesture(self)
 		self._activeTab = tab
 		for _, candidate in ipairs(self.Tabs) do candidate.Frame.Visible = candidate == tab and candidate.Visible end
-		self:_Refresh(true)
+		if previous then previous._refresh() end
+		tab._refresh()
 		self:_Filter()
-		motion.reveal(tab, tab.Frame)
+		if previous then motion.reveal(self, self._content, self.Theme.Canvas, 14) end
 		return self
 	end
 	function Window:_Filter()
@@ -2727,20 +2780,20 @@ return function(env)
 			Size = UDim2.fromOffset(24, 24), Selectable = false,
 		})
 		for index = 1, 3 do
-			C.node(self, "Frame", self._resize, { Position = UDim2.fromOffset(8 + index * 3, 20), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
+			C.node(self, "Frame", self._resize, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(7 + index * 3, 16), Size = UDim2.fromOffset(2, 2 + index * 3), Rotation = 45 }, { BackgroundColor3 = "Muted" })
 		end
 		-- The restore pill. It carries the mark, the window title and a status
 		-- line above the permanent attribution, it can be dragged anywhere in
 		-- the safe viewport, and it restores on a click that was not a drag.
 		self._launcher = C.node(self, "TextButton", self._viewport, { Name = "Restore", Visible = false, ClipsDescendants = true }, { BackgroundColor3 = "Canvas" })
 		C.corner(self._launcher, T.Size.Radius)
-		local launcherHover, launcherDragged = false, false
+		local launcherDragged = false
 		C.bind(self, self._launcher, {
-			BackgroundColor3 = function(theme) return launcherHover and theme.Hover or theme.Canvas end,
+			BackgroundColor3 = function(theme) return self._launcherHovered and theme.Hover or theme.Canvas end,
 		})
 		self._launcherStroke = C.stroke(self, self._launcher)
 		C.bind(self, self._launcherStroke, {
-			Color = function(theme) return launcherHover and theme.Accent or theme.Border end,
+			Color = function(theme) return self._launcherHovered and theme.Accent or theme.Border end,
 		})
 		self._launcherBrand = C.mark(self, self._launcher, 20)
 		self._launcherTitle = C.text(self, self._launcher, self.Title, "Heading", "Text", { Name = "RestoreTitle", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -84, 0, 20), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
@@ -2748,14 +2801,13 @@ return function(env)
 		self._launcherHint = C.text(self, self._launcher, "Open", "Caption", "Secondary", { Size = UDim2.fromOffset(44, 24), TextXAlignment = Enum.TextXAlignment.Right })
 		self._launcherHint.AnchorPoint = Vector2.new(1, 0.5)
 		C.footer(self, self._launcher)
-		self._scope:Connect(self._launcher.MouseEnter, function()
-			launcherHover = true
-			self._launcher.BackgroundColor3, self._launcherStroke.Color = self.Theme.Hover, self.Theme.Accent
-		end)
-		self._scope:Connect(self._launcher.MouseLeave, function()
-			launcherHover = false
-			self._launcher.BackgroundColor3, self._launcherStroke.Color = self.Theme.Canvas, self.Theme.Border
-		end)
+		local function hoverLauncher(value)
+			self._launcherHovered = value
+			motion.to(self, self._launcher, { BackgroundColor3 = value and self.Theme.Hover or self.Theme.Canvas })
+			motion.to(self, self._launcherStroke, { Color = value and self.Theme.Accent or self.Theme.Border })
+		end
+		self._scope:Connect(self._launcher.MouseEnter, function() hoverLauncher(true) end)
+		self._scope:Connect(self._launcher.MouseLeave, function() hoverLauncher(false) end)
 		-- A press that moved is a drag, not a restore. The flag is cleared when
 		-- the next press begins, so a drag released off the pill cannot swallow
 		-- the click after it.

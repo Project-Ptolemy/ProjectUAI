@@ -1,5 +1,6 @@
 return function(env)
 	local C = env.require("core")
+	local motion = env.require("motion")
 	local M, Tab, Section = {}, {}, {}
 	Tab.__index, Section.__index = Tab, Section
 	function M.tab(window, options)
@@ -41,23 +42,28 @@ return function(env)
 		tab._button = C.node(tab, "TextButton", window._nav, { Name = "Tab_" .. id, LayoutOrder = #window.Tabs + 1 })
 		C.corner(tab._button)
 		local selected, hovered = false, false
+		local function edgeOpacity() return selected and 0 or window._activeTab == tab and 0.72 or 1 end
+		local function textColor(theme) return window._activeTab == tab and theme.Text or theme.Secondary end
+		local function background(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end
 		local edge = C.stroke(tab, tab._button, "Accent")
-		C.bind(tab, edge, { Transparency = function() return selected and 0 or window._activeTab == tab and 0.72 or 1 end })
+		C.bind(tab, edge, { Transparency = edgeOpacity })
 		local indicator = C.node(tab, "Frame", tab._button, { Name = "ActiveIndicator", Size = UDim2.fromOffset(3, 16), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) }, {
 			BackgroundColor3 = "Accent", BackgroundTransparency = function() return window._activeTab == tab and 0 or 1 end,
 		})
 		C.corner(indicator, 1)
 		-- Legacy Icon options are ignored. Navigation is always readable text.
-		C.text(tab, tab._button, title, "Body", function(theme) return window._activeTab == tab and theme.Text or theme.Secondary end, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.bind(tab, tab._button, { BackgroundColor3 = function(theme) return window._activeTab == tab and theme.Selected or hovered and theme.Hover or theme.Sidebar end })
-		local function hover(value)
-			hovered = value
-			env.require("motion").to(tab, tab._button, { BackgroundColor3 = window._activeTab == tab and window.Theme.Selected or hovered and window.Theme.Hover or window.Theme.Sidebar })
+		local label = C.text(tab, tab._button, title, "Body", textColor, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.bind(tab, tab._button, { BackgroundColor3 = background })
+		tab._refresh = function()
+			motion.to(tab, tab._button, { BackgroundColor3 = background(window.Theme) })
+			motion.to(tab, label, { TextColor3 = textColor(window.Theme) })
+			motion.to(tab, edge, { Transparency = edgeOpacity() })
+			motion.to(tab, indicator, { BackgroundTransparency = window._activeTab == tab and 0 or 1 })
 		end
-		tab._scope:Connect(tab._button.MouseEnter, function() hover(true) end)
-		tab._scope:Connect(tab._button.MouseLeave, function() hover(false) end)
-		tab._scope:Connect(tab._button.SelectionGained, function() selected = true; edge.Transparency = 0 end)
-		tab._scope:Connect(tab._button.SelectionLost, function() selected = false; edge.Transparency = window._activeTab == tab and 0.72 or 1 end)
+		tab._scope:Connect(tab._button.MouseEnter, function() hovered = true; tab._refresh() end)
+		tab._scope:Connect(tab._button.MouseLeave, function() hovered = false; tab._refresh() end)
+		tab._scope:Connect(tab._button.SelectionGained, function() selected = true; tab._refresh() end)
+		tab._scope:Connect(tab._button.SelectionLost, function() selected = false; tab._refresh() end)
 		tab._scope:Connect(tab._button.Activated, function() window:SelectTab(tab) end)
 		window.Tabs[#window.Tabs + 1] = tab
 		window:_Layout()
@@ -73,6 +79,7 @@ return function(env)
 			self._window:_CloseOverlay()
 			for _, tab in ipairs(self._window.Tabs) do if tab.Visible then tab:Select(); break end end
 		end
+		self._refresh()
 		return self
 	end
 	function Tab:Destroy()

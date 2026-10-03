@@ -257,8 +257,8 @@ their declarations. Each tab has a heading and a live control/section count; the
 scroll with the content so they do not take space from short keyboard layouts.
 Search updates the count and keeps its empty state clear. Sections use rounded
 surfaces, fields use inset backgrounds, and selected choices have an accent edge.
-Focus and validation states survive theme changes. Text remains native, with
-entrance motion settling to an exact scale of 1.
+Focus and validation states survive theme changes. Text remains native at its
+final size throughout transitions; opening a view never scales its contents.
 
 `window:Tab({ Id?, Title })` creates a text-only tab. Legacy `Icon` options
 are ignored, and consumer scripts must not supply new icons. `tab:Select()`, `tab:SetVisible(bool)`,
@@ -287,9 +287,12 @@ profile to preserve room for controls. The profile places the game name on its
 own full-width line. `GameName` overrides the automatic game
 lookup when the script already knows its display name.
 
-Transitions cover window/tab entrances, controls, pickers, and notifications.
-They reverse from the current value, release their resources on completion, and
-settle exactly on hide, focus loss, replacement, or destruction. With no explicit
+Windows, tabs, pickers, and notifications reveal their contents with a brief
+fade at fixed geometry. Tab switches preserve scroll positions and update only
+the affected navigation states; rapid selections continue the active fade.
+Hover, focus, and toggle transitions reverse from their current value. Hidden
+controls settle immediately, and transitions release their resources on completion,
+hide, focus loss, replacement, and destruction. With no explicit
 `ReducedMotion` option the library follows Roblox's reduced-motion preference
 when available. `SetReducedMotion(true)` immediately finishes active transitions.
 Dragging only moves the window; it does not remeasure the control list.

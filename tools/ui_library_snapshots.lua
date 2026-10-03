@@ -49,7 +49,7 @@ for _, viewport in ipairs({ { 1280, 800, false }, { 390, 844, true }, { 844, 390
 	local window = assert(h.sandbox.loadstring(example, "showcase"))()
 	local prefix = (viewport[3] and "mobile-" or "desktop-") .. viewport[1] .. "x" .. viewport[2]
 	local function snapshot(name, keyboard)
-		h.settle(0.1)
+		h.settle(0.3)
 		local file = assert(io.open(directory .. "/" .. prefix .. "-" .. name .. ".json", "wb"))
 		file:write(h.json.encode({ name = name, engine = "LuaJIT", width = viewport[1], height = viewport[2],
 			keyboard = keyboard or 0, root = tree(window.ScreenGui) }))
@@ -68,6 +68,8 @@ for _, viewport in ipairs({ { 1280, 800, false }, { 390, 844, true }, { 844, 390
 	snapshot("notifications")
 	while #window._toasts > 0 do window._toasts[1]:Close() end
 	window:Minimize(); snapshot("minimized"); window:Show()
+	window:SetTheme("Light"); window:Minimize(); snapshot("minimized-light"); window:Show(); window:SetTheme("Dark")
+	window:SetTextScale(1.5); window:Minimize(); snapshot("minimized-large-text"); window:Show(); window:SetTextScale(1)
 	window:SelectTab("Overview"); window:SetTextScale(1.5); snapshot("large-text"); window:SetTextScale(1)
 	if viewport[3] then
 		local keyboard = math.floor(viewport[2] * 0.42)

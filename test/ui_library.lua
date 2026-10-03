@@ -237,7 +237,8 @@ window:Minimize()
 window:Notify({ Title = "While minimized", Duration = 0 })
 check("a notification while minimized updates the pill status", node("RestoreDetail", launcher).Text == "New notification")
 h.settle(0.3)
-check("the notification transition settles without leaving a pulse", window._launcherStroke.Color == window.Theme.Border and node("EntranceScale", launcher).Scale == 1)
+check("the notification transition settles without leaving a pulse", window._launcherStroke.Color == window.Theme.Border
+	and node("Reveal", launcher).BackgroundTransparency == 1 and launcher:FindFirstChildOfClass("UIScale") == nil)
 while #window._toasts > 0 do window._toasts[1]:Close() end
 window:Show()
 node("Keybind", binding.Frame).Activated:Fire(); uis.InputBegan:Fire(key("L"), false)
@@ -447,6 +448,91 @@ check("scripts can provide a game name and start without motion", delayed.byName
 local legacyTab = override:Tab({ Title = "Legacy", Icon = "grid" })
 check("legacy icon options retain a text-only tab", delayed.textOf(legacyTab._button) == "Legacy" and delayed.byName("grid", legacyTab._button) == nil)
 override:Destroy()
+
+-- Keep navigation transitions isolated from the larger lifecycle scenario.
+-- The mock applies tween goals immediately; explicit intermediate values below
+-- exercise interruption without pretending to verify native interpolation.
+do
+	local motionHarness, motionUI = boot()
+	local motionWindow = motionUI:CreateWindow({ Id = "motion-regressions", Search = false })
+	local firstTab = motionWindow:Tab("First")
+	local firstSection = firstTab:Section("Settings")
+	local movingToggle = firstSection:Toggle({ Default = false })
+	local secondTab = motionWindow:Tab("Second")
+	local thirdTab = motionWindow:Tab("Third")
+	for index = 1, 12 do
+		firstSection:Label({ Text = "First row " .. index })
+	end
+	local secondSection = secondTab:Section("Details")
+	for index = 1, 12 do
+		secondSection:Label({ Text = "Second row " .. index })
+	end
+	motionHarness.settle(0.3)
+	firstTab.Frame.CanvasPosition = motionHarness.dt.Vector2.new(0, 72)
+	secondTab.Frame.CanvasPosition = motionHarness.dt.Vector2.new(0, 133)
+	local firstSize, secondSize = firstTab.Frame.AbsoluteSize, secondTab.Frame.AbsoluteSize
+	local firstCanvas, secondCanvas = firstTab.Frame.CanvasSize, secondTab.Frame.CanvasSize
+	local movingThumb = assert(motionHarness.byName("Thumb", movingToggle.Frame))
+	local movingTrack = assert(motionHarness.byName("Track", movingToggle.Frame))
+	local off = (movingTrack.Size.Y.Offset - movingThumb.Size.Y.Offset) / 2
+	local on = movingTrack.Size.X.Offset - movingThumb.Size.X.Offset - off
+	movingToggle:Set(true, true)
+	local toggleMotion = assert(motionWindow._motions[movingThumb])
+	motionWindow:Show()
+	check("showing an already visible window preserves active control transitions",
+		motionWindow._motions[movingThumb] == toggleMotion and toggleMotion.tween.Completed:Count() == 1)
+	secondTab:Select()
+	local veil = assert(motionWindow._content:FindFirstChild("Reveal"))
+	local tabMotion = assert(motionWindow._motions[veil])
+	veil.BackgroundTransparency = 0.45
+	firstTab:Select(); secondTab:Select()
+	check("rapid tab changes continue one reveal without flashing back to opaque",
+		motionWindow._motions[veil] == tabMotion and veil.BackgroundTransparency == 0.45
+			and tabMotion.tween.Completed:Count() == 1 and secondTab.Frame.Visible and not firstTab.Frame.Visible)
+	check("tab reveals retain scroll positions and scroll geometry",
+		firstTab.Frame.CanvasPosition.Y == 72 and secondTab.Frame.CanvasPosition.Y == 133
+			and firstTab.Frame.AbsoluteSize == firstSize and secondTab.Frame.AbsoluteSize == secondSize
+			and firstTab.Frame.CanvasSize == firstCanvas and secondTab.Frame.CanvasSize == secondCanvas
+			and motionWindow.ScreenGui:FindFirstChildWhichIsA("UIScale", true) == nil
+			and veil.Parent == motionWindow._content and not veil.Active and not veil.Selectable)
+	check("tab navigation does not restart an unrelated toggle transition",
+		motionWindow._motions[movingThumb] == toggleMotion and toggleMotion.tween.Completed:Count() == 1)
+	movingThumb.Position = motionHarness.dt.UDim2.new(0, 11, 0.5, 0)
+	movingToggle:Set(true, true)
+	check("a hidden control settles even when its requested animation goal is unchanged",
+		motionWindow._motions[movingThumb] == nil and movingThumb.Position.X.Offset == on
+			and toggleMotion.tween.PlaybackState == "Cancelled" and toggleMotion.tween.Completed:Count() == 0)
+	movingToggle:Set(false, true)
+	check("hidden tab controls apply new values without scheduling motion",
+		motionWindow._motions[movingThumb] == nil and movingThumb.Position.X.Offset == off)
+	firstTab:Destroy()
+	check("destroying a previous tab leaves the shared reveal owned by its window",
+		veil.Parent == motionWindow._content and motionWindow._motions[veil] == tabMotion)
+	motionWindow:SetReducedMotion(true)
+	check("reduced motion settles navigation and disconnects the active reveal",
+		count(motionWindow._motions) == 0 and veil.BackgroundTransparency == 1 and tabMotion.tween.Completed:Count() == 0)
+	thirdTab:Select(); secondTab:Select()
+	check("reduced-motion tab changes remain immediate and preserve scroll state",
+		count(motionWindow._motions) == 0 and secondTab.Frame.Visible
+			and secondTab.Frame.CanvasPosition.Y == 133 and veil.BackgroundTransparency == 1)
+	motionWindow:SetReducedMotion(false)
+	motionWindow:Minimize()
+	local minimizedNotice = motionWindow:Notify({ Title = "Visible while minimized", Duration = 0 })
+	local noticeReveal = assert(minimizedNotice.Frame:FindFirstChild("Reveal"))
+	check("visible notifications animate while their window is minimized",
+		not motionWindow.Visible and minimizedNotice.Frame.Visible and motionWindow._motions[noticeReveal] ~= nil)
+	local pendingMotions = {}
+	for _, entry in pairs(motionWindow._motions) do pendingMotions[#pendingMotions + 1] = entry end
+	motionWindow:Destroy()
+	local disconnected = true
+	for _, entry in ipairs(pendingMotions) do
+		if entry.tween.Completed:Count() ~= 0 then disconnected = false end
+	end
+	motionHarness.settle(0.3)
+	check("destroying active reveals releases their listeners and ownership",
+		count(motionWindow._motions) == 0 and count(motionWindow._scope.items) == 0
+			and disconnected and #motionHarness.errors() == 0 and #motionHarness.instanceState.typeErrors == 0)
+end
 
 local function read(path) local file = assert(io.open(path, "rb")); local source = file:read("*a"); file:close(); return source end
 for _, name in ipairs({ "starter", "showcase" }) do

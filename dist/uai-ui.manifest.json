@@ -1,8 +1,8 @@
 {
   "format": "project-uai-ui",
   "version": "1.2.1",
-  "sha256": "127feec082e00969877e0675fa3f507682ee7061ad22e8d68eb700fb436e95d0",
-  "bytes": 154768,
+  "sha256": "84bc2d118bbac8d15e8ee4c4c8c559f622bb6ee5c0fe4dac2f10a67af26b0e83",
+  "bytes": 157200,
   "loaderSha256": "88447fb4987885e1435103b57cf660a58511564fbc5f4adb66c46ef348bfcbd5",
   "modules": [
     {
@@ -12,8 +12,8 @@
     },
     {
       "id": "color",
-      "bytes": 15105,
-      "sha256": "f2aec7137836b0a42b221044995199f3394f79d1fa2e2f4d2e97b84724bea558"
+      "bytes": 15166,
+      "sha256": "81393ce07b52322251a8deb920e901ef3931957174bc8f9a0ca5c506b8702e45"
     },
     {
       "id": "config",
@@ -22,8 +22,8 @@
     },
     {
       "id": "containers",
-      "bytes": 9796,
-      "sha256": "105602e0dd6f7e2425fde701c8e263804cc9a7e50ab6797850172d66363fb1b5"
+      "bytes": 10043,
+      "sha256": "856776ff430e06822e9cc88e2269347e006919859339104f23ae3cb8e243df8f"
     },
     {
       "id": "controls",
@@ -32,8 +32,8 @@
     },
     {
       "id": "core",
-      "bytes": 18748,
-      "sha256": "b9542c3148b22ea250964a196c8be82a83897c7e4d7c9779f8b8ae5d6e3c2029"
+      "bytes": 19834,
+      "sha256": "51513ef6401f642a5c6741947ae7e4db7afa1eac6b81671cc5d6607cffc61589"
     },
     {
       "id": "library",
@@ -42,13 +42,13 @@
     },
     {
       "id": "motion",
-      "bytes": 3034,
-      "sha256": "fa0313bb71309d07eb8114248283ba8ec5b5dac4f9a8091943f7673561c2f1ca"
+      "bytes": 3945,
+      "sha256": "7eb26cc44c461d0cdce0dbbc2e8f16ab65feecd8a105efb26ddd26884818bfa4"
     },
     {
       "id": "overlays",
-      "bytes": 14098,
-      "sha256": "b3ca4f11b4ce5c85813038c8b503b8fe8bbfd9c2578d37c31dde91708179cc29"
+      "bytes": 14014,
+      "sha256": "97230ce252ddfbc105735cd4b4a483e1117b46ed9aa83835950cc4ba86e657e8"
     },
     {
       "id": "profile",
@@ -57,13 +57,13 @@
     },
     {
       "id": "theme",
-      "bytes": 2724,
-      "sha256": "a13daa63352ce76d4b535434aaa97ce4bd1199e4ee7f51e09fc8b3d417639780"
+      "bytes": 2716,
+      "sha256": "4f271272457c62b1299757bde1ba9d637239e51ae29e6845499d10c2bec5cb1e"
     },
     {
       "id": "window",
-      "bytes": 34589,
-      "sha256": "a7c810daa62cd837b6350c3c39ace552b53c1d3ed8b7d8705680d9b18d621947"
+      "bytes": 34808,
+      "sha256": "c086c3ef3ce03f0a995778dac977d78983f276dd0ba61a34e3f735baed3cdc33"
     }
   ]
 }
