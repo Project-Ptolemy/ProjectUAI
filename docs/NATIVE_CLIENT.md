@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.5.6**, October 3, 2026.
+Current native feature contract for **2.6.0**, October 4, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -43,7 +43,7 @@ still opens the invitation. UI-free SDK clients never schedule the modal.
 
 ## Script UI library
 
-The independent [UI LIB](UI_LIBRARY.md) is now v1.2.1. Agents declare script
+The independent [UI LIB](UI_LIBRARY.md) is now v1.3.0. Agents declare script
 controls and callbacks through its bundled reference. The library owns layout,
 input, configuration, cleanup, and the fixed `Project UAI | UI LIB.` footer.
 Navigation, action labels, and disclosure/selection states use text; the

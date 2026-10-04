@@ -2,8 +2,8 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.0.0** in **Project UAI 2.5.6**, alongside **UI LIB
-1.2.1**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
+documents **embedding SDK 1.0.0** in **Project UAI 2.6.0**, alongside **UI LIB
+1.3.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
 bundle with its own version and lifetime.
 
 Start with [the complete workbench example](../examples/embedding/README.md) for
@@ -1089,7 +1089,7 @@ layout has room. Keep text navigation and the fixed attribution. Exposed
 reparenting or styling them bypasses the library's ownership and layout rules.
 
 There is no public `RegisterControl`, arbitrary custom-canvas slot, or docking
-API in 1.2.1. If the existing components do not express a reusable capability,
+API in 1.3.0. If the existing components do not express a reusable capability,
 add it in the shared library and document it there.
 
 ## Files and bridge images
