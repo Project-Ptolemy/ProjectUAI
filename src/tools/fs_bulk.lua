@@ -20,13 +20,16 @@ return function(env)
 			if remaining < 270 then break end
 			local request = args.reads[index]
 			local budget = math.min(remaining - 12, math.max(256, math.floor(remaining / (#args.reads - index + 1)) - 12))
-			local cached = cache[request.path]
+			local name, scope = fsx.userPath(request.path)
+			if name and not scope and not fsx.exists(name, W.scope) then scope = "pastes" end
+			local key = name and ((scope or "files") .. "/" .. name) or request.path
+			local cached = cache[key]
 			local content, err, resolved
 			if cached then content, err, resolved = cached.content, cached.error, cached.resolved
 			else
 				content, err, resolved = W.read(request.path)
 				if cachedBytes + #(content or "") <= W.MAX_BYTES then
-					cache[request.path] = { content = content, error = err, resolved = resolved }
+					cache[key] = { content = content, error = err, resolved = resolved }
 					cachedBytes = cachedBytes + #(content or "")
 				end
 			end
@@ -35,7 +38,7 @@ return function(env)
 			if content and #content > W.MAX_BYTES then
 				slice = H.fail("this file exceeds the 2 MB batch limit; use file_read")
 			elseif content then
-				slice = H.readSlice(request.path, content, request, 1000, budget)
+				slice = H.readSlice(resolved or request.path, content, request, 6000, budget)
 			else
 				slice = H.fail(err)
 			end
@@ -45,7 +48,7 @@ return function(env)
 			if #text + 2 > remaining then break end
 			lines[#lines + 1] = text
 			remaining = remaining - #text - 2
-			results[#results + 1] = { index = index, path = request.path, ok = ok, slice = slice.data, error = not ok and slice.text or nil }
+			results[#results + 1] = { index = index, path = resolved or request.path, ok = ok, slice = slice.data, error = not ok and slice.text or nil }
 			if ok then succeeded = succeeded + 1 end
 			nextIndex = index + 1
 			if index % 4 == 0 then task.wait() end
@@ -72,8 +75,10 @@ return function(env)
 		end
 		local firstFile, firstLine = 1, 1
 		if args.cursor then
+			local cursorName, cursorScope = fsx.userPath(args.cursor.path)
+			local cursorPath = cursorName and ((cursorScope or "files") .. "/" .. cursorName) or args.cursor.path
 			firstFile = nil
-			for index, path in ipairs(selected) do if path == args.cursor.path then firstFile = index; break end end
+			for index, path in ipairs(selected) do if path == cursorPath then firstFile = index; break end end
 			if not firstFile then return H.fail("cursor file is no longer in this search; restart with the current path and glob") end
 			firstLine = args.cursor.line
 		end
@@ -183,10 +188,10 @@ return function(env)
 	return {
 		{
 			name = "file_search", risk = "read", needs = { "fs" },
-			description = "Find literal text across workspace files or saved pastes in one call. Returns matching lines, byte offsets and a continuation cursor. Searches subfolders; skips binary/files over 2 MB. Bounds directory, file and byte scans.",
+			description = "Find literal text in a known file or directory before reading relevant slices with file_read_many. Returns reusable files/ paths, matching lines, byte offsets and a continuation cursor. Searches subfolders; skips binary/files over 2 MB. Narrow path to the current game or known source directory to avoid unrelated games/dumps.",
 			parameters = { type = "object", properties = {
 				query = { type = "string", minLength = 1, maxLength = 256, description = "Single-line literal; not a regex." },
-				path = { type = "string", description = "Workspace file/directory or an explicit pastes/ path. Default workspace root." },
+				path = { type = "string", description = "Use a returned files/... path, the current game path from the environment, or an explicit pastes/... path. Omit only to search all games." },
 				glob = { type = "string", maxLength = 128, description = "Filename glob at any depth, e.g. *.lua. Default *." },
 				case_sensitive = { type = "boolean", description = "Default false." },
 				limit = { type = "integer", minimum = 1, maximum = 100, description = "Matching lines per page. Default 20." },
@@ -203,9 +208,9 @@ return function(env)
 			parameters = { type = "object", properties = {
 				reads = { type = "array", minItems = 1, maxItems = 12, items = {
 					type = "object", properties = {
-						path = { type = "string", minLength = 1, maxLength = 220 },
+						path = { type = "string", minLength = 1, maxLength = 220, description = "Use the returned files/... or pastes/... path unchanged; legacy workspace-relative paths also work." },
 						offset = { type = "integer", minimum = 1 },
-						limit = { type = "integer", minimum = 64, maximum = 16000, description = "Bytes per file, default 1000; bounded by remaining result budget." },
+						limit = { type = "integer", minimum = 64, maximum = 16000, description = "Bytes per file, default 6000; shares the result budget fairly. Request smaller slices when only a section is needed." },
 					}, required = { "path" },
 				} },
 				start_index = { type = "integer", minimum = 1, maximum = 12, description = "Resume at this 1-based request index if the previous page filled." },
@@ -216,7 +221,7 @@ return function(env)
 			name = "file_edit_many", risk = "write", needs = { "fs" },
 			description = "Apply up to 20 exact edits to one workspace file in one write. Edits are evaluated in order. All must validate before writing; refuses stale contents. Empty new_text deletes. File/output limit 2 MB.",
 			parameters = { type = "object", properties = {
-				path = { type = "string", minLength = 1 },
+				path = { type = "string", minLength = 1, description = "Use the returned files/... path unchanged; legacy workspace-relative paths also work." },
 				edits = { type = "array", minItems = 1, maxItems = 20, items = {
 					type = "object", properties = {
 						old_text = { type = "string", minLength = 1 },

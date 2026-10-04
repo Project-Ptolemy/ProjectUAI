@@ -64,8 +64,13 @@ return function(env)
 	function Window:SetTheme(name, accent)
 		self.Theme = T.resolve(name, accent)
 		self._themeName, self._accent = name or "Dark", accent
+		if self._themeLabel then self._themeLabel.Text = self._themeName == "Dark" and "Light mode" or "Dark mode" end
 		self:_Refresh()
 		return self
+	end
+	function Window:GetTheme() return self._themeName, self._accent end
+	function Window:ToggleTheme()
+		return self:SetTheme(self._themeName == "Dark" and "Light" or "Dark", self._accent)
 	end
 	function Window:SetTextScale(value)
 		assert(C.finite(value), "TextScale must be a finite number")
@@ -286,6 +291,8 @@ return function(env)
 		local searchVisible = self._search and (searchFocused or (height >= 300 and not (self.Touch and keyboardVisible)))
 		local search = searchVisible and self.Target + 12 or 0
 		local footer = T.Size.Footer
+		local themeHeight = self._themeToggle and not self._compact and (self.Target + 12) or 0
+		local themeWidth = self._themeToggle and math.max(96, math.ceil(78 * self.TextScale + 20)) or 0
 		if self._compact and height < 240 then nav = 0 end
 		if height < header + footer + self.Target then header = 0 end
 		self.Frame.Size = UDim2.fromOffset(math.floor(width), math.floor(height))
@@ -326,7 +333,14 @@ return function(env)
 		self._navCaption.Visible = not self._compact
 		self._nav.Position = UDim2.fromOffset(0, header + railHeading)
 		self._nav.Visible = not self._compact or nav > 0
-		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav) or UDim2.new(0, sidebar, 1, -header - railHeading - footer - profileHeight)
+		self._nav.Size = self._compact and UDim2.new(1, self._themeToggle and -themeWidth - 12 or 0, 0, nav)
+			or UDim2.new(0, sidebar, 1, -header - railHeading - footer - profileHeight - themeHeight)
+		if self._themeToggle then
+			self._themeToggle.Visible = not self._compact or nav > 0
+			self._themeToggle.Size = UDim2.fromOffset(self._compact and themeWidth or sidebar - 24, self.Target)
+			self._themeToggle.Position = self._compact and UDim2.new(1, -themeWidth - 12, 0, header + 4)
+				or UDim2.new(0, 12, 1, -footer - profileHeight - themeHeight)
+		end
 		self._navLayout.FillDirection = self._compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 		self._nav.ScrollingDirection = self._compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
 		self._nav.AutomaticCanvasSize = self._compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
@@ -393,6 +407,7 @@ return function(env)
 			assert(typeof(options.ToggleKey) == "EnumItem" and tostring(options.ToggleKey):find("Enum.KeyCode.", 1, true) == 1, "ToggleKey must be an Enum.KeyCode or false")
 		end
 		assert(options.ReducedMotion == nil or type(options.ReducedMotion) == "boolean", "ReducedMotion must be a boolean")
+		assert(options.ThemeToggle == nil or type(options.ThemeToggle) == "boolean", "ThemeToggle must be a boolean")
 		assert(options.GameName == nil or type(options.GameName) == "string", "GameName must be a string")
 		local toggleKey = options.ToggleKey
 		if toggleKey == nil then toggleKey = Enum.KeyCode.RightShift end
@@ -470,6 +485,16 @@ return function(env)
 		self._nav.BackgroundTransparency = 0
 		self._navLayout = C.list(self._nav, false, 6)
 		self._navPad = C.pad(self._nav, 12, 14)
+		if options.ThemeToggle ~= false then
+			self._themeToggle = C.node(self, "TextButton", self.Frame, { Name = "ThemeToggle" })
+			C.corner(self._themeToggle)
+			C.feedback(self, self._themeToggle)
+			self._themeLabel = C.text(self, self._themeToggle, self._themeName == "Dark" and "Light mode" or "Dark mode", "Body", "Text", {
+				Name = "ThemeLabel", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0),
+				TextWrapped = false, TextXAlignment = Enum.TextXAlignment.Center,
+			})
+			self._scope:Connect(self._themeToggle.Activated, function() self:ToggleTheme() end)
+		end
 		self._profile = env.require("profile").new(self, self.Frame, options.GameName)
 		self._workspace = C.node(self, "Frame", self.Frame, { Name = "Workspace", Active = false }, { BackgroundColor3 = "Canvas" })
 		C.corner(self._workspace, 14); C.stroke(self, self._workspace, "Subtle")

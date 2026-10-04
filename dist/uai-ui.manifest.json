@@ -1,8 +1,8 @@
 {
   "format": "project-uai-ui",
-  "version": "1.2.1",
-  "sha256": "f1af68a2c54586433c96a55ac3e144388e08b32f33cb21c88df4ec55c65aa966",
-  "bytes": 159334,
+  "version": "1.3.0",
+  "sha256": "c377a68e4c3896e13c8bbb727b2a8fec2fc2969bf55b7aafc9438b15b472854a",
+  "bytes": 162243,
   "loaderSha256": "88447fb4987885e1435103b57cf660a58511564fbc5f4adb66c46ef348bfcbd5",
   "modules": [
     {
@@ -17,8 +17,8 @@
     },
     {
       "id": "config",
-      "bytes": 4601,
-      "sha256": "9676c18c68a03d4573c3fdde219ba7ea8b3c651a65149add42fe8e877904f629"
+      "bytes": 5445,
+      "sha256": "98af20993b1dff3d77607bb0eb136f1de1dbb78bdd623c87a84a2bfb38090697"
     },
     {
       "id": "containers",
@@ -57,13 +57,13 @@
     },
     {
       "id": "theme",
-      "bytes": 2716,
-      "sha256": "4f271272457c62b1299757bde1ba9d637239e51ae29e6845499d10c2bec5cb1e"
+      "bytes": 3169,
+      "sha256": "58d4140157797b994c1555f74fcfce45c707d185210cf8e70b1ad8a587d51d18"
     },
     {
       "id": "window",
-      "bytes": 34827,
-      "sha256": "fb1425000b9542bddad4e508780fd316211f85aed56931f2555e81f4b0ea0f2b"
+      "bytes": 36439,
+      "sha256": "77737e3a6a35efa27c77ce99a0d75a6bfa263bcb1fa2a2090ea87a03cdbd400d"
     }
   ]
 }

@@ -16,14 +16,16 @@ return function(env)
 
 	local knownFolders = {}
 
-	function M.sanitise(path)
+	function M.sanitise(path, limit)
 		local original = tostring(path or "")
+		if not util.validUtf8(original) then return nil, "path must contain valid UTF-8" end
 		if original:match("^[\\/]") or original:match("^%a:") then return nil, "absolute paths are not allowed" end
 		local clean = tostring(path or ""):gsub("\\", "/"):gsub("^/+", ""):gsub("/+", "/")
 		if clean == "" then return nil, "empty path" end
 		for _, part in ipairs(util.split(clean, "/")) do
 			local device = part:upper():match("^[^%.]+") or ""
-			if device == "CON" or device == "PRN" or device == "AUX" or device == "NUL" or device:match("^COM[1-9]$") or device:match("^LPT[1-9]$") then return nil, "path contains a reserved device name" end
+			if device == "CON" or device == "PRN" or device == "AUX" or device == "NUL" or device:match("^COM[1-9]$") or device:match("^LPT[1-9]$")
+				or device:match("^COM\194[\178\179\185]$") or device:match("^LPT\194[\178\179\185]$") then return nil, "path contains a reserved device name" end
 			if part == ".." then return nil, "path may not contain '..'" end
 			if part == "." then return nil, "path may not contain '.'" end
 			if part:find("[%z\1-\31\127]") then return nil, "path contains a control character" end
@@ -32,7 +34,7 @@ return function(env)
 			if part:match("[%. ]$") then return nil, "path segments may not end in a dot or space" end
 			if part:find('[<>:"|%?%*]') then return nil, "path contains a reserved character" end
 		end
-		if #clean > 180 then return nil, "path is too long" end
+		if #clean > (limit or 180) then return nil, "path is too long" end
 		return clean
 	end
 
@@ -128,14 +130,33 @@ return function(env)
 	-- Explicit user-file prefixes always win, even if a workspace file has the
 	-- same name. Client state under the app root is never a fallback scope.
 	function M.userPath(path)
-		local clean, err = M.sanitise(path)
+		local clean, err = M.sanitise(path, 180 + #M.root + 8)
 		if not clean then return nil, nil, err end
 		if util.startsWith(clean, M.root .. "/") then clean = clean:sub(#M.root + 2) end
 		for _, scope in ipairs({ "pastes", "files" }) do
 			if clean == scope then return "", scope end
-			if util.startsWith(clean, scope .. "/") then return clean:sub(#scope + 2), scope end
+			if util.startsWith(clean, scope .. "/") then
+				local name = clean:sub(#scope + 2)
+				if name == "" then return "", scope end
+				local safe, why = M.sanitise(name)
+				return safe, scope, why
+			end
 		end
-		return clean
+		local safe, why = M.sanitise(clean)
+		return safe, nil, why
+	end
+
+	-- Model-facing paths share one namespace for every operation. Strip the
+	-- advertised files/ prefix exactly once: files/files/x is a real nested
+	-- directory, not a reason to silently redirect or delete an existing file.
+	function M.workspacePath(path, allowRoot)
+		if allowRoot and util.trim(path) == "" then return "", nil, "files/" end
+		local clean, scope, err = M.userPath(path)
+		if not clean then return nil, err end
+		if scope and scope ~= "files" then return nil, scope .. "/ is read-only through workspace tools" end
+		clean = clean:gsub("/+$", "")
+		if clean == "" and not allowRoot then return nil, "a file or subfolder inside files/ is required" end
+		return clean, nil, "files/" .. clean
 	end
 
 	function M.readUser(path)
@@ -222,10 +243,17 @@ return function(env)
 		local ok, entries = pcall(caps.fn.listfiles, full)
 		if not ok then return {}, tostring(entries) end
 		if type(entries) ~= "table" then return {}, "host returned an invalid file listing" end
-		local out = {}
+		local out, rejected = {}, 0
 		for _, entry in ipairs(entries) do
-			local normal = tostring(entry):gsub("\\", "/")
-			local relative = normal:match("^.*" .. util.escapePattern(M.root) .. "/(.+)$") or normal
+			local normal = tostring(entry):gsub("\\", "/"):gsub("/+$", "")
+			local relative = normal
+			if util.startsWith(normal, M.root .. "/") then relative = normal:sub(#M.root + 2)
+			else
+				-- Match an entire root segment, never the last occurrence of its
+				-- name inside a legitimate child folder (e.g. files/UAI/notes).
+				local at = normal:find("/" .. M.root .. "/", 1, true)
+				if at then relative = normal:sub(at + #M.root + 2) end
+			end
 			-- Inside a scope the paths are reported relative to the scope, so a
 			-- scoped caller sees "notes/plan.txt" rather than "files/notes/plan.txt"
 			-- -- the prefix is the caller's own business and restating it in every
@@ -233,14 +261,19 @@ return function(env)
 			if scopePrefix ~= "" and util.startsWith(relative, scopePrefix) then
 				relative = relative:sub(#scopePrefix + 1)
 			end
-			out[#out + 1] = {
-				path = relative,
-				name = relative:match("[^/]+$") or relative,
-				isDir = caps.fn.isfolder and select(2, pcall(caps.fn.isfolder, normal)) == true or false,
-			}
+			if not relative:find("/", 1, true) and trimmed ~= "" then relative = trimmed .. "/" .. relative end
+			if M.sanitise(relative) then
+				out[#out + 1] = {
+					path = relative,
+					name = relative:match("[^/]+$") or relative,
+					isDir = caps.fn.isfolder and select(2, pcall(caps.fn.isfolder, base .. "/" .. relative)) == true or false,
+				}
+			else
+				rejected = rejected + 1
+			end
 		end
 		table.sort(out, function(a, b) return a.path < b.path end)
-		return out
+		return out, rejected > 0 and "host listing contains unsupported paths; listing is incomplete" or nil
 	end
 
 	function M.readJson(path, fallback)
@@ -273,6 +306,7 @@ return function(env)
 		["code"] = true,
 		["config.json"] = true,
 		["stats.json"] = true,
+		["workspace.json"] = true,
 		["sessions"] = true,
 		["export"] = true,
 		["icons"] = true,
@@ -281,6 +315,23 @@ return function(env)
 
 	function M.migrate(onProgress)
 		if not M.enabled then return 0 end
+		local function transfer(source, sourceOpts, target, targetOpts)
+			local body = M.read(source, sourceOpts)
+			if body == nil then return false end
+			if M.exists(target, targetOpts) then
+				if M.read(target, targetOpts) ~= body then return false end
+			else
+				local ok = M.write(target, body, targetOpts)
+				if not ok or M.read(target, targetOpts) ~= body then return false end
+			end
+			-- Verification and conflict checks precede deletion, including skill
+			-- recovery. A refused or partial write must never destroy the source.
+			return M.delete(source, sourceOpts)
+		end
+		local function removeEmpty(path, opts)
+			local entries, err = M.list(path, opts)
+			if not err and #entries == 0 then M.delete(path, opts) end
+		end
 
 		-- Recovery: if a previous buggy migration moved playbooks from skills/ into files/skills/,
 		-- restore them back to the skills scope so the user does not lose their installed skills.
@@ -289,19 +340,12 @@ return function(env)
 			local recovered = 0
 			for _, file in ipairs(displaced) do
 				if not file.isDir and tostring(file.name):sub(-3):lower() == ".md" then
-					local body = M.read(file.path, { scope = "files" })
-					if body then
-						M.write(file.name, body, { scope = "skills" })
-						M.delete(file.path, { scope = "files" })
+					if transfer(file.path, { scope = "files" }, file.name, { scope = "skills" }) then
 						recovered = recovered + 1
 					end
 				end
 			end
-			local remain = 0
-			for _, file in ipairs(M.list("skills", { scope = "files" })) do
-				if not file.isDir then remain = remain + 1 end
-			end
-			if remain == 0 then M.delete("skills", { scope = "files" }) end
+			removeEmpty("skills", { scope = "files" })
 			if recovered > 0 then
 				log.info("fsx", string.format("recovered %d misplaced skill(s) from files/skills/ into skills/", recovered))
 			end
@@ -316,46 +360,42 @@ return function(env)
 		-- what walks the client's own sessions/ transcripts into the workspace.
 		local entries = M.list("")
 		local moved, skipped = 0, 0
+		local visited, visitedCount = {}, 0
+		local function moveFile(path)
+			if transfer(path, nil, path, { scope = "files" }) then
+				moved = moved + 1
+				if onProgress then onProgress(moved, path) end
+			end
+		end
+		local function moveDirectory(path, depth)
+			if visited[path] or depth > 32 or visitedCount >= 512 then return end
+			visited[path], visitedCount = true, visitedCount + 1
+			for _, file in ipairs(M.list(path)) do
+				if util.startsWith(file.path, path .. "/") then
+					if file.isDir then moveDirectory(file.path, depth + 1)
+					else moveFile(file.path) end
+				end
+			end
+			-- Shallow host listings must not mistake a remaining child directory
+			-- for an empty tree and recursively remove its untransferred data.
+			removeEmpty(path)
+		end
 		for _, entry in ipairs(entries) do
 			-- Anything nested is somebody else's subdirectory, not a legacy root file.
 			if tostring(entry.path or ""):find("/", 1, true) then
 				skipped = skipped + 1
 			else
 				local name = tostring(entry.name or "")
-				local isScope = SCOPES[name] == true
-				local isState = CLIENT_STATE[name] == true
+				local isScope = SCOPES[name:lower()] == true
+				local isState = CLIENT_STATE[name:lower()] == true
 				if entry.isDir and not isScope and not isState then
 					-- A folder the agent made for itself (notes/, builds/). Rewritten
 					-- under files/ by full relative path, which keeps nested structure:
 					-- executors offer no rename across directories, so a directory copy
 					-- is a loop over listfiles.
-					local inner = M.list(entry.path)
-					for _, file in ipairs(inner) do
-						if not file.isDir then
-							local body = M.read(file.path)
-							if body then
-								M.write(file.path, body, { scope = "files" })
-								M.delete(file.path)
-								moved = moved + 1
-								if onProgress then onProgress(moved, file.path) end
-							end
-						end
-					end
-					-- The now-empty original. Only removed if empty, which a failed copy
-					-- leaves non-empty -- a half-migrated folder must not be lost.
-					local remain = 0
-					for _, file in ipairs(M.list(entry.path)) do
-						if not file.isDir then remain = remain + 1 end
-					end
-					if remain == 0 then M.delete(entry.path) end
+					moveDirectory(entry.path, 1)
 				elseif not entry.isDir and not isState and not isScope then
-					local body = M.read(entry.path)
-					if body then
-						M.write(entry.name, body, { scope = "files" })
-						M.delete(entry.path)
-						moved = moved + 1
-						if onProgress then onProgress(moved, entry.name) end
-					end
+					moveFile(entry.path)
 				else
 					skipped = skipped + 1
 				end

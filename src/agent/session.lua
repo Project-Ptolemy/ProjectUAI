@@ -378,8 +378,9 @@ return function(env)
 			session.emit("status", { text = "Compacting" })
 			M.listChanged:fire()
 			task.spawn(function()
-				local ok, summary = pcall(function()
-					return env.require("agent/loop").compact(session)
+				local ok, summary, reason = pcall(function()
+					local note, before, after, why = env.require("agent/loop").compact(session)
+					return note, why
 				end)
 				running = math.max(0, running - 1)
 				session.busy = false
@@ -388,7 +389,7 @@ return function(env)
 				if not ok then log.error("session", "manual compaction crashed", summary) end
 				if ok and summary then M.persist(session) end
 				M.listChanged:fire()
-				if onDone then pcall(onDone, ok and summary ~= nil, ok and summary or nil) end
+				if onDone then pcall(onDone, ok and summary ~= nil, ok and summary or nil, ok and reason or tostring(summary)) end
 			end)
 			return true
 		end

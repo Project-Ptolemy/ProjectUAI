@@ -35,15 +35,23 @@ return function(env)
 	}
 	M.Type = { Display = 26, Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11, Eyebrow = 10 }
 	M.Motion = { Fast = 0.10, Enter = 0.16, Toggle = 0.14, Press = 0.06 }
+	local function linear(channel)
+		if channel <= 0.04045 then return channel / 12.92 end
+		return ((channel + 0.055) / 1.055) ^ 2.4
+	end
 	function M.resolve(name, accent)
 		assert(name == nil or name == "Dark" or name == "Light", "Theme must be Dark or Light")
 		local result = {}
 		for key, value in pairs(M[name or "Dark"]) do result[key] = value end
 		if accent ~= nil then
 			assert(typeof(accent) == "Color3", "Accent must be a Color3")
+			for _, channel in ipairs({ accent.R, accent.G, accent.B }) do
+				assert(channel == channel and channel >= 0 and channel <= 1, "Accent components must be between 0 and 1")
+			end
 			result.Accent = accent
-			local luminance = accent.R * 0.2126 + accent.G * 0.7152 + accent.B * 0.0722
-			result.OnAccent = luminance > 0.5 and rgb(23, 23, 22) or rgb(255, 254, 251)
+			-- Compare actual sRGB contrast, rather than brightness in gamma space.
+			local luminance = linear(accent.R) * 0.2126 + linear(accent.G) * 0.7152 + linear(accent.B) * 0.0722
+			result.OnAccent = (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) and rgb(0, 0, 0) or rgb(255, 255, 255)
 		end
 		result.Selected = result.Raised:Lerp(result.Accent, 0.16)
 		result.AccentSoft = result.Surface:Lerp(result.Accent, 0.12)

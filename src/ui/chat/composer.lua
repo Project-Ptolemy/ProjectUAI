@@ -688,10 +688,10 @@ return function(env)
 					elseif value == "refresh" and props.onRefresh then props.onRefresh()
 					elseif value == "compact" then
 						local convo = sessions.current()
-						local ok, err = convo.compact(function(done)
+						local ok, err = convo.compact(function(done, summary, reason)
 							if not alive() then return end
 							composer.syncContext()
-							overlay.toast(done and "Conversation compacted." or "Nothing to compact yet.",
+							overlay.toast(done and "Conversation compacted." or (reason or "Nothing to compact yet."),
 								done and "info" or "warn", 4)
 						end)
 						if not ok then overlay.toast(err or "Could not compact right now.", "warn", 4) end

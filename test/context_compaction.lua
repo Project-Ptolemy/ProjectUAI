@@ -214,5 +214,124 @@ scenario("failed or disabled summaries preserve previous facts", function()
 	end
 end)
 
+local function toolStep(ctx, index, bytes)
+	local call = { id = "read_" .. index, ["function"] = { name = "file_read", arguments =
+		'{"path":"files/Harbor (42)/boat.lua","offset":' .. index .. '}' } }
+	ctx.pushAssistant({ content = "Inspect relevant source", toolCalls = { call },
+		reasoning = "provider reasoning " .. index, raw = { signature = "signed_" .. index } })
+	ctx.pushToolResult(call.id, "file_read", "files/Harbor (42)/boat.lua\n" .. ("source "):rep(bytes or 400)
+		.. "\nnextOffset=" .. tostring(index + 1))
+end
+
+scenario("one long tool turn compacts complete exchanges and preserves fresh evidence", function()
+	local env, _, context = fixture()
+	local ctx = context.new()
+	local request = "Fix the boat. Preserve the dock and do not change its ownership."
+	ctx.pushUser(request)
+	for index = 1, 10 do toolStep(ctx, index) end
+	local latestCall, latestResult = ctx.messages[#ctx.messages - 1], ctx.messages[#ctx.messages]
+	local before, seen = env.require("agent/usage").estimateMessages(ctx.wire("system")), nil
+	local summary = ctx.compact(function(transcript)
+		seen = transcript
+		return "Boat source: files/Harbor (42)/boat.lua. Inspected older slices; preserve the dock. Continue the repair."
+	end, { tokenLimit = 4500 })
+	check("a single user turn can meaningfully compact", summary and ctx.stats().turns == 1 and ctx.stats().toolResults < 10)
+	check("the original user request is unchanged", ctx.messages[1].content == request)
+	check("the newest full tool evidence and signed assistant turn survive", ctx.messages[#ctx.messages] == latestResult
+		and ctx.messages[#ctx.messages - 1] == latestCall and #latestResult.content > 2000 and latestCall.raw.signature == "signed_10")
+	check("summary sees tool arguments, names and continuation metadata", has(seen, "tool file_read:")
+		and has(seen, '"offset":1') and has(seen, "files/Harbor (42)/boat.lua") and has(seen, "nextOffset="))
+	local orphaned, filled = ctx.repair()
+	check("compaction never splits a tool exchange", orphaned == 0 and filled == 0)
+	local after = env.require("agent/usage").estimateMessages(ctx.wire("system"))
+	check("the actual next wire estimate falls substantially", after < before * 0.75 and ctx.tokens() <= 4500)
+	check("summary headroom avoids another immediate model call", ctx.compact(function() error("unnecessary summary") end, { tokenLimit = 4500 }) == nil)
+end)
+
+scenario("cancelled or failed manual compaction cannot destroy history", function()
+	local _, _, context = fixture()
+	local ctx, aborted = context.new(), false
+	for index = 1, 6 do ctx.pushUser("question " .. index); ctx.pushAssistant({ content = ("answer "):rep(100) }) end
+	local original, before = ctx.messages, ctx.tokens()
+	local note, reason = ctx.compact(function() aborted = true; return "summary" end,
+		{ force = true, aborted = function() return aborted end })
+	check("cancellation leaves every original message and counter", note == nil and has(reason, "cancelled")
+		and ctx.messages == original and ctx.tokens() == before and ctx.compactions == 0 and ctx.dropped == 0)
+	note, reason = ctx.compact(function() error("offline") end, { force = true, requireSummary = true })
+	check("failed manual summaries preserve conversation and explain it", note == nil and has(reason, "preserved")
+		and ctx.messages == original and ctx.tokens() == before)
+end)
+
+scenario("summaries and offline excerpts stay bounded across repeated compaction", function()
+	for _, available in ipairs({ true, false }) do
+		local _, _, context = fixture()
+		local ctx = context.new()
+		ctx.summary = "Preserve the lighthouse."
+		for round = 1, 20 do
+			for index = 1, 5 do ctx.pushUser("Work on the dock " .. index); toolStep(ctx, index, 300) end
+			local before = ctx.tokens()
+			local note = ctx.compact(available and function(transcript)
+				check("old facts are merged again", has(transcript, "Preserve the lighthouse"))
+				-- A misbehaving provider that ignores the output ceiling must not grow history.
+				return ("bloated summary "):rep(1000)
+			end or nil, { force = true })
+			check("replacement is bounded and actually smaller", note and #note <= 4096 and ctx.tokens() < before)
+			check("fallback retains important previous facts", has(note, "Preserve the lighthouse"))
+		end
+	end
+end)
+
+scenario("summary input is bounded and keeps late corrections", function()
+	local env, _, context = fixture()
+	local ctx, seen = context.new(), nil
+	ctx.pushUser(("Old requirements. "):rep(1000) .. " Correction: leave the lighthouse standing.")
+	ctx.pushAssistant({ content = ("analysis "):rep(4000) })
+	for index = 1, 100 do toolStep(ctx, index, 100) end
+	ctx.compact(function(transcript) seen = transcript; return "Leave the lighthouse standing." end, { force = true })
+	check("the compaction call has a bounded input", seen and #seen <= 48000 and env.require("runtime/util").validUtf8(seen))
+	check("the summarizer sees the late correction alongside old evidence", has(seen, "Correction: leave the lighthouse standing."))
+	-- The active user request never leaves the context, even when too large for a summary excerpt.
+	check("a late user correction remains verbatim", has(ctx.messages[1].content, "Correction: leave the lighthouse standing."))
+end)
+
+scenario("calibration retires history error after a large context reduction", function()
+	local _, _, context = fixture()
+	local ctx, record = context.new(), { id = "calibrated", model = "fixture" }
+	for index = 1, 10 do ctx.pushUser(("text "):rep(300)); ctx.pushAssistant({ content = ("reply "):rep(300) }) end
+	local accounting = ctx.observeRequest(ctx.wire("fixed system"), {}, record)
+	ctx.calibrate(accounting.history + accounting.estimate + 8000, accounting)
+	local prior = ctx.breakdown(record).system
+	ctx.compact(function() return "Previously inspected game source." end, { force = true })
+	check("old tokenizer error is not treated as permanent schema overhead", ctx.breakdown(record).system < prior * 0.4)
+	check("breakdown still matches measured pressure", ctx.breakdown(record).used == ctx.pressure(record))
+end)
+
+scenario("structured tool arguments contribute to context estimates", function()
+	local env = fixture()
+	local usage = env.require("agent/usage")
+	local args = { path = "files/Harbor (42)/boat.lua", content = ("source "):rep(100) }
+	local function messages(value) return { { role = "assistant", toolCalls = { { ["function"] = { name = "file_write", arguments = value } } } } } end
+	check("table and JSON arguments cost the same estimate", usage.estimateMessages(messages(args))
+		== usage.estimateMessages(messages(env.require("runtime/util").encode(args))))
+end)
+
+scenario("delegation reminders cannot replace the real user task during compaction", function()
+	local _, _, context = fixture()
+	local ctx = context.new()
+	ctx.pushUser("Build the boat and preserve the dock")
+	for index = 1, 8 do
+		toolStep(ctx, index)
+		ctx.pushAssistant({ content = "Waiting for findings" })
+		ctx.push({ role = "user", content = "[UAI delegation status] Collect the report", internal = true })
+	end
+	local restored = context.new(); restored.restore(ctx.serialise())
+	check("internal reminder identity survives persistence", restored.messages[#restored.messages].internal == true)
+	local note = restored.compact(function() return "Boat work underway; dock must be preserved." end, { force = true })
+	check("the original user task is still verbatim after repeated coordination", note and restored.messages[1].role == "user"
+		and restored.messages[1].content == "Build the boat and preserve the dock")
+	local dropped, filled = restored.repair()
+	check("mixed reminders and tool steps remain well paired", dropped == 0 and filled == 0)
+end)
+
 print(string.format("context compaction: %d checks passed, %d scenarios failed", passed, failed))
 if failed > 0 then os.exit(1) end

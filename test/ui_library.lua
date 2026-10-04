@@ -30,7 +30,7 @@ local function input(kind, x, y, key)
 end
 local function key(name) return input(E.UserInputType.Keyboard, 0, 0, E.KeyCode[name]) end
 check("fixed attribution is part of the window and launcher", node("Attribution", window.Frame).Text == "Project UAI | UI LIB." and node("Attribution", node("Restore")).Text == "Project UAI | UI LIB.")
-check("public metadata points to this repository", UI.Version == "1.2.1" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
+check("public metadata points to this repository", UI.Version == "1.3.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
 check("window chrome draws the mark and leaves the window controls unfilled",
 	node("Brand", window._header) ~= nil and h.byName("minus", window._minimize) ~= nil and h.byName("close", window._close) ~= nil
 		and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)

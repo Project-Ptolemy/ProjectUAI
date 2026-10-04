@@ -226,6 +226,7 @@ return function(env)
 
 		for key, value in pairs(record.params or {}) do body[key] = value end
 		for key, value in pairs(request.extra or {}) do body[key] = value end
+		openai.enforceOutputCeiling(record, body, request.outputCeiling)
 		-- This adapter has no WebSocket path; SSE here still arrives over HTTP.
 		return body
 	end

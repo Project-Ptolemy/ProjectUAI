@@ -4,10 +4,9 @@
 -- carries the environment, the task list and the memory block, all of which move
 -- while a session runs -- a prompt pinned at index one goes stale within minutes.
 --
--- Trimming works in blocks rather than messages. A tool result whose assistant
--- tool_calls message has been dropped is a hard 400 from every provider, so the
--- unit of removal is "a user turn and everything that answered it", which can
--- never split that pair.
+-- Removal preserves complete assistant/tool exchanges. Whole older user turns
+-- go first; a long active task can fold its older exchanges while retaining the
+-- user's request. A result separated from its call is a provider error.
 return function(env)
 	local util = env.require("runtime/util")
 	local config = env.require("runtime/config")
@@ -16,6 +15,17 @@ return function(env)
 	local usage = env.require("agent/usage")
 
 	local M = {}
+	local SUMMARY_BYTES = 4096
+	local SUMMARY_INPUT_BYTES = 48000
+	-- Keep both ends, including verdicts/cursors and late user corrections. The
+	-- public truncate helper includes its own notice outside the requested size.
+	local function excerpt(value, limit)
+		local text = util.sanitise(tostring(value or ""))
+		if limit < 4 then return "" end
+		if #text <= limit then return text end
+		local out = util.truncate(text, math.max(1, limit - 80))
+		return #out <= limit and out or util.ellipsis(out, limit)
+	end
 	-- Compact references only; querying context never initializes a workspace or hook.
 	function M.workspaceSummary()
 		local loaded = env.loadedModules or {}
@@ -57,6 +67,12 @@ return function(env)
 		local function overheadFor(record)
 			local key = providerKey(record)
 			if key ~= nil and promptKey ~= nil and key ~= promptKey then return promptEstimate or 0, false end
+			if ctx.calibrated and calibration then
+				-- Tokenizer error in a large history is not fixed system overhead.
+				-- Retire that correction proportionally when the history shrinks.
+				local retained = math.min(1, ctx.tokens() / math.max(1, calibration.history))
+				ctx.overhead = math.max(0, (promptEstimate or 0) + (calibration.overhead - calibration.estimate) * retained)
+			end
 			return math.max(ctx.overhead or 0, 0), ctx.calibrated
 		end
 
@@ -108,11 +124,12 @@ return function(env)
 			return nil
 		end
 
-		-- Blocks: index of every user message, which is where a block starts.
+		-- Internal coordination reminders do not start a new user task. Otherwise
+		-- repeated subagent updates can evict the real request they are continuing.
 		local function blockStarts()
 			local starts = {}
 			for index, message in ipairs(ctx.messages) do
-				if message.role == "user" then starts[#starts + 1] = index end
+				if message.role == "user" and not message.internal then starts[#starts + 1] = index end
 			end
 			return starts
 		end
@@ -170,7 +187,7 @@ return function(env)
 			local real = tonumber(promptTokens)
 			if not real or real <= 0 or real ~= real or real == math.huge then return end
 			request = request or { history = ctx.tokens(), estimate = promptEstimate or 0, key = promptKey }
-			calibration = { key = request.key, estimate = request.estimate, overhead = math.max(0, real - request.history) }
+			calibration = { key = request.key, estimate = request.estimate, history = request.history, overhead = math.max(0, real - request.history) }
 			promptKey, promptEstimate = request.key, request.estimate
 			ctx.overhead = calibration.overhead
 			ctx.calibrated = true
@@ -238,58 +255,117 @@ return function(env)
 			return removed
 		end
 
-		-- Compaction replaces dropped turns with one summary line rather than
-		-- letting them vanish, so the agent still knows what it already did.
-		-- `summarise` is injected (the loop passes a cheap provider call) so this
-		-- module stays free of provider knowledge and stays testable.
+		-- Plan a replacement before yielding to the summariser. Keep recent user
+		-- requests and complete assistant/tool exchanges, including the latest two
+		-- exchanges of a long single-user tool loop. No live tool body is silently
+		-- cut down in place, and cancellation cannot leave half-compacted history.
 		function ctx.compact(summarise, opts)
 			opts = opts or {}
 			local budget = opts.tokenLimit or ctx.limitFor(opts.model)
 			local force = opts.force == true
-			-- Messages are the trimmable part; the measured overhead is not, so the
-			-- message budget is the whole-prompt budget minus that fixed overhead.
-			local msgLimit = math.max(1000, budget - math.max(ctx.overhead or 0, 0))
-			if not force and ctx.tokens() <= msgLimit then return nil end
-
-			local removed = ctx.trim(force and 0 or msgLimit, opts.keepBlocks or 2, force)
-			if #removed == 0 then return nil end
-
-			if type(summarise) ~= "function" then
-				ctx.summary = (ctx.summary and (ctx.summary .. "\n") or "") ..
-					string.format("[%d earlier messages were dropped to fit the context budget]", #removed)
-				ctx.compactions = ctx.compactions + 1
-				return ctx.summary
+			local msgLimit = math.max(0, budget - overheadFor(opts.record))
+			local before = ctx.tokens()
+			if not force and before <= msgLimit then return nil, "already below the compaction point" end
+			local original, originalSummary = ctx.messages, ctx.summary
+			local count = #original
+			local dropped, keptTokens = {}, usage.estimateMessages(original)
+			local reserve = math.min(SUMMARY_BYTES / 4, math.max(64, math.floor(msgLimit * 0.2)))
+			local target = math.max(0, math.floor(msgLimit * 0.75))
+			local function needsSpace() return force or keptTokens + reserve > target end
+			local function remove(first, last)
+				for index = first, last do
+					if not dropped[index] then
+						dropped[index] = true
+						keptTokens = keptTokens - usage.estimateMessages({ original[index] })
+					end
+				end
 			end
-
-			local transcript = {}
+			local starts = blockStarts()
+			local keep = math.max(1, opts.keepBlocks or 2)
+			for block = 1, #starts - keep do
+				if not needsSpace() then break end
+				remove(block == 1 and 1 or starts[block], starts[block + 1] - 1)
+			end
+			-- Whole user turns alone cannot compact "inspect this game" followed by
+			-- dozens of tool steps. Fold old exchanges without removing its request.
+			for block, first in ipairs(starts) do
+				if not dropped[first] and needsSpace() then
+					local last = (starts[block + 1] or (count + 1)) - 1
+					local exchanges = {}
+					for index = first + 1, last do
+						if original[index].role == "assistant" then exchanges[#exchanges + 1] = index end
+					end
+					for step = 1, #exchanges - 2 do
+						if not needsSpace() then break end
+						remove(exchanges[step], exchanges[step + 1] - 1)
+					end
+				end
+			end
+			local removed, kept = {}, {}
+			for index, message in ipairs(original) do
+				local destination = dropped[index] and removed or kept
+				destination[#destination + 1] = message
+			end
+			if #removed == 0 then return nil, "no older complete exchanges to fold" end
+			-- A replacement must make a real saving even if the provider ignores its
+			-- output ceiling. Reserve space for it before selecting history to fold.
+			local summaryBytes = math.min(SUMMARY_BYTES, reserve * 4, math.floor((before - keptTokens) * 4 * 0.75))
+			if summaryBytes < 64 then return nil, "too little older context to compact usefully" end
+			local inputLimit = SUMMARY_INPUT_BYTES
+			local window = opts.model and env.require("provider/traits").contextWindow(opts.model)
+			if window then inputLimit = math.min(inputLimit, math.max(1000, (window - 1536) * 3)) end
+			local transcript, entries, size = {}, {}, 0
 			local previousSummary = ctx.summary and util.trim(ctx.summary) or ""
 			if previousSummary ~= "" then
-				transcript[#transcript + 1] = "Summary so far:\n" .. previousSummary
+				transcript[#transcript + 1] = "Summary so far:\n" .. excerpt(previousSummary, math.min(SUMMARY_BYTES, math.floor(inputLimit / 3)))
 				transcript[#transcript + 1] = "\nNewer messages to fold into that summary:"
 			end
+			for index = #kept, 1, -1 do
+				if kept[index].role == "user" and not kept[index].internal then
+					transcript[#transcript + 1] = "Active request (retained separately; use as context):\n"
+						.. excerpt(kept[index].content, math.min(1600, math.floor(inputLimit / 4)))
+					break
+				end
+			end
+			size = #table.concat(transcript, "\n")
+			local perMessage = math.max(120, math.min(2400, math.floor((inputLimit - size) / #removed) - 2))
 			for _, message in ipairs(removed) do
-				local label = message.role
+				local label = message.role == "tool" and ("tool " .. tostring(message.name or "unknown")) or message.role
 				local text = tostring(message.content or "")
 				if message.toolCalls then
-					local names = {}
+					local calls = {}
 					for _, call in ipairs(message.toolCalls) do
-						names[#names + 1] = call["function"] and call["function"].name or "tool"
+						local fn = call["function"] or {}
+						local args = type(fn.arguments) == "table" and util.encode(fn.arguments) or tostring(fn.arguments or "{}")
+						calls[#calls + 1] = tostring(fn.name or "tool") .. " " .. excerpt(args, 800)
 					end
-					text = text .. " [called: " .. table.concat(names, ", ") .. "]"
+					text = text .. "\n[called: " .. table.concat(calls, "; ") .. "]"
 				end
-				transcript[#transcript + 1] = label .. ": " .. util.ellipsis(text, 700)
+				local entry = label .. ": " .. excerpt(text, perMessage)
+				transcript[#transcript + 1], entries[#entries + 1] = entry, entry
 			end
-
-			local ok, note = pcall(summarise, table.concat(transcript, "\n"))
-			if ok and type(note) == "string" and util.trim(note) ~= "" then
-				ctx.summary = util.trim(note)
-			elseif previousSummary ~= "" then
-				ctx.summary = previousSummary .. "\n"
-					.. string.format("[%d more earlier messages were dropped; no summary was available]", #removed)
-			else
-				ctx.summary = string.format("[%d earlier messages were dropped; no summary was available]", #removed)
+			local source = excerpt(table.concat(transcript, "\n"), inputLimit)
+			local ok, note = false, nil
+			if type(summarise) == "function" then ok, note = pcall(summarise, source, summaryBytes) end
+			if opts.aborted and opts.aborted() then return nil, "compaction cancelled" end
+			if ctx.messages ~= original or #ctx.messages ~= count or ctx.summary ~= originalSummary then
+				return nil, "conversation changed during compaction"
 			end
+			note = ok and type(note) == "string" and util.trim(util.sanitise(note)) or nil
+			if not note or note == "" or #note > summaryBytes then
+				if opts.requireSummary then return nil, "summary unavailable or too large; conversation preserved" end
+				local notice = string.format("[%d messages dropped; summary unavailable. Excerpts:]\n", #removed)
+				local available = summaryBytes - #notice
+				local prior = previousSummary:gsub("^%[%d+ messages dropped; summary unavailable%. Excerpts:%]%s*", "")
+				prior = excerpt(prior, math.floor(available * 0.6))
+				if prior ~= "" then prior = prior .. "\n" end
+				note = notice .. prior .. excerpt(table.concat(entries, "\n"), available - #prior)
+			end
+			if keptTokens + usage.estimateText(note) >= before then return nil, "summary would not reduce context" end
+			ctx.messages, ctx.summary = kept, note
+			ctx.dropped = ctx.dropped + #removed
 			ctx.compactions = ctx.compactions + 1
+			log.info("context", util.pluralise(#removed, "message") .. " compacted")
 			return ctx.summary
 		end
 
@@ -303,7 +379,7 @@ return function(env)
 		-- same broken history to the next provider, and `ctx.serialise` keeps both halves
 		-- of the pairing -- so the conversation stays poisoned across a restart.
 		--
-		-- Trimming cannot produce this, because it removes whole blocks. What can: a turn
+		-- Compaction retains complete exchanges. Broken pairs can still come from a turn
 		-- that dies between dispatching tools and recording their outcomes (leaving a call
 		-- with no result), and a gateway that translates between the two wire shapes and
 		-- drops an assistant turn whose content is the empty string -- which is exactly
@@ -421,6 +497,7 @@ return function(env)
 					toolCalls = message.toolCalls,
 					tool_call_id = message.tool_call_id,
 					name = message.name,
+					internal = message.internal,
 					reasoning = message.reasoning,
 					at = message.at,
 				}

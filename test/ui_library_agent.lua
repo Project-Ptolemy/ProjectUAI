@@ -12,7 +12,7 @@ for _, definition in ipairs(client.env.require("tools/gui")) do
 end
 check("UI library reference is a read-only tool without executor requirements", tool and tool.risk == "read" and tool.needs == nil)
 local docs = client.env.require("runtime/ui_library_docs")
-check("the embedded guide identifies the current library release", docs.version == "1.2.1")
+check("the embedded guide identifies the current library release", docs.version == "1.3.0")
 check("layout reference documents text navigation, sidebar profile and motion", docs.sections.layout:find("text-only tab", 1, true)
 	and docs.sections.layout:find("GameName", 1, true) and docs.sections.layout:find("SetReducedMotion", 1, true))
 check("reference identifies the canonical standalone loader", tool.run({}):find(docs.url, 1, true) ~= nil)

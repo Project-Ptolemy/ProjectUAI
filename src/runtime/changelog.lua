@@ -19,6 +19,31 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.6.0",
+			revision = "2026-10-04-context-workspaces-themes",
+			date = "October 4, 2026",
+			title = "Reliable context, game files and theme controls",
+			highlights = "Long tasks compact with recent evidence intact. File tools share consistent paths, game folders preserve Unicode, and UI LIB has a built-in Light/Dark switch.",
+			sections = {
+				{ category = "added", label = "Project and appearance", items = {
+					"Open ProjectUAI from the player profile menu for project information and Star us on GitHub, with browser, clipboard and selectable-link support. What's New stays separate.",
+					"UI LIB v1.3.0 adds a text mode switch, GetTheme and ToggleTheme to its existing Light/Dark system. Existing configuration profiles can retain the mode and custom accent; older profiles remain supported.",
+					"Theme changes preserve controls, drafts and open overlays. Custom accent foregrounds use sRGB contrast; ThemeToggle=false keeps a script's existing appearance control.",
+				} },
+				{ category = "improved", label = "Context and tool work", items = {
+					"Fold older complete tool exchanges inside long tasks, retain the current request and recent full evidence, and bound merged summaries with room reserved for them. Summary input includes paths, arguments, cursors and the active task.",
+					"Count summary requests and structured tool arguments, reduce stale estimation overhead after compaction, and fit reply budgets beside the prepared prompt. Smaller fallback models get one compaction attempt.",
+					"Paginate file listings, use available bulk-read space, and share reads across equivalent paths within a batch. Reuse cached game metadata and scoped inspection guidance instead of repeated game-name lookups.",
+				} },
+				{ category = "fixed", label = "Files and conversation reliability", items = {
+					"Use the same files/... paths across every file tool, preventing accidental extra files directories. Preserve real nested paths and existing game folders, including legacy recursive locations.",
+					"Keep PlaceId as game identity while preserving readable Unicode and emoji in bounded filesystem-safe names. Use host NFC normalization when available and handle Windows reserved names.",
+					"Verify migrated copies before deleting sources. Preserve conflicts, failed writes and incompletely listed directories. Manual compaction failure and Stop preserve conversation history and explain the outcome.",
+					"Keep internal subagent reminders from replacing the actual task and detect repeated equivalent JSON tool batches. The embedding SDK remains v1.0.0.",
+				} },
+			},
+		},
+		{
 			version = "2.5.6",
 			revision = "2026-10-03-live-subagents-performance",
 			date = "October 3, 2026",

@@ -25,32 +25,47 @@ return function(env)
 			name = "file_list",
 			risk = "read",
 			needs = { "fs" },
-			description = "List files in your workspace (" .. "files/, inside the agent folder).",
+			description = "List files in a workspace directory. Returned files/ paths can be used unchanged with every file tool. Start with the current game path from the environment; omit path for all games.",
 			parameters = {
 				type = "object",
 				properties = {
 					path = { type = "string", description = "Subfolder, relative to your workspace. Omit for the root of it." },
+					offset = { type = "integer", minimum = 1, description = "Resume with the returned nextOffset; default 1." },
+					limit = { type = "integer", minimum = 1, maximum = 200, description = "Entries per page, default 60; also bounded by the result budget." },
 				},
 				required = {},
 			},
 			run = function(args)
-				local entries, err = fsx.list(args.path or "", SCOPE)
+				local path, why, canonical = fsx.workspacePath(args.path or "", true)
+				if not path then return H.fail(why) end
+				local entries, err = fsx.list(path, SCOPE)
 				if err then return H.fail(err) end
 				if #entries == 0 then
-					return "Nothing in " .. (util.trim(args.path) ~= "" and util.trim(args.path) or "your workspace") .. "."
+					return "Nothing in " .. canonical .. "."
 				end
-				return string.format("%d entr%s under files/%s:\n%s",
-					#entries, #entries == 1 and "y" or "ies", util.trim(args.path or ""),
-					H.list(entries, 60, function(entry)
-						return entry.path .. (entry.isDir and "/" or "")
-					end))
+				local cap, offset = H.resultBudget(), args.offset or 1
+				local rows, page, used = {}, {}, 0
+				local header = string.format("%d entries under %s (paths reusable unchanged):\n", #entries, canonical)
+				local index = offset
+				while index <= #entries and #rows < (args.limit or 60) do
+					local entry = entries[index]
+					local row = "files/" .. entry.path .. (entry.isDir and "/" or "")
+					if #header + used + #row + 70 > cap then break end
+					rows[#rows + 1] = row
+					page[#page + 1] = { path = "files/" .. entry.path, isDir = entry.isDir }
+					used, index = used + #row + 1, index + 1
+				end
+				if #rows == 0 and index <= #entries then return H.fail("increase the result budget to fit a file path") end
+				local nextOffset = index <= #entries and index or nil
+				return { text = header .. table.concat(rows, "\n") .. (nextOffset and ("\nContinue with offset=" .. nextOffset .. " using the same path.") or ""),
+					data = { path = canonical, entries = page, total = #entries, nextOffset = nextOffset } }
 			end,
 		},
 		{
 			name = "file_read",
 			risk = "read",
 			needs = { "fs" },
-			description = "Read a contiguous slice of a workspace file or saved paste. The result includes a continuation offset when more remains.",
+			description = "Read a contiguous slice of a workspace file or saved paste. Use file_read_many for several known files or slices. The result includes a continuation offset when more remains.",
 			parameters = {
 				type = "object",
 				properties = {
@@ -71,7 +86,9 @@ return function(env)
 				local content, err, resolved = W.read(args.path)
 				if not content then return H.fail(err) end
 				local budget = resolved and util.startsWith(resolved, "pastes/") and (READ_CAP + 220) or nil
-				return H.readSlice(args.path, content, args, READ_CAP, budget)
+				local result = H.readSlice(resolved or args.path, content, args, READ_CAP, budget)
+				if result.data then result.data.path = resolved end
+				return result
 			end,
 		},
 		{
@@ -109,9 +126,11 @@ return function(env)
 			},
 			run = function(args)
 				if type(args.content) ~= "string" or #args.content > W.MAX_BYTES then return H.fail("content must be a string of at most 2 MiB; use targeted edits for existing files") end
-				local ok, result = fsx.write(args.path, args.content, SCOPE)
+				local path, err, canonical = fsx.workspacePath(args.path)
+				if not path then return H.fail(err) end
+				local ok, result = fsx.write(path, args.content, SCOPE)
 				if not ok then return H.fail(result) end
-				return string.format("Wrote %d characters to %s", #tostring(args.content), result)
+				return { text = string.format("Wrote %d bytes to %s", #args.content, canonical), data = { path = canonical, bytes = #args.content } }
 			end,
 		},
 		{
@@ -129,9 +148,11 @@ return function(env)
 			},
 			run = function(args)
 				if type(args.content) ~= "string" or #args.content > W.MAX_BYTES then return H.fail("content must be a string of at most 2 MiB") end
-				local ok, result = fsx.append(args.path, args.content, SCOPE)
+				local path, err, canonical = fsx.workspacePath(args.path)
+				if not path then return H.fail(err) end
+				local ok, result = fsx.append(path, args.content, SCOPE)
 				if not ok then return H.fail(result) end
-				return string.format("Appended %d characters to %s", #tostring(args.content), result)
+				return { text = string.format("Appended %d bytes to %s", #args.content, canonical), data = { path = canonical, bytes = #args.content } }
 			end,
 		},
 		{
@@ -145,12 +166,20 @@ return function(env)
 				required = { "path" },
 			},
 			run = function(args)
-				local ok, result = fsx.delete(args.path, SCOPE)
+				local path, err, canonical = fsx.workspacePath(args.path)
+				if not path then return H.fail(err) end
+				local ok, result = fsx.delete(path, SCOPE)
 				if not ok then return H.fail(result) end
-				return "Deleted " .. tostring(result)
+				return "Deleted " .. canonical
 			end,
 		},
 	}
+	for _, tool in ipairs(tools) do
+		if tool.parameters.properties.path then
+			tool.parameters.properties.path.description = "Use the returned files/... path unchanged, or a legacy workspace-relative path. Omit the app/host root."
+				.. (tool.name == "file_read" and " Saved inputs also accept explicit pastes/... paths." or "")
+		end
+	end
 	for _, tool in ipairs(env.require("tools/fs_bulk")) do tools[#tools + 1] = tool end
 	return tools
 end

@@ -1321,6 +1321,7 @@ return function(env)
 				{ label = "Providers & models", value = "providers", icon = "sliders" },
 				{ divider = true },
 				{ label = env.require("ui/changelog").menuLabel(), value = "changelog", icon = "spark" },
+				{ label = "ProjectUAI", value = "project" },
 				{ label = "About this build", value = "about", icon = "book" },
 				{ label = "Join Discord", value = "discord", icon = "globe" },
 				{ label = "Donate", value = "donate", icon = "spark" },
@@ -1334,6 +1335,8 @@ return function(env)
 					M.show("providers")
 				elseif value == "changelog" then
 					M.showChangelog()
+				elseif value == "project" then
+					env.require("ui/project").open()
 				elseif value == "about" then
 					M.showAbout()
 				elseif value == "discord" then

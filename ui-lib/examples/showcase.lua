@@ -5,6 +5,7 @@ local window = UI:CreateWindow({
 	Title = "Fieldwork",
 	Subtitle = "A considered set of tools for your session",
 	Search = true,
+	ThemeToggle = false, -- This showcase demonstrates its own Segmented theme control.
 })
 
 local overview = window:Tab({ Title = "Overview" })

@@ -252,11 +252,20 @@ guess. An endpoint with no `/models` route is a normal case: the Providers edito
 takes a typed id, and saving requires one.
 
 Rolling compaction feeds the previous summary back to the summarizer with newly
-removed turns. Failed or disabled summary calls preserve earlier facts and append
-a note about dropped messages. The context inspector uses the same pressure and
+removed turns and complete older assistant/tool exchanges from long turns. It
+retains recent user requests and the latest two exchanges, bounds merged summaries
+to 4 KiB, reserves summary headroom, and replaces history only after checking for
+context reduction and cancellation. Summary input includes bounded tool arguments,
+paths, results and continuation offsets. Automatic failed/disabled summaries use
+explicitly labelled bounded excerpts; manual compaction requires a successful
+summary and otherwise preserves the conversation and reports the reason. Summary
+calls are included in usage. Prepared requests bound their reply budget to the
+remaining known model window without persisting that temporary ceiling.
+The context inspector uses the same pressure and
 limit calculation as compaction: estimated messages and summary plus prepared
 system/schema overhead. Usage is calibrated against a dispatch-time snapshot and
-scoped to provider ID, endpoint and model; changing prompts adjusts the estimate.
+scoped to provider ID, endpoint and model; changing prompts adjusts the estimate,
+and history shrinkage retires the corresponding tokenizer-error correction.
 Before the first prepared request, totals are labelled partial. Its colored bar
 uses the model window when known and the compaction point otherwise; the marker
 and legend make that scale explicit. Category labels reserve the remaining row
@@ -325,13 +334,24 @@ Explicit `files/` and `pastes/` paths resolve before bare-name fallbacks; client
 configuration is never a fallback scope. Saved-paste slices return at most 6,000
 source bytes with UTF-8-safe continuation offsets, including batch reads.
 
-The prompt directs game-specific work into a per-place folder under `files/`,
-named `<place name> (<PlaceId>)` from the environment block with path-reserved
-characters (`<>:"|?*` and trailing dots or spaces) removed. Scripts the agent
-authors or edits go in that folder's root; decompiled or dumped source goes in
-its `dump/` subfolder. This is prompt guidance, not an enforced boundary: the
-file tools still resolve any valid path under `files/`, so shared utilities and
-cross-game files stay reachable.
+`runtime/workspace` supplies the exact per-place path in every main/subagent
+environment block, using cached place metadata rather than a product-info call
+on each step. The display name is separate from filesystem identity. New folder
+names retain readable UTF-8 within a 72-byte label, normalize to NFC when the host
+supports it, remove reserved/control characters, and always append PlaceId.
+Without a host normalizer, valid Unicode is preserved; no partial NFC is claimed.
+Existing folders and saved PlaceId selections in `workspace.json` take precedence,
+including bounded discovery of legacy repeated `files/` containers. They are
+never automatically renamed, flattened or merged. Scripts go in the game folder;
+decompiled/dumped source goes in `dump/`. Shared and cross-game files remain
+reachable. Initialization does not require inspecting or decompiling the game.
+
+File tools return canonical `files/...` paths that every file operation accepts
+unchanged. The namespace prefix is stripped once; a real nested `files/` directory
+stays a distinct path. Legacy workspace-relative paths remain supported. Reads
+also accept explicit `pastes/...` paths. Listings paginate with `offset` and
+`nextOffset`. Legacy-file migration verifies destination bytes before deleting
+sources, preserves conflicts, and never removes an incompletely listed directory.
 
 `run_luau` uses a separate managed executor with a default 10-second deadline
 (configurable to 1–60 seconds), cooperative loop checkpoints, bounded output, and
@@ -487,7 +507,9 @@ their members.
 - `file_read_many` accepts up to 12 files or saved pastes, each up to 2 MB. It
   shares the configured output budget, retains individual failures, and returns
   per-slice offsets plus a request index if the batch fills the page. Repeated
-  slices reuse at most 2 MB of cached content within that call only.
+  slices and canonical path aliases reuse at most 2 MB of cached content within
+  that call only. The default per-file slice is 6,000 bytes, reduced fairly to
+  fit the shared budget.
 - `file_edit_many` accepts 1–20 ordered exact edits to one workspace file. Each
   edit sees the previous edit's proposed result. Every match and size check must
   pass before rereading the original to check staleness and performing one write.
@@ -842,6 +864,18 @@ time. Persisted cooldown is 14 days, with at most one display per loaded client.
 Dismissal keeps the cooldown; opting out or successfully copying the invite
 disables reminders. Manual menu access stays available. UI-free boot schedules
 nothing; screen destruction and runtime disposal release the watcher.
+
+The player profile menu has a separate ProjectUAI entry alongside the existing
+What's New entry. Its project/support modal opens the official repository on an
+explicit Star us on GitHub action, falling back to a copied or selectable URL
+when the host denies browser access. Viewing it does not mark release notes read.
+
+UI LIB retains its existing per-window Light/Dark token palettes and live bindings.
+Its built-in text mode action, `GetTheme` and `ToggleTheme` use `SetTheme`;
+`ThemeToggle=false` permits a script's existing theme control. Configuration
+profiles optionally retain mode and custom accent, with validation before any
+changes and compatibility with earlier profiles. Custom accent foregrounds use
+linear sRGB contrast. Theme switching preserves controls, drafts, and layout.
 
 On touch devices, Enter inserts a newline; only Send submits. Attachments use the
 shared wrapping scroll region, with management available from Message options

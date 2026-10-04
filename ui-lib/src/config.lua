@@ -11,7 +11,9 @@ return function(env)
 				values[id] = { kind = control.Kind, value = value }
 			end
 		end
-		return env.services.HttpService:JSONEncode({ format = "project-uai-ui", version = 1, window = self.Id, values = values })
+		local appearance = { theme = self._themeName }
+		if self._accent then appearance.accent = { self._accent.R, self._accent.G, self._accent.B } end
+		return env.services.HttpService:JSONEncode({ format = "project-uai-ui", version = 1, window = self.Id, values = values, appearance = appearance })
 	end
 	function M.ImportConfig(self, source, options)
 		options = options or {}
@@ -22,6 +24,20 @@ return function(env)
 			return false, "Unsupported or invalid UI configuration"
 		end
 		if document.window ~= self.Id then return false, "Configuration belongs to a different window Id" end
+		local appearance, accent = document.appearance
+		if appearance ~= nil then
+			if type(appearance) ~= "table" or (appearance.theme ~= "Dark" and appearance.theme ~= "Light") then
+				return false, "Invalid appearance theme"
+			end
+			if appearance.accent ~= nil then
+				local rgb = appearance.accent
+				if type(rgb) ~= "table" or #rgb ~= 3 then return false, "Invalid appearance accent" end
+				for index = 1, 3 do
+					if not C.finite(rgb[index]) or rgb[index] < 0 or rgb[index] > 1 then return false, "Invalid appearance accent" end
+				end
+				accent = Color3.new(rgb[1], rgb[2], rgb[3])
+			end
+		end
 		local pending = {}
 		for id, record in pairs(document.values) do
 			local control = self.Controls[id]
@@ -35,6 +51,7 @@ return function(env)
 		table.sort(pending, function(a, b) return a.control.Id < b.control.Id end)
 		-- All values validate before the first write. Callbacks see the complete
 		-- restored configuration and are opt-in, so loading cannot start actions.
+		if appearance then self:SetTheme(appearance.theme, accent) end
 		local releases = {}
 		for _, item in ipairs(pending) do
 			if item.control._restore then

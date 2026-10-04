@@ -1,7 +1,7 @@
 -- Generated from docs/UI_LIBRARY.md by tools/build_ui_lib.js; edit the Markdown.
 return function(env)
 	return {
-		version = "1.2.1",
+		version = "1.3.0",
 		url = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua",
 		repository = "https://github.com/Project-Ptolemy/ProjectUAI",
 		sections = {
@@ -214,7 +214,7 @@ press. A keybind's `Set` updates the binding, not its active state.
 ## Layout
 
 `UI:CreateWindow(options)` accepts `Id`, `Title`, `Subtitle`, optional
-`Width = 780` / `Height = 580`, `Search = true`, `Theme = "Dark" / "Light"`,
+`Width = 780` / `Height = 580`, `Search = true`, `Theme = "Dark" / "Light"`, `ThemeToggle = true`,
 `Accent = Color3`, `TextScale = 1` (0.85–1.5), `ToggleKey = Enum.KeyCode.RightShift`
 (false disables it), `DisplayOrder = 80`, `Parent`, `OnDestroy`, optional
 `GameName`, and optional `ReducedMotion`.
@@ -254,7 +254,7 @@ reveals matching collapsed sections, and displays a clear empty state.
 
 Window methods: `Show()`, `Hide()`, `Minimize()`, `Toggle()`, `Destroy()`,
 `SelectTab(idOrTab)`, `SetTitle(title, subtitle?)`,
-`SetTheme("Dark"|"Light", accent?)`, `SetTextScale(number)`,
+`SetTheme("Dark"|"Light", accent?)`, `GetTheme()`, `ToggleTheme()`, `SetTextScale(number)`,
 `SetReducedMotion(boolean)`, `Get(controlId)`.
 Minimize keeps a branded restore pill on screen: it shows the mark, title,
 subtitle and
@@ -269,6 +269,27 @@ scrolling tabs; compact and short layouts use the horizontal tabs and omit the
 profile to preserve room for controls. The profile places the game name on its
 own full-width line. `GameName` overrides the automatic game
 lookup when the script already knows its display name.
+
+### Light and Dark modes
+
+Both modes use the same semantic tokens and live bindings. The built-in text
+action offers **Light mode** or **Dark mode** beside navigation: above the player
+profile on desktop and beside the scrolling tab strip on compact layouts. It
+keeps the same mouse, touch, and gamepad behavior as other actions. Set
+`ThemeToggle = false` to omit it when your application supplies its own control.
+
+`window:GetTheme()` returns the active name and optional custom accent.
+`window:ToggleTheme()` preserves that accent while changing modes.
+`window:SetTheme("Light", accent)` sets both; omitting the accent restores that
+mode's default accent. Custom accents must contain finite RGB components in
+0–1; the library chooses black or white foregrounds by sRGB contrast.
+
+Theme changes repaint existing controls, selected/disabled states, focused and
+invalid fields, open pickers, dialogs, notifications, and the minimized launcher.
+They settle active transitions without changing values, drafts, selection, or
+scroll positions. New components inherit the active palette. Each window stays
+independent; no shared global theme is applied to other scripts or the UAI client.
+Use the existing configuration methods below to retain a chosen mode.
 
 Windows, tabs, pickers, and notifications reveal their contents with a brief
 fade at fixed geometry. Tab switches preserve scroll positions and update only
@@ -384,6 +405,13 @@ Imports require the same window Id, validate every known value before changing
 any, ignore removed/unknown control Ids, and reject changed control types.
 Configuration JSON is limited to 256 KiB. Values marked `Persist = false` are
 neither exported nor imported.
+
+Exports also include the window's mode and optional custom accent in an optional
+`appearance` field. Imports validate appearance and all known control values
+before changing either, and restore appearance even during silent import.
+Version-1 profiles without `appearance` remain supported and leave the current
+theme unchanged; the returned count still counts restored controls. Save/load
+uses this same format, so theme persistence needs no separate settings file.
 
 Imports are silent by default: they update controls without starting application
 actions. `{ Silent = false }` invokes value callbacks after all values have been
@@ -815,7 +843,7 @@ reading anchor, treat zero measurements during hiding as temporary, and refresh
 from retained state on restore. Viewport chunking must never delete the model's
 conversation or lose a user's draft.
 
-There is no public window visibility-change signal in 1.2.1. Do not invent
+There is no public window visibility-change signal in 1.3.0. Do not invent
 `OnShow`/`OnHide` options or patch a window's methods to simulate them. Simple
 bounded views can remain subscribed. A reusable view that needs dedicated
 visibility lifecycle support should add that capability to the library first.
@@ -920,6 +948,10 @@ loader. These modules do not use the client `src/ui` module environment.
    imports must not partially apply, and imports remain silent by default.
 5. Handle pointer, touch, keyboard/gamepad selection, overlay dismissal, hide,
    replacement, and destruction. Use shared motion/theme primitives.
+   Bind palette properties with `core.node(..., colors)` or `core.bind`; use
+   token names or functions of the current theme for state-dependent colors.
+   Do not capture a resolved palette in a callback. Reserve literal colors for
+   content such as color-picker samples and spectrum gradients.
 6. Document the API in Controls and add a focused usage example. Add meaningful
    behavioral coverage for its distinct state/input/lifecycle cases.
 7. Finish and manually audit all source, documentation, example, and test edits
@@ -961,6 +993,7 @@ luajit tools/bundle.lua --native
 node tools/build_site.js
 # Manually inspect the generated bundles, manifests, guide, and catalog here.
 luajit test/ui_library.lua
+luajit test/ui_library_theme.lua
 luajit test/ui_library_agent.lua
 luajit test/embedding_examples.lua
 node tools/build_ui_lib.js --check

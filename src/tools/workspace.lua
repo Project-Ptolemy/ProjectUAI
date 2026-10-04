@@ -44,17 +44,17 @@ return function(env)
 
 	function M.files(root, ctx)
 		root = util.trim(root):gsub("\\", "/"):gsub("/+$", "")
-		local scope, prefix = M.scope, ""
+		local scope, prefix = M.scope, "files/"
 		if root ~= "" then
 			local clean, explicit, err = fsx.userPath(root)
 			if not clean then return nil, err end
 			root = clean
 			if explicit then scope = { scope = explicit }; prefix = explicit .. "/" end
 		end
-		if root ~= "" and fsx.exists(root, scope) then return { prefix .. root }, { errors = {}, complete = true, explicit = prefix ~= "" } end
+		if root ~= "" and fsx.exists(root, scope) then return { prefix .. root }, { errors = {}, complete = true, explicit = true } end
 		local paths, seenFiles, seenDirs = {}, {}, {}
 		local queue, at = { root }, 1
-		local report = { errors = {}, complete = true, explicit = prefix ~= "" }
+		local report = { errors = {}, complete = true, explicit = true }
 		local inspected = 0
 		while at <= #queue do
 			if M.stopped(ctx) then report.complete, report.reason = false, "aborted"; break end
@@ -97,6 +97,9 @@ return function(env)
 
 	function M.edit(path, edits, ctx)
 		if type(edits) ~= "table" or #edits < 1 or #edits > 20 then return H.fail("provide 1-20 edits") end
+		local clean, pathErr, canonical = fsx.workspacePath(path)
+		if not clean then return H.fail(pathErr) end
+		path = clean
 		if M.stopped(ctx) then return aborted("edit stopped before reading") end
 		local original, err = fsx.read(path, M.scope)
 		if original == nil then return H.fail(err) end
@@ -138,16 +141,14 @@ return function(env)
 		if current == nil then return H.fail(readErr) end
 		if current ~= original then return H.fail("file changed while preparing the edit; read it again") end
 		if M.stopped(ctx) then return aborted("edit stopped before writing") end
-		local resolved = fsx.resolve(path, M.scope)
 		if content ~= original then
 			local ok, result = fsx.write(path, content, M.scope)
 			if not ok then return H.fail(result) end
-			resolved = result
 		end
 		return {
 			text = string.format("Replaced %d occurrence(s) in %s (%d bytes; %d edit(s), %s).",
-				total, resolved, #content, #edits, content == original and "already unchanged" or "one write"),
-			data = { edits = #edits, replacements = total, counts = counts, bytes = #content, changed = content ~= original },
+				total, canonical, #content, #edits, content == original and "already unchanged" or "one write"),
+			data = { path = canonical, edits = #edits, replacements = total, counts = counts, bytes = #content, changed = content ~= original },
 		}
 	end
 

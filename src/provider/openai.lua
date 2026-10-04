@@ -275,6 +275,7 @@ return function(env)
 
 		for key, value in pairs(record.params or {}) do body[key] = value end
 		for key, value in pairs(request.extra or {}) do body[key] = value end
+		M.enforceOutputCeiling(record, body, request.outputCeiling)
 		if not body.stream then body.stream_options = nil end
 		return body
 	end
@@ -456,6 +457,25 @@ return function(env)
 		local limit = tonumber(cap.tokens) or 0
 		if limit > 0 and wanted > limit then return limit end
 		return wanted
+	end
+
+	-- A temporary request allowance is applied after raw parameter overrides.
+	-- It is never a provider lesson: later requests may have room for a larger
+	-- reply. Keep valid smaller overrides and both supported field spellings.
+	function M.enforceOutputCeiling(record, body, ceiling)
+		ceiling = tonumber(ceiling)
+		if not ceiling or ceiling ~= ceiling or ceiling < 1 or ceiling == math.huge then return end
+		ceiling = math.max(1, math.floor(M.cappedMaxTokens(record, ceiling)))
+		local present = false
+		for _, key in ipairs({ "max_tokens", "max_completion_tokens" }) do
+			if body[key] ~= nil then
+				local value = tonumber(body[key])
+				if not value or value ~= value or value < 1 or value == math.huge then value = ceiling end
+				body[key] = math.min(ceiling, math.floor(value))
+				present = true
+			end
+		end
+		if not present then body.max_tokens = ceiling end
 	end
 
 	-- The effort level to send, or nil for none. Both adapters ask this and differ

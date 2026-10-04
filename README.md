@@ -4,13 +4,12 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.5.6 — October 3, 2026.** The main agent can keep working while
-subagents run and check their progress periodically. Subagent details show current
-work, tool progress, delivered messages and reports as they arrive. Modal
-fitting avoids recursive deferred layout work, event delivery allocates less,
-and idle code editors blink their caret without redrawing syntax. The sidebar
-profile keeps the name and provider together.
-UI LIB remains v1.2.1 and the embedding SDK remains 1.0.0.
+**Version 2.6.0 — October 4, 2026.** Long tool workflows compact while retaining
+the current task and recent evidence. File tools share canonical paths, and game
+folders preserve readable Unicode with stable PlaceId identity. Listings paginate,
+bulk reads use their available budget, and the player menu includes ProjectUAI
+support on GitHub. UI LIB v1.3.0 adds a built-in Light/Dark switch and theme
+persistence through existing profiles. The embedding SDK remains 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
 
 ```lua

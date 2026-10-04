@@ -67,9 +67,8 @@ return function(env)
 		return best
 	end
 
-	-- Four characters per token is the usual English approximation; it is within
-	-- about ten percent for prose and pessimistic for code, which is the right
-	-- direction for a context budget.
+	-- A byte-based heuristic, not a tokenizer. Code and Unicode vary by model;
+	-- dispatch-time usage calibration corrects the observed request estimate.
 	function M.estimateText(text)
 		if type(text) ~= "string" then return 0 end
 		return math.ceil(#text / 4)
@@ -95,7 +94,8 @@ return function(env)
 			-- the loop estimates over the wire form.
 			for _, call in ipairs(message.toolCalls or message.tool_calls or {}) do
 				local fn = call["function"] or {}
-				total = total + 8 + M.estimateText(fn.name) + M.estimateText(fn.arguments)
+				local args = type(fn.arguments) == "table" and util.encode(fn.arguments) or fn.arguments
+				total = total + 8 + M.estimateText(fn.name) + M.estimateText(args)
 			end
 		end
 		return total

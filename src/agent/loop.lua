@@ -32,11 +32,26 @@ return function(env)
 		return text
 	end
 
+	local function argumentSignature(value, depth)
+		if type(value) ~= "table" then return util.encode(value) end
+		if (depth or 0) > 24 then return util.encode(value) end
+		local parts = {}
+		for _, key in ipairs(util.keys(value, true)) do
+			parts[#parts + 1] = type(key) .. ":" .. util.encode(key) .. ":" .. argumentSignature(value[key], (depth or 0) + 1)
+		end
+		return "{" .. table.concat(parts, ",") .. "}"
+	end
+
 	local function callSignature(calls)
 		local parts = {}
 		for _, call in ipairs(calls or {}) do
 			local fn = call["function"] or {}
-			parts[#parts + 1] = tostring(fn.name) .. "(" .. tostring(fn.arguments) .. ")"
+			local args = type(fn.arguments) == "table" and fn.arguments or util.decode(fn.arguments or "{}")
+			-- JSONDecode does not distinguish empty [] and {}. Keep the original
+			-- signature in that case rather than refusing a different operation.
+			local ambiguous = type(fn.arguments) == "string"
+				and (fn.arguments:find("%[%s*%]") or fn.arguments:find("{%s*}"))
+			parts[#parts + 1] = tostring(fn.name) .. "(" .. (args and not ambiguous and argumentSignature(args) or tostring(fn.arguments)) .. ")"
 		end
 		table.sort(parts)
 		return table.concat(parts, "|")
@@ -103,6 +118,34 @@ return function(env)
 				local payload = { record = record, request = request, session = session }
 				hooks.run("preRequest", payload)
 				local accounting = session.ctx.observeRequest(payload.request.messages, payload.request.tools, record)
+				local maxTokens = payload.request.maxTokens or config.get("agent.maxTokens", 4096)
+				local outputCeiling
+				local window = env.require("provider/traits").contextWindow(record.model)
+				if window then
+					local available = math.floor(window - session.ctx.pressure(record))
+					-- A fallback can have a much smaller window than the provider whose
+					-- budget was checked before entering this chain. Give its removable
+					-- history the same one recovery opportunity as an API refusal.
+					if available < 1 and not recovered and recoverContext and recoverContext(record) then
+						recovered = true
+						if aborted() then return nil, "aborted" end
+						payload = { record = record, request = request, session = session }
+						hooks.run("preRequest", payload)
+						accounting = session.ctx.observeRequest(payload.request.messages, payload.request.tools, record)
+						maxTokens = payload.request.maxTokens or config.get("agent.maxTokens", 4096)
+						available = math.floor(window - session.ctx.pressure(record))
+					end
+					if available < 1 then
+						firstError = firstError or "The prepared prompt exceeds this model's context window even after compaction. "
+							.. "Use a larger-context model or reduce the enabled tools/standing instructions."
+						break
+					end
+					maxTokens = tonumber(maxTokens) or 4096
+					if maxTokens ~= maxTokens or maxTokens <= 0 or maxTokens == math.huge then maxTokens = 4096 end
+					local margin = math.min(1024, math.floor(window * 0.02))
+					outputCeiling = math.max(1, available - margin)
+					maxTokens = math.min(maxTokens, outputCeiling)
+				end
 				local preview = stream.new(session, record.model, aborted)
 
 				session.emit("request:start", {
@@ -123,7 +166,8 @@ return function(env)
 					toolChoice = payload.request.toolChoice,
 					stream = payload.request.stream,
 					temperature = payload.request.temperature,
-					maxTokens = payload.request.maxTokens,
+					maxTokens = maxTokens,
+					outputCeiling = outputCeiling,
 					extra = payload.request.extra,
 					aborted = aborted,
 					onRetry = function(info)
@@ -185,25 +229,42 @@ return function(env)
 	end
 
 	-- Compaction uses whatever provider is healthy, with no tools and a tight
-	-- ceiling: it is a cheap call whose only job is to keep the transcript
-	-- affordable. If it fails, the context still trims -- it just loses the note.
-	local function summariser(session)
-		return function(transcript)
+	-- ceiling. Account for its cost separately without teaching the main context
+	-- estimator that this small, tool-free prompt was the conversation request.
+	local function summariser(session, preferredRecord)
+		return function(transcript, maxBytes)
 			local epoch = session.toolEpoch
-			local record = providers.active()
+			local record = preferredRecord or providers.active()
 			if not record then return nil end
+			local messages = {
+				{ role = "system", content = prompt.compaction() },
+				{ role = "user", content = transcript },
+			}
+			local maxTokens = math.min(512, math.max(16, math.floor((maxBytes or 2048) / 4)))
+			local window = env.require("provider/traits").contextWindow(record.model)
+			if window then
+				local available = math.floor(window - usage.estimateMessages(messages) - 64)
+				if available < 16 then return nil end
+				maxTokens = math.min(maxTokens, available)
+			end
+			session.emit("status", { text = "Compacting context" })
 			local result = chat.complete(record, { session = session,
-				messages = {
-					{ role = "system", content = prompt.compaction() },
-					{ role = "user", content = transcript },
-				},
+				messages = messages,
 				temperature = 0,
-				maxTokens = 512,
+				maxTokens = maxTokens,
+				outputCeiling = maxTokens,
 				attempts = 1,
-				aborted = session.aborted,
+				aborted = function() return session.toolEpoch ~= epoch or session.aborted() end,
 			})
 			if session.toolEpoch ~= epoch or session.aborted() then return nil end
-			return result and result.content or nil
+			if result then
+				usage.record(result.usage, result.model or record.model, {
+					prompt = usage.estimateMessages(messages),
+					completion = usage.estimateText(result.content) + usage.estimateText(result.reasoning),
+				}, record)
+				session.emit("usage", { session = usage.session, turn = usage.turn })
+			end
+			return result and result.finish ~= "length" and result.content or nil
 		end
 	end
 
@@ -302,15 +363,20 @@ return function(env)
 
 			ctx.observeRequest(request.messages, request.tools, record)
 			local before = ctx.tokens()
-			local summarise = config.get("agent.compaction", true) ~= false and summariser(session) or nil
-			local summary = ctx.compact(summarise, { model = record and record.model })
+			local epoch = session.toolEpoch
+			local function compactionAborted() return session.toolEpoch ~= epoch or session.aborted() end
+			local summarise = config.get("agent.compaction", true) ~= false and summariser(session, record) or nil
+			local summary = ctx.compact(summarise, { model = record and record.model, record = record, aborted = compactionAborted })
 			if summary then session.emit("compact", { summary = summary, before = before, after = ctx.tokens() }) end
+			if compactionAborted() then return stopped(session) end
 			request.messages = ctx.wire(systemText)
 
 			local result, err, usedRecord, accounting = complete(session, request, function(refusedRecord)
 				if session.aborted() then return false end
 				local prior = ctx.tokens()
-				local folded = ctx.compact(summarise, { model = refusedRecord.model, force = true })
+				local recoverSummary = config.get("agent.compaction", true) ~= false and summariser(session, refusedRecord) or nil
+				local folded = ctx.compact(recoverSummary, { model = refusedRecord.model, record = refusedRecord,
+					force = true, aborted = compactionAborted })
 				if not folded then return false end
 				session.emit("compact", { summary = folded, before = prior, after = ctx.tokens() })
 				request.messages = ctx.wire(systemText)
@@ -461,18 +527,20 @@ return function(env)
 
 	-- Compact on demand, outside a turn -- the composer's Compact now action. Uses
 	-- the same summariser as the automatic path and forces a pass even when the
-	-- conversation is under budget, so an explicit request always folds whatever
-	-- history there is. Returns the summary (or nil when there was nothing to fold)
-	-- and the before/after token estimates.
+	-- conversation is under budget. Failed or non-reducing summaries preserve the
+	-- conversation. Returns the summary, before/after estimates, and a no-op reason.
 	function M.compact(session)
 		local ctx = session.ctx
 		local record = providers.active()
 		local before = ctx.tokens()
-		local summary = ctx.compact(summariser(session), { model = record and record.model, force = true })
+		local epoch = session.toolEpoch
+		local summary, reason = ctx.compact(summariser(session, record), { model = record and record.model,
+			record = record, force = true, requireSummary = true,
+			aborted = function() return session.toolEpoch ~= epoch or session.aborted() end })
 		if summary then
 			session.emit("compact", { summary = summary, before = before, after = ctx.tokens(), manual = true })
 		end
-		return summary, before, ctx.tokens()
+		return summary, before, ctx.tokens(), reason
 	end
 
 	return M

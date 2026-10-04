@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.6.0 — October 4, 2026
+
+Reliable context, consistent game files, and theme controls.
+
+- Compact older complete tool exchanges within a long task while preserving the
+  current user request and recent full evidence. Bound rolling summaries and
+  reserve space for them; require a smaller context before committing changes.
+- Include tool arguments, exact paths, search cursors, previous summaries, and
+  active-task context in bounded summary input. Preserve history on cancellation
+  or failed manual compaction; explain the result in Compact now. Automatic
+  unavailable summaries retain labelled bounded excerpts instead of only drop notes.
+- Count summary calls in usage, count structured tool arguments in estimates,
+  and retire historical tokenizer-error overhead after context shrinks. Bound
+  replies to remaining known context, enforce temporary caps after provider
+  overrides, and let smaller fallback models attempt compaction once.
+- Keep internal subagent coordination reminders from displacing the actual user
+  task. Recognize equivalent consecutive tool batches despite JSON key order or
+  whitespace, while preserving distinct argument types.
+- Make reads, listings, search, writes, appends, edits, and deletes share reusable
+  `files/...` paths. Remove the inconsistent prefix handling that created extra
+  `files/` directories. Real nested directories and legacy paths remain reachable.
+- Select game workspaces deterministically by PlaceId, reuse existing folders,
+  and keep display names separate from safe filesystem names. Preserve readable
+  Unicode and emoji, use host NFC normalization when available, handle reserved
+  Windows names, and bound long names. Existing folders are not renamed or merged.
+- Verify migration destinations before deleting originals. Preserve conflicting
+  files, failed/partial copies, nested content, and incompletely listed directories.
+- Add bounded pagination to `file_list`; increase default bulk-read slices within
+  the existing shared result budget and reuse equivalent path reads within a batch.
+  Keep existing search cursors and ordered exact-edit validation; add no new tools.
+- Use cached game metadata and exact workspace paths in main/subagent prompts.
+  Guide scoped inspection and related bulk reads without requiring whole-game
+  scans, decompilation, or preparatory file creation.
+- Add a separate ProjectUAI section to the player profile menu, with project
+  information and Star us on GitHub. Open the repository when supported, with
+  clipboard and selectable-link fallbacks. Keep the existing What's New section.
+- UI LIB v1.3.0 builds on its existing Light/Dark palettes and live bindings:
+  add a built-in text mode switch, `GetTheme`, `ToggleTheme`, optional
+  `ThemeToggle=false`, appearance persistence in existing profiles, and improved
+  custom-accent foreground contrast. Preserve controls, drafts, overlays, and layout.
+- Validate with focused context, filesystem, tool, provider, subagent, and UI
+  checks. The complete native test suite was not run. See the
+  [investigation and validation report](docs/INVESTIGATION_2026_10.md).
+
 ## 2.5.6 — October 3, 2026
 
 Live subagent monitoring and lower client overhead.

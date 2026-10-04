@@ -133,7 +133,7 @@ end)
 scenario("a subagent failure releases its slot and cannot revive old workers on follow-up", function()
 	local h, env = fixture()
 	local subagent, loop = env.require("agent/subagent"), env.require("agent/loop")
-	local failedContext, freshContext
+	local failedContext, freshContext, freshWasLive
 	loop.run = function(child) failedContext = child.toolContext(); error("failed child") end
 	local result, err
 	h.sched.spawn(function() result, err = subagent.dispatch({ task = "Inspect", preset = "read" }) end)
@@ -141,10 +141,15 @@ scenario("a subagent failure releases its slot and cannot revive old workers on 
 	check("a failed child releases its running slot", result == nil and contains(err, "failed child") and subagent.live == 0)
 	local record = subagent.records[1]
 	check("a failed child is marked aborted", record.session.aborted())
-	loop.run = function(child) freshContext = child.toolContext(); return "recovered" end
+	loop.run = function(child)
+		freshContext = child.toolContext()
+		freshWasLive = not freshContext.aborted()
+		return "recovered"
+	end
 	h.sched.spawn(function() result = subagent.followUp({ id = record.id, task = "Continue" }) end)
 	h.sched.advance(0.2)
-	check("follow-up starts a fresh tool lifetime", result ~= nil and failedContext.aborted() and not freshContext.aborted() and subagent.live == 0)
+	check("follow-up starts a fresh tool lifetime", result ~= nil and failedContext.aborted() and freshWasLive and subagent.live == 0)
+	check("the successful follow-up retires its completed tool lifetime", freshContext.aborted())
 	check("subagent recovery has no scheduler errors", #h.errors() == 0)
 end)
 
@@ -265,7 +270,7 @@ scenario("file search reports exact positions and resumes without duplicates", f
 			local key = hit.path .. ":" .. hit.line
 			check("matching line returned only once", not seen[key])
 			seen[key], count = true, count + 1
-			local source = env.require("runtime/fsx").read(hit.path, { scope = "files" })
+			local source = env.require("runtime/fsx").readUser(hit.path)
 			check("offset points at the literal", source:sub(hit.offset, hit.offset + 3):lower() == "item")
 		end
 		cursor = result.data.nextCursor
@@ -334,7 +339,7 @@ scenario("skipped oversized files consume the search read budget", function()
 	caps.fn.readfile = function(...) reads = reads + 1; return originalRead(...) end
 	local first = run("file_search", { query = "needle" })
 	check("oversized reads stop the page before another file", first.ok and reads == 1 and first.data.skipped == 1)
-	check("skipped files still give a forward cursor", not first.data.complete and first.data.nextCursor.path == "z-small.lua")
+	check("skipped files still give a forward cursor", not first.data.complete and first.data.nextCursor.path == "files/z-small.lua")
 	local nextPage = run("file_search", { query = "needle", cursor = first.data.nextCursor })
 	check("continuation reaches the next file without rereading the large one", nextPage.ok and reads == 2 and #nextPage.data.matches == 1)
 end)
@@ -345,7 +350,7 @@ scenario("batch reads share output space and preserve per-file continuations", f
 	write("one.lua", text)
 	write("two.lua", "two")
 	assert(env.require("runtime/fsx").write("paste.txt", "saved", { scope = "pastes" }))
-	local result = run("file_read_many", { reads = { { path = "one.lua" }, { path = "missing.lua" }, { path = "UAI/pastes/paste.txt" } } })
+	local result = run("file_read_many", { reads = { { path = "one.lua", limit = 1000 }, { path = "missing.lua" }, { path = "UAI/pastes/paste.txt" } } })
 	check("valid batch reads survive one missing file", result.ok and #result.data.results == 3 and not result.data.results[2].ok)
 	check("pastes share the same read rules", result.data.results[3].ok and contains(result.text, "saved"))
 	check("long file has continuation offset", result.data.results[1].slice.nextOffset > 1)

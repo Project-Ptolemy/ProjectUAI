@@ -179,7 +179,11 @@ for _, ending in ipairs({ "provider failure", "internal failure", "step limit", 
 	case("terminal " .. ending .. " stops uncollected children before onDone", function()
 		local f = fixture(); local requests, settledWithStop = 0, false
 		if ending == "step limit" then f.parent.maxTurns = 2 end
-		if ending == "time limit" then f.parent.budgetSeconds = 0.05 end
+		if ending == "time limit" then
+			-- A deadline is intentionally inactive while main turns are unlimited.
+			f.env.require("runtime/config").set("agent.unlimitedTurns", false)
+			f.parent.budgetSeconds = 0.05
+		end
 		f.provider(function(_, request)
 			if request.session.headless then return f.worker(request, 10) end
 			requests = requests + 1
