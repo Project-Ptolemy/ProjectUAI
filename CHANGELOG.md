@@ -28,6 +28,9 @@ Portable files, faster routine work, and clearer reasoning and provider feedback
   failures. Failed streams remain terminal, including after partial output.
 - Keep live answer and reasoning preview limits independent, and probe each
   unreadable game folder only once during recursive discovery.
+- Repair an output-ceiling refusal that names the field in the gateway's own
+  spelling (for example HCNSEC's `field MaxTokens invalid`): lower the ceiling to
+  the bound it states, retry, and remember it for later turns.
 
 ## 2.6.0 — October 4, 2026
 

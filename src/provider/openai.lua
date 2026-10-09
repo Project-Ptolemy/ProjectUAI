@@ -827,7 +827,14 @@ return function(env)
 		-- A context error often mentions max_tokens too. It needs shorter history,
 		-- not output-ceiling repairs that would learn the wrong limit.
 		if M.isContextError(message) then return nil end
-		local lowered = tostring(message or ""):lower()
+		-- Gateways spell fields the way their host language does: HCNSEC's validator
+		-- answers "field MaxTokens invalid" where the wire says `max_tokens`, and a
+		-- plain lowercase compare reads that as "maxtokens" -- no underscore -- so the
+		-- repair below never fires and the ceiling is never lowered or learned. The
+		-- copy matched against puts those camel humps back into snake case first;
+		-- the repairs still parse their numbers from the original wording.
+		local camel = tostring(message or ""):gsub("(%l)(%u)", "%1_%2")
+		local lowered = camel:lower()
 		if body.max_completion_tokens and not body.max_tokens and lowered:find("max_completion_tokens", 1, true) then
 			local note = REPAIRS[2].apply(body, message)
 			if note then return note, "max_tokens" end

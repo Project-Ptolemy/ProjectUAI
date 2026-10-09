@@ -20,7 +20,7 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.7.0",
-			revision = "2026-10-09-global-effort-access-preview-fixes",
+			revision = "2026-10-09-global-effort-access-preview-fixes-camelcase-field-repairs",
 			date = "October 9, 2026",
 			title = "Portable files and faster routine work",
 			highlights = "One path contract across file and code tools, lighter reasoning defaults, clearer excerpts and provider errors, and a branded ProjectUAI menu.",
@@ -39,6 +39,7 @@ return function(env)
 					"Recursive discovery probes each unreadable game folder only once. Live answer and reasoning previews show separate truncation notices, so one long channel cannot mislabel the other.",
 					"Thinking text clipped for transcript storage is labelled Excerpt. Other estimates say tokens shown; the old apparent 5,999-token limit was a display estimate, not a thinking budget.",
 					"Stream errors show bounded, redacted provider details, including plain-text errors. Partial output never turns a failed stream into success or causes a duplicate request. Native requests remain capped at 300 seconds.",
+					"A 400 that names a field the gateway's own way (HCNSEC: \"field MaxTokens invalid\") is repaired like any other: the reply ceiling is lowered to the bound it states, retried, and remembered for later turns.",
 				} },
 				{ category = "added", label = "Project identity", items = {
 					"The ProjectUAI profile-menu entry and support modal now show the existing frame-drawn brand mark without an image download. What's New remains separate.",

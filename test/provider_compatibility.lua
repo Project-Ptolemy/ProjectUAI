@@ -315,6 +315,36 @@ case("small local contexts and explicit output bounds are recognized", function(
 	f.healthy(); f.close()
 end)
 
+-- HCNSEC words the refusal in its host language ("field MaxTokens invalid"), and
+-- the dispatch compares plain lowercase text: without camel humps put back the
+-- field reads as "maxtokens", no repair fires, and every later turn pays for the
+-- same refusal because the ceiling is never lowered or remembered.
+case("camelCase field names in a refusal are repaired and remembered", function()
+	local f = F.new(); local adapter = f.env.require("provider/openai"); local record = recordFor(f, "hcnsec")
+	local text = "the provider rejected the request (400): field MaxTokens invalid, should be in [1, 65536]"
+	local body = { max_tokens = 128000 }
+	local note, key = adapter.repairForTest(body, text)
+	check("the refusal is recognized", note ~= nil and key == "max_tokens")
+	check("the bound is read from the range wording", body.max_tokens == 65536)
+
+	local bodies = {}
+	f.h.http.handler = function(entry)
+		bodies[#bodies + 1] = f.h.json.decode(entry.body)
+		if (bodies[#bodies].max_tokens or 0) > 65536 then
+			return { StatusCode = 400, Body = f.h.json.encode({ error = {
+				message = "field MaxTokens invalid, should be in [1, 65536]",
+				type = "invalid_request_error", param = "max_tokens", code = "3" } }) }
+		end
+		return jsonReply(f)
+	end
+	check("the turn recovers on the retried request", complete(f, record) ~= nil and #bodies == 2)
+	check("first attempt sent the configured ceiling", bodies[1].max_tokens == 128000)
+	check("retried at the gateway's bound", bodies[2].max_tokens == 65536)
+	check("the bound was learned", record.maxTokensCap and record.maxTokensCap.tokens == 65536)
+	check("so the next turn opens with it", complete(f, record) ~= nil and #bodies == 3 and bodies[3].max_tokens == 65536)
+	f.healthy(); f.close()
+end)
+
 case("a refusal cannot teach or resend through a connection changed in flight", function()
 	for _, protocol in ipairs({ "openai", "anthropic" }) do
 		local f = F.new(); local record = recordFor(f); record.api = protocol

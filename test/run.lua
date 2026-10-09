@@ -2858,6 +2858,9 @@ scenario("an over-large reply ceiling is lowered to what the model allows", func
 			"max_tokens must be less than or equal to 8192", 128000, 8192 },
 		{ "a complaint naming no number halves instead of guessing",
 			"the provider rejected the request (400): max_tokens too large", 64000, 32000 },
+		{ "a validator states an inclusive range in camelCase",
+			"the provider rejected the request (400): field MaxTokens invalid, should be in [1, 65536]",
+			128000, 65536 },
 		{ "and a ceiling already at the floor gives up rather than crawl",
 			"max_tokens too large", 1000, nil },
 	}
@@ -2958,6 +2961,47 @@ scenario("an over-large reply ceiling is lowered to what the model allows", func
 	check("which is remembered too", (nativeHandle.providers.active().maxTokensCap or {}).tokens, 64000)
 	check("no thread errors on the native path", #native.errors(), 0,
 		native.errors()[1] and native.errors()[1].traceback or nil)
+end)
+
+-- HCNSEC states its output bound in its host language: "field MaxTokens invalid,
+-- should be in [1, 65536]". The repair dispatch compares plain lowercase text, so
+-- the camel hump has to be put back before "max_tokens" is found -- otherwise no
+-- repair fires, no cap is learned, and every later turn refuses the same way.
+scenario("a camelCase field refusal is repaired and remembered", function()
+	local sent = {}
+	local live, liveHandle = bootWith({
+		handler = function(entry)
+			if not tostring(entry.url):find("/chat/completions") then
+				return { StatusCode = 404, Body = "{}" }
+			end
+			local body = json.decode(entry.body)
+			sent[#sent + 1] = body.max_tokens
+			if (body.max_tokens or 0) > 65536 then
+				return { StatusCode = 400, Body = json.encode({
+					error = { message = "field MaxTokens invalid, should be in [1, 65536]",
+						type = "invalid_request_error", param = "max_tokens", code = "3" },
+				}) }
+			end
+			return { StatusCode = 200, Body = chatBody({ content = "Within range." }) }
+		end,
+	})
+	liveHandle.config.set("agent.maxTokens", 128000)
+	liveHandle.config.set("agent.executorReplyCeiling", 0)
+	local session = liveHandle.sessions.current()
+	session.send("hello")
+	live.settle(20)
+
+	check("the configured ceiling was tried first", sent[1], 128000)
+	check("then the bound the gateway named", sent[2], 65536)
+	check("with an answer rather than a dead provider",
+		session.ctx.messages[#session.ctx.messages].content, "Within range.")
+	check("the bound was learned", (liveHandle.providers.active().maxTokensCap or {}).tokens, 65536)
+
+	session.send("again")
+	live.settle(20)
+	check("so the next turn opens with it", sent[3], 65536)
+	check("no thread errors", #live.errors(), 0,
+		live.errors()[1] and live.errors()[1].traceback or nil)
 end)
 
 scenario("native replies use configured model limits without an executor ceiling", function()
