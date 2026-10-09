@@ -820,6 +820,13 @@ return function(env)
 	-- restates its conclusion in prose.
 	function M.reasoning(parent, text, order)
 		text = tostring(text or "")
+		local truncated = false
+		local function tokenLabel()
+			-- Older transcripts predate explicit truncation metadata.
+			local excerpt = truncated or text:find("%.%.%. %[%d+ characters omitted") ~= nil
+			local tokens = usage.estimateText(text)
+			return excerpt and "Excerpt" or ("~" .. util.formatNumber(tokens) .. (tokens == 1 and " token shown" or " tokens shown"))
+		end
 		local holder = wrapper(parent, { name = "Reasoning", layoutOrder = order })
 		local card = P.column(holder, {
 			size = UDim2.new(1, 0, 0, 0),
@@ -879,7 +886,7 @@ return function(env)
 			layoutOrder = 4,
 		})
 		local tokenText = P.text(tokenPill, {
-			text = "~" .. util.formatNumber(usage.estimateText(text)) .. " tokens",
+			name = "ReasoningExtent", text = tokenLabel(),
 			role = "caption",
 			color = theme.color.textTertiary,
 			auto = "X",
@@ -900,17 +907,35 @@ return function(env)
 		local viewport = P.scroll(bodyRow, { name = "ThoughtViewport", size = UDim2.new(1, -indent, 0, 0),
 			position = UDim2.fromOffset(indent, 0), gap = theme.space.sm,
 			padding = { right = theme.space.sm, y = theme.space.xxs } })
-		local body = P.text(viewport.instance, { name = "ThoughtText", text = markdown.inline(text), role = "small",
-			color = theme.color.textSecondary, rich = true, wrap = true, auto = "Y",
+		-- Folded traces retain plain text. Format and measure only when opened;
+		-- repeated previews must not parse a long hidden trace on every frame.
+		local body = P.text(viewport.instance, { name = "ThoughtText", text = text, role = "small",
+			color = theme.color.textSecondary, rich = false, wrap = true, auto = "Y",
 			alignY = "Top", size = UDim2.new(1, 0, 0, 0) })
+		P.text(viewport.instance, { name = "ReasoningNote",
+			text = "Visible reasoning may be summarized or shortened. Its estimated size is not the model's thinking budget or billed token usage.",
+			role = "caption", color = theme.color.textTertiary, wrap = true, auto = "Y",
+			size = UDim2.new(1, 0, 0, 0), layoutOrder = 1 })
 		local open = config.get("ui.expandThinking", false) == true
+		local formatted, plainText
+		local function drawBody()
+			if formatted ~= text then
+				local ok, rich = pcall(markdown.inline, text)
+				ok = ok and type(rich) == "string"
+				local plainOk, plain = pcall(markdown.plain, text)
+				plainText = ok and plainOk and type(plain) == "string" and plain or text
+				formatted = text
+				body.RichText = ok
+				body.Text = ok and rich or text
+			end
+		end
 		local fitting = false
 		local function fit()
-			if not bodyRow.Parent or fitting then return end
+			if not open or not bodyRow.Parent or fitting then return end
 			fitting = true
 			local width = math.max(1, viewport.instance.AbsoluteSize.X - theme.space.sm)
 			local measured = math.max(body.TextBounds.Y, body.AbsoluteSize.Y,
-				P.measureText(markdown.plain(text), { role = "small", width = width }).Y)
+				P.measureText(plainText or text, { role = "small", width = width }).Y)
 			local room = responsive.isMobile() and responsive.usableRect(env.root, 0).height or responsive.viewport.Y
 			local height = math.min(math.max(theme.text.small.height, measured) + theme.space.xxs * 2,
 				math.max(theme.text.small.height * 2, math.min(theme.size.thinkingViewport, room * 0.3)))
@@ -931,7 +956,7 @@ return function(env)
 			open = value
 			bodyRow.Visible = open
 			P.animate(caret, "hover", { Rotation = open and 90 or 0 })
-			if open then fit() end
+			if open then drawBody(); fit() end
 		end
 		header.Activated:Connect(function() setOpen(not open) end)
 		setOpen(open)
@@ -941,16 +966,20 @@ return function(env)
 		if config.get("ui.showReasoning", true) == false then holder.Visible = false end
 
 		local handle = { root = holder, body = body }
-		function handle.setText(value)
-			text = tostring(value or "")
-			body.Text = markdown.inline(text)
-			tokenText.Text = "~" .. util.formatNumber(usage.estimateText(text)) .. " tokens"
+		function handle.setText(value, isTruncated)
+			local nextText = tostring(value or "")
+			if text == nextText and truncated == (isTruncated == true) then return end
+			text = nextText
+			truncated = isTruncated == true
+			if open then drawBody()
+			else formatted = nil; body.RichText = false; body.Text = text end
+			tokenText.Text = tokenLabel()
 			fitHeader()
 			if open then fit() end
 		end
 		function handle.append(value)
 			value = tostring(value or "")
-			if value ~= "" and value ~= text then handle.setText(text .. "\n\n" .. value) end
+			if value ~= "" and value ~= text then handle.setText(text .. "\n\n" .. value, truncated) end
 		end
 		return handle
 	end

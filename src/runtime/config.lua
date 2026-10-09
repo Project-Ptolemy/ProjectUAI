@@ -75,23 +75,12 @@ return function(env)
 			unlimitedTurns = true,
 			toolConcurrency = 8,
 			toolTimeout = 60,
-			-- Seconds one model call may run before the transport gives up. No Roblox
-			-- transport delivers a body incrementally, so a reasoning model that thinks
-			-- for ninety seconds produces nothing on the wire until it answers -- and the
-			-- executor's own default timeout is sixty.
-			--
-			-- A day, and it is the highest default of any clock in this client: this is the
-			-- one deadline nothing else can rescue, because a subagent or a tool that hits
-			-- its own budget still gets its report collected, while a request that times out
-			-- is a turn spent for nothing. Subagents run the same loop as the conversation
-			-- the user is watching, so their model calls inherit this too -- a child stopped
-			-- mid-think by the transport is a dispatch wasted.
+			-- Configured model-call wait, shared by parent and child agents. Native
+			-- transports enforce a separate 300-second maximum; hosts may stop sooner.
+			-- Buffered HTTP delivers the response only after the host call completes.
 			requestTimeout = 86400,
-			-- The switch below is now the semantic one rather than the escape hatch: it
-			-- reads as "no deadline at all" and means the same day as the default does,
-			-- which is the honest bound -- a request nobody collects is indistinguishable
-			-- from a hung client. It exists so the slider can be lowered for a quick model
-			-- without losing the day the heavy one needs.
+			-- Use the transport's maximum wait without changing the saved shorter
+			-- timeout. This never disables native deadlines or cooperative Stop.
 			requestUnlimited = true,
 			-- Large contexts increase upload and prefill time under executor HTTP
 			-- deadlines; lower this budget when even short replies time out.
@@ -105,11 +94,10 @@ return function(env)
 			stream = true,
 			temperature = 0.4,
 			-- Reasoning depth: sent as `reasoning_effort` on chat completions and as
-			-- `output_config.effort` on the Messages API. "high" is what the API itself
-			-- uses when the field is absent, so this default changes nothing until it is
-			-- moved, and "off" sends no field at all. Clamped per model, because the
-			-- scales differ by generation -- "xhigh" did not exist before Opus 4.7.
-			effort = "max",
+			-- `output_config.effort` on the Messages API. Start with low latency;
+			-- saved choices and explicit request/provider overrides remain authoritative.
+			-- "off" omits the field (provider default), not a promise of no thinking.
+			effort = "low",
 			-- Manual capability claims, keyed by lowercased model id. No endpoint
 			-- publishes what a relayed id can do, so this is the user's word against
 			-- nothing: `forceReasoning` makes the adapters ask a model to think, and
@@ -179,7 +167,7 @@ return function(env)
 			customInstructions = "",
 		},
 		permissions = {
-			mode = "ask",
+			mode = "full",
 			remember = true,
 			rules = {},
 		},

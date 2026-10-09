@@ -4,13 +4,22 @@ A universal AI agent that runs inside a Roblox client. It works in any game,
 with Chat Completions and Anthropic Messages endpoints, including compatible
 local servers and relays.
 
-**Version 2.6.0 — October 4, 2026.** Long tool workflows compact while retaining
-the current task and recent evidence. File tools share canonical paths, and game
-folders preserve readable Unicode with stable PlaceId identity. Listings paginate,
-bulk reads use their available budget, and the player menu includes ProjectUAI
-support on GitHub. UI LIB v1.3.0 adds a built-in Light/Dark switch and theme
-persistence through existing profiles. The embedding SDK remains 1.0.0.
+**Version 2.7.0 — October 9, 2026.** File tools, search, compilation and execution
+share one path contract. New game folders use portable ASCII names; accessible
+existing folders retain their paths. Routine work uses lighter reasoning defaults,
+stable prompt prefixes and deferred formatting of folded thinking. Stream failures
+show the provider's actionable reason, and the ProjectUAI menu and support modal
+carry the existing brand mark. UI LIB remains 1.3.0 and the embedding SDK 1.0.0.
 See the [release notes](CHANGELOG.md) and [UI library guide](docs/UI_LIBRARY.md).
+
+New configurations default to **Low** reasoning effort for faster responses. Existing
+saved effort stays unchanged; choose **Settings → Agent → Effort → Low** to lower
+it. The model modal edits the same global effort setting, including for other
+models when **Options → Reasoning support** is enabled. The Thinking row estimates
+visible text only. A long retained trace is labelled
+**Excerpt**, not a 5,999-token model limit. See [provider behavior](docs/PROVIDER_COMPATIBILITY.md).
+Use the [2.7.0 test checklist](docs/TESTING_2.7.0.md) for focused offline checks and
+the features to exercise in Roblox.
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"))()
@@ -609,10 +618,11 @@ The interface opens with a floating orb. There is nothing configured, so the
 conversation says so and points at the inference configuration. Add an endpoint,
 fetch its models or type one, and send a message.
 
-Permissions default to **Ask first**: reads run freely, anything that changes the
-game waits for you, and the prompt shows the arguments -- which for `run_luau`
-means the code. Read only, Auto and Allow everything are the other three modes, and
-the chip under the composer always names the one in force.
+New configurations default to **Allow everything**: reads, writes and execution
+run without approval unless a tool rule says otherwise. Existing saved access
+choices and rules are preserved. Read only, Ask first and Auto remain available;
+the chip under the composer names the active mode. Ask first shows a tool's
+arguments before changes or execution, including the code for `run_luau`.
 
 Nothing on disk until then, and only three things after: `config.json`,
 `sessions/<id>.json` per conversation, and `stats.json` for the activity counters.

@@ -5,7 +5,7 @@ local suite = fixture.suite("Workspace paths")
 local check, case = suite.check, suite.case
 local function setup()
 	local f = fixture.new()
-	f.tools({ "fs" })
+	f.tools({ "fs", "script" })
 	return f, f.env.require("runtime/fsx")
 end
 
@@ -24,6 +24,9 @@ case("all file tools reuse canonical paths without nesting the root", function()
 	check("list path is directly reusable", listed.ok and listed.data.entries[1].path == path)
 	local search = f.dispatch("file_search", { query = "x = 3", path = "files/Game (77)" })
 	check("search uses same path", search.ok and search.data.matches[1].path == path)
+	check("compiler uses the exact file-tool path", f.dispatch("check_luau", { path = path }).ok)
+	local ran = f.dispatch("run_luau", { path = path })
+	check("runner reads the same edited source", ran.ok and ran.text:find("3", 1, true))
 	check("delete uses same path", f.dispatch("file_delete", { path = path }).ok and f.h.files["UAI/" .. path] == nil)
 	check("workspace root cannot be deleted", not f.dispatch("file_delete", { path = "files/" }).ok)
 	check("absolute paths stay rejected", not f.dispatch("file_write", { path = "/files/main.lua", content = "x" }).ok)
@@ -74,7 +77,7 @@ case("file list pages and bulk reads avoid needless follow-up reads", function()
 	check("bare paste fallback does not poison explicit workspace cache", distinct.data.results[1].ok and not distinct.data.results[2].ok)
 end)
 
-case("Unicode folder names remain readable and valid", function()
+case("generated folders use ASCII while explicit Unicode paths stay exact", function()
 	local f, fs = setup()
 	local w, util = f.env.require("runtime/workspace"), f.env.require("runtime/util")
 	local accent, cjk, emoji = "Caf\195\169", "\230\184\184\230\136\143", "\240\159\142\174"
@@ -82,20 +85,116 @@ case("Unicode folder names remain readable and valid", function()
 	for _, name in ipairs({ accent, cjk, emoji, emoji .. emoji, joined, "Cafe\204\129", "symbols + = !", "COM\194\185.txt", "LPT\194\178.txt", "CON.txt", "a<>:\"/\\|?* .", ".", "<>?*", (cjk .. joined):rep(50), "bad\255name" }) do
 		local folder = w.folderName(name, 555)
 		check("folder is valid UTF-8 and a safe path", util.validUtf8(folder) and fs.sanitise(folder) ~= nil)
+		check("generated folder is portable ASCII", not folder:find("[\128-\255]"))
 		check("folder remains bounded and retains PlaceId", #folder < 100 and folder:sub(-6) == " (555)")
 	end
-	check("accented letters preserved", w.folderName(accent, 1) == accent .. " (1)")
-	check("CJK preserved", w.folderName(cjk, 1) == cjk .. " (1)")
-	check("emoji ZWJ sequence preserved", w.folderName(joined, 1) == joined .. " (1)")
+	check("ASCII words remain readable beside emoji", w.folderName(emoji .. " Harbor", 1) == "Harbor (1)")
+	check("Unicode-only display names use place identity", w.folderName(cjk .. joined, 1) == "Place (1)")
 	check("only unsafe symbols get readable fallback", w.folderName("<>?*", 1) == "Place (1)")
 	check("superscript Windows devices are rejected", fs.sanitise("COM\194\185.txt") == nil and fs.sanitise("LPT\194\179.txt") == nil)
 	check("PlaceId disambiguates identical sanitization", w.folderName("a/b", 1) ~= w.folderName("a\\b", 2))
-	f.h.sandbox.utf8 = { nfcnormalize = function(name) return name:gsub("e\204\129", "\195\169") end }
-	local composed, method = w.folderName("Cafe\204\129", 1)
-	check("host NFC capability is used when available", composed == accent .. " (1)" and method == "NFC")
-	f.h.sandbox.utf8 = nil
-	local fallback, fallbackMethod = w.folderName("Cafe\204\129", 1)
-	check("fallback preserves combining Unicode without claiming normalization", fallback == "Cafe\204\129 (1)" and fallbackMethod == "preserved UTF-8")
+	local path = "files/" .. joined .. "/" .. accent .. ".lua"
+	check("existing Unicode remains writable when the host supports it", f.dispatch("file_write", { path = path, content = "return 1" }).ok)
+	local listed = f.dispatch("file_list", { path = "files/" .. joined })
+	check("explicit Unicode round-trips without normalization", listed.ok and listed.data.entries[1].path == path and fs.readUser(path) == "return 1")
+end)
+
+case("host listing bases preserve real nested roots and directory-relative descendants", function()
+	for _, style in ipairs({ "absolute", "scope", "directory", "app" }) do
+		local f, fs = setup()
+		local path = "files/files/Game (77)/nested/main.lua"
+		assert(f.dispatch("file_write", { path = path, content = "return 77" }).ok)
+		local caps = f.env.require("runtime/caps")
+		local original = caps.fn.listfiles
+		caps.fn.listfiles = function(dir)
+			local items = original(dir)
+			for index, item in ipairs(items) do
+				if style == "absolute" then items[index] = ("C:/executor/workspace/" .. item):gsub("/", "\\")
+				elseif style == "scope" then items[index] = item:sub(#"UAI/files/" + 1)
+				elseif style == "directory" then items[index] = item:sub(#dir + 2)
+				elseif style == "app" then items[index] = item:sub(#"UAI/" + 1) end
+			end
+			return items
+		end
+		local listed = f.dispatch("file_list", { path = "files/files/Game (77)" })
+		check(style .. " listing retains reusable paths", listed.ok and listed.data.complete)
+		for _, item in ipairs(listed.data.entries) do
+			check(style .. " stays inside requested folder", item.path:sub(1, #"files/files/Game (77)/") == "files/files/Game (77)/")
+		end
+		local found = f.dispatch("file_search", { path = "files/files/Game (77)", query = "77" })
+		check(style .. " recursive search reaches exact file", found.ok and found.data.complete and found.data.matches[1].path == path)
+		check(style .. " execution shares that path", f.dispatch("run_luau", { path = path }).ok)
+		f.healthy(); f.close()
+	end
+end)
+
+case("incomplete listings retain usable paths without guessing corrupt or ambiguous entries", function()
+	local f, fs = setup()
+	assert(fs.write("safe.lua", "return 1", { scope = "files" }))
+	assert(fs.write("dup.lua", "outer", { scope = "files" }))
+	assert(fs.write("files/dup.lua", "inner", { scope = "files" }))
+	f.env.require("runtime/caps").fn.listfiles = function()
+		return { "UAI/files/safe.lua", "UAI/files/safe.lua", "files/dup.lua", "bad\255name", "../config.json" }
+	end
+	local result = f.dispatch("file_list", {})
+	check("valid entries survive with an explicit warning", result.ok and not result.data.complete and result.data.warning ~= nil)
+	check("duplicates and ambiguous paths are not returned", #result.data.entries == 1 and result.data.entries[1].path == "files/safe.lua")
+	check("both ambiguous files remain untouched", fs.readUser("files/dup.lua") == "outer" and fs.readUser("files/files/dup.lua") == "inner")
+end)
+
+case("leading spaces in explicit paths are significant for listing and search", function()
+	local f = setup()
+	assert(f.dispatch("file_write", { path = "files/ Game/main.lua", content = "return 1" }).ok)
+	local listed = f.dispatch("file_list", { path = "files/ Game" })
+	check("listing preserves leading space", listed.ok and listed.data.entries[1].path == "files/ Game/main.lua")
+	local found = f.dispatch("file_search", { path = "files/ Game", query = "return" })
+	check("search preserves leading space", found.ok and found.data.matches[1].path == "files/ Game/main.lua")
+end)
+
+case("an inaccessible saved Unicode game folder cannot keep poisoning the prompt", function()
+	local f, fs = setup()
+	local old = "\226\154\153\239\184\143 Harbor (77)"
+	assert(fs.write(old .. "/keep.lua", "kept", { scope = "files" }))
+	assert(fs.writeJson("workspace.json", { version = 1, games = { ["77"] = old } }))
+	local place = f.env.require("runtime/place")
+	place.id, place.name = 77, "\226\154\153\239\184\143 Harbor"
+	local caps, original = f.env.require("runtime/caps"), f.env.require("runtime/caps").fn.isfolder
+	caps.fn.isfolder = function(path) if path:find("[\128-\255]") then return false end; return original(path) end
+	local selected = f.env.require("runtime/workspace").describe()
+	check("new default is portable and stable", selected.path == "files/Harbor (77)")
+	check("inaccessible original content is preserved", f.h.files["UAI/files/" .. old .. "/keep.lua"] == "kept")
+	check("selected path immediately works across tools", f.dispatch("file_write", { path = selected.path .. "/main.lua", content = "return 1" }).ok)
+end)
+
+case("damaged or unsupported workspace identity files are never overwritten", function()
+	for _, body in ipairs({ "{broken", '{"version":2,"games":{}}', '{"version":1,"games":"invalid"}' }) do
+		local f, fs = setup()
+		assert(fs.write("workspace.json", body))
+		local place = f.env.require("runtime/place")
+		place.id, place.name = 77, "Harbor"
+		check("current work still receives a usable path", f.env.require("runtime/workspace").describe().path == "files/Harbor (77)")
+		check("original identity file remains intact", fs.read("workspace.json") == body)
+		f.healthy(); f.close()
+	end
+end)
+
+case("recursive discovery probes an unreadable game folder only once", function()
+	local f, fs = setup()
+	local old = "Legacy (77)"
+	for index = 1, 30 do assert(fs.write(old .. "/part" .. index .. ".lua", "kept", { scope = "files" })) end
+	local caps = f.env.require("runtime/caps")
+	local original, probes = caps.fn.listfiles, 0
+	caps.fn.listfiles = function(path)
+		if path == "UAI/files/" .. old then probes = probes + 1; error("host cannot list this folder") end
+		return original(path)
+	end
+	local place = f.env.require("runtime/place")
+	place.id, place.name = 77, "Current"
+	local workspace = f.env.require("runtime/workspace")
+	check("failed folder is probed once despite recursive children", workspace.describe().path == "files/Current (77)" and probes == 1)
+	check("later prompt builds reuse the selected path", workspace.describe().path == "files/Current (77)" and probes == 1)
+	check("old files remain intact", fs.readUser("files/" .. old .. "/part30.lua") == "kept")
+	f.healthy(); f.close()
 end)
 
 case("PlaceId reuses existing and legacy folders across changing display names", function()

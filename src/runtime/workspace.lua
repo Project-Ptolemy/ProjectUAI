@@ -8,35 +8,27 @@ return function(env)
 	local M = {}
 	local selections = {}
 	local stored = fsx.readJson("workspace.json", nil)
-	local mapping = type(stored) == "table" and stored.version == 1 and type(stored.games) == "table" and stored.games or {}
-	local writable = stored == nil or (type(stored) == "table" and stored.version == 1)
+	local valid = type(stored) == "table" and stored.version == 1 and type(stored.games) == "table"
+	local mapping = valid and stored.games or {}
+	local writable = valid or (stored == nil and not fsx.exists("workspace.json"))
 
 	function M.folderName(displayName, placeId)
-		local name = util.sanitise(displayName)
-		local normalization = "preserved UTF-8"
-		-- Luau hosts may supply full Unicode NFC. LuaJIT and older executors do
-		-- not; never substitute a partial accent map and call it normalization.
-		if type(utf8) == "table" and type(utf8.nfcnormalize) == "function" then
-			local ok, normalized = pcall(utf8.nfcnormalize, name)
-			if ok and type(normalized) == "string" and util.validUtf8(normalized) then name, normalization = normalized, "NFC" end
-		end
-		name = name:gsub('[<>:"/\\|%?%*%z\1-\31\127]', " ")
-		-- Preserve accents, CJK, emoji modifiers and ZWJ sequences. Remove C1
-		-- controls and invisible direction overrides that can disguise a path.
-		name = name:gsub("\194[\128-\159]", " "):gsub("\226\128[\139\142\143\170-\174]", "")
-		name = name:gsub("\226\129[\166-\169]", ""):gsub("\239\187\191", "")
-		name = util.trim(name:gsub("%s+", " ")):gsub("[%. ]+$", "")
-		-- Leave ample room for authored scripts and dump/ below the 180-byte
-		-- executor path limit. Never split a Unicode code point.
-		local last = math.min(#name, 72)
-		while last > 0 and last < #name and name:byte(last + 1) >= 128 and name:byte(last + 1) < 192 do last = last - 1 end
-		name = name:sub(1, last):gsub("[%. ]+$", "")
+		-- Executor listfiles implementations can corrupt Unicode even when writes
+		-- accept it. Only generated names use ASCII; existing user paths stay exact.
+		local name = tostring(displayName or ""):gsub("[^A-Za-z0-9 _%-]+", " ")
+		name = util.trim(name:gsub(" +", " ")):sub(1, 72):gsub(" +$", "")
 		if name == "" then name = "Place" end
 		local id = string.format("%.0f", tonumber(placeId) or 0)
 		local folder = name .. " (" .. id .. ")"
-		-- CON.txt remains a Windows device even with a suffix after its dot.
+		-- Keep generated paths within the same host validation as explicit paths.
 		if not fsx.sanitise(folder) then folder = "_" .. folder end
-		return folder, normalization
+		return folder, "ASCII"
+	end
+
+	local function reusable(path)
+		if not fsx.isDir(path, { scope = "files" }) then return false end
+		local entries, err = fsx.list(path, { scope = "files" })
+		return err == nil or #entries > 0
 	end
 
 	local function existing(id)
@@ -56,8 +48,11 @@ return function(env)
 				local leaf = relative:match("^[^/]+")
 				if leaf and util.endsWith(leaf, suffix) then
 					local path = root == "" and leaf or root .. "/" .. leaf
-					if not seen[path] and fsx.sanitise(path) and fsx.isDir(path, { scope = "files" }) then
-						seen[path] = true; found[#found + 1] = path
+					if not seen[path] then
+						-- Recursive listings can mention every child of an unreadable
+						-- folder. Probe the folder once even when that probe fails.
+						seen[path] = true
+						if fsx.sanitise(path) and reusable(path) then found[#found + 1] = path end
 					end
 				end
 			end
@@ -77,7 +72,11 @@ return function(env)
 			local folder, normalization = M.folderName(place.label(), place.id)
 			local saved = mapping[id]
 			if type(saved) ~= "string" or not fsx.sanitise(saved) or not util.endsWith(saved, " (" .. id .. ")") then saved = nil end
-			selected = { path = "files/" .. (saved or existing(id) or folder), normalization = normalization }
+			-- A Unicode path saved by an older build may be inaccessible on this
+			-- executor. Keep its files untouched and select a usable ASCII default.
+			if saved and saved:find("[\128-\255]") and fsx.enabled and not reusable(saved) then saved = nil end
+			local prior = saved or existing(id)
+			selected = { path = "files/" .. (prior or folder), normalization = prior and "existing path" or normalization }
 			selections[id] = selected
 			if not saved and writable and fsx.enabled then
 				mapping[id] = selected.path:sub(7)

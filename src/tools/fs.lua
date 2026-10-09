@@ -39,13 +39,14 @@ return function(env)
 				local path, why, canonical = fsx.workspacePath(args.path or "", true)
 				if not path then return H.fail(why) end
 				local entries, err = fsx.list(path, SCOPE)
-				if err then return H.fail(err) end
+				if err and #entries == 0 then return H.fail(err) end
 				if #entries == 0 then
 					return "Nothing in " .. canonical .. "."
 				end
 				local cap, offset = H.resultBudget(), args.offset or 1
 				local rows, page, used = {}, {}, 0
 				local header = string.format("%d entries under %s (paths reusable unchanged):\n", #entries, canonical)
+				if err then header = "Incomplete listing: " .. err .. "\n" .. header end
 				local index = offset
 				while index <= #entries and #rows < (args.limit or 60) do
 					local entry = entries[index]
@@ -58,7 +59,7 @@ return function(env)
 				if #rows == 0 and index <= #entries then return H.fail("increase the result budget to fit a file path") end
 				local nextOffset = index <= #entries and index or nil
 				return { text = header .. table.concat(rows, "\n") .. (nextOffset and ("\nContinue with offset=" .. nextOffset .. " using the same path.") or ""),
-					data = { path = canonical, entries = page, total = #entries, nextOffset = nextOffset } }
+					data = { path = canonical, entries = page, total = #entries, nextOffset = nextOffset, complete = err == nil, warning = err } }
 			end,
 		},
 		{

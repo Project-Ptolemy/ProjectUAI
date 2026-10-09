@@ -10,7 +10,13 @@ LSP, Luau type inference, Roblox API type definitions or an isolated test proces
 
 ## Start a project
 
-Call `project_scaffold` with a new `directory`, for example `My Game (123)/Helper`.
+In client 2.7.0, use the canonical Current game files path supplied to the agent.
+File tools, search, `check_luau`, `run_luau` and project tools accept the same
+`files/...` prefix once. Preserve returned legacy paths exactly, even when they
+contain a real nested `files/` folder. New automatic game folders use ASCII names
+plus PlaceId; project manifests still use paths relative to their project.
+
+Call `project_scaffold` with a new `directory`, for example `files/My Game (123)/Helper`.
 It stages these files and returns `patchId` and the manifest path:
 
 ```text

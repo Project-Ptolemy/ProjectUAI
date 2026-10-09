@@ -1321,7 +1321,7 @@ return function(env)
 				{ label = "Providers & models", value = "providers", icon = "sliders" },
 				{ divider = true },
 				{ label = env.require("ui/changelog").menuLabel(), value = "changelog", icon = "spark" },
-				{ label = "ProjectUAI", value = "project" },
+				{ label = "ProjectUAI", value = "project", icon = "brand" },
 				{ label = "About this build", value = "about", icon = "book" },
 				{ label = "Join Discord", value = "discord", icon = "globe" },
 				{ label = "Donate", value = "donate", icon = "spark" },

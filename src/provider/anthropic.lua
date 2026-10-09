@@ -337,11 +337,11 @@ return function(env)
 			local payload = util.trim(frame.data)
 			if payload ~= "" and payload ~= "[DONE]" then
 				local event = util.decode(payload)
+				local providerError = sse.providerError(event or payload, frame.event)
+				if providerError then streamError = streamError or providerError; return true end
 				if type(event) == "table" then
 					local kind = event.type or frame.event
-					if kind == "error" then
-						streamError = "malformed_stream: provider reported a stream error"
-					elseif kind == "message_stop" then done = true
+					if kind == "message_stop" then done = true
 					elseif kind == "message_start" and type(event.message) == "table" then
 						model, id, usage = event.message.model, event.message.id, event.message.usage
 					elseif kind == "content_block_start" and type(event.content_block) == "table" then

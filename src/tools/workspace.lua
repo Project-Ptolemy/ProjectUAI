@@ -43,7 +43,7 @@ return function(env)
 	end
 
 	function M.files(root, ctx)
-		root = util.trim(root):gsub("\\", "/"):gsub("/+$", "")
+		root = tostring(root or ""):gsub("\\", "/"):gsub("/+$", "")
 		local scope, prefix = M.scope, "files/"
 		if root ~= "" then
 			local clean, explicit, err = fsx.userPath(root)

@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.7.0 — October 9, 2026
+
+Portable files, faster routine work, and clearer reasoning and provider feedback.
+
+- Use one concise filesystem contract for file tools, search, compilation and
+  execution. Preserve canonical paths and existing nested folders; generate ASCII
+  game folders and recover from inaccessible saved Unicode paths without moving data.
+- Resolve different executor listing bases against actual files. Keep leading
+  spaces, reject ambiguous paths, and retain usable entries from incomplete listings.
+- Preserve damaged or future-format game-folder identity files instead of silently
+  replacing them during prompt construction.
+- Default new configurations to Low reasoning effort. Preserve saved choices,
+  expose Provider default, and explain the real request and output limits.
+- Show the same global effort control in the model modal when Reasoning support
+  is enabled for any model. Preserve documented scales, expose Provider default,
+  and follow external setting changes without leaving subscriptions after close.
+- Default new access settings to Allow everything while preserving saved modes
+  and explicit tool rules. Use the same label in the composer.
+- Label clipped reasoning as an excerpt instead of showing an apparent 5,999-token
+  limit. Retain that label across replay; format folded reasoning only when opened,
+  reuse parsed text during resizing, and keep plain text readable if formatting fails.
+- Keep standing instructions ahead of live metadata for a more reusable prompt
+  prefix, and guide routine work toward focused actions and relevant checks.
+- Add the existing Project UAI brand mark to its profile-menu entry and support modal.
+- Preserve bounded, redacted provider error details from JSON and plain-text SSE
+  failures. Failed streams remain terminal, including after partial output.
+- Keep live answer and reasoning preview limits independent, and probe each
+  unreadable game folder only once during recursive discovery.
+
 ## 2.6.0 — October 4, 2026
 
 Reliable context, consistent game files, and theme controls.

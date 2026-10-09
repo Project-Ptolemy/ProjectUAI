@@ -77,4 +77,24 @@ case("summary-sized ceilings survive bad raw limits without affecting ordinary c
 	end
 end)
 
+case("faster default effort is sent without shrinking output or overriding saved choices", function()
+	for _, style in ipairs({ "openai", "anthropic" }) do
+		local f, record, adapter = fixture(style)
+		local config = f.env.require("runtime/config")
+		record.model = "claude-opus-4-6"
+		local req = { messages = { { role = "user", content = "Inspect the file" } } }
+		local function effort(body) return style == "openai" and body.reasoning_effort or (body.output_config and body.output_config.effort) end
+		local body = adapter.buildBody(record, req)
+		check(style .. " starts at low effort with full reply allowance", effort(body) == "low" and body.max_tokens == 128000)
+		check(style .. " adds no fixed thinking token budget", not body.thinking or body.thinking.budget_tokens == nil)
+		config.set("agent.effort", "high"); assert(config.saveNow()); config.load()
+		check(style .. " retains saved effort", effort(adapter.buildBody(record, req)) == "high")
+		req.effort = "medium"
+		check(style .. " honors per-request effort", effort(adapter.buildBody(record, req)) == "medium")
+		req.effort = "off"
+		check(style .. " provider default omits effort", effort(adapter.buildBody(record, req)) == nil)
+		f.healthy(); f.close()
+	end
+end)
+
 suite.finish()

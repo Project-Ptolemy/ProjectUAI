@@ -19,7 +19,7 @@ return function(env)
 				type = "object",
 				properties = {
 					code = { type = "string", minLength = 1, maxLength = 256000, description = "The source to run inline. Use print() for output; return values or tables to report results. Provide this or 'path', not both." },
-					path = { type = "string", description = "Path to a workspace file to run, e.g. 'scripts/build.lua'. The client reads and runs it locally without loading its contents into the conversation. Provide this or 'code', not both." },
+					path = { type = "string", description = "Use the same files/... path returned by file tools, unchanged. Runs the saved source locally without reading it into the conversation. Provide this or code, not both." },
 					timeout = { type = "number", minimum = 1, maximum = 60, description = "Execution deadline in seconds, including spawned tasks. Default 10. Use managed chat tools for persistent chat automation." },
 				},
 				required = {},
@@ -35,7 +35,7 @@ return function(env)
 				type = "object",
 				properties = {
 					code = { type = "string", minLength = 1, maxLength = 256000, description = "Inline Luau source to compile without running it. Provide this or path." },
-					path = { type = "string", minLength = 1, description = "Workspace file or saved paste to compile locally, e.g. scripts/build.lua. Provide this or code." },
+					path = { type = "string", minLength = 1, description = "Use the same files/... or pastes/... path returned by file tools, unchanged. Provide this or code." },
 				},
 				required = {},
 			},

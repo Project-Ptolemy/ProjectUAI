@@ -75,9 +75,12 @@ return function(env)
 		end
 		local function setThoughtChunks(handle, chunks)
 			handle.thoughtChunks = chunks
-			local text = {}
-			for _, chunk in ipairs(chunks) do text[#text + 1] = chunk.text end
-			handle.setText(table.concat(text, "\n\n"))
+			local text, truncated = {}, false
+			for _, chunk in ipairs(chunks) do
+				text[#text + 1] = chunk.text
+				truncated = truncated or chunk.truncated == true
+			end
+			handle.setText(table.concat(text, "\n\n"), truncated)
 		end
 		-- Tracking is local to this view. No shared renderer or other chat is mutated.
 		local builders = message
@@ -284,7 +287,8 @@ return function(env)
 			local chunks = handle.thoughtChunks or {}
 			local store = view.session and view.session.transcript
 			local retained = event.transcriptId and store and store.get(event.transcriptId)
-			chunks[#chunks + 1] = { id = event.transcriptId, text = (retained or event).text }
+			local source = retained or event
+			chunks[#chunks + 1] = { id = event.transcriptId, text = source.text, truncated = source.textTruncated }
 			setThoughtChunks(handle, chunks)
 			run.thought = track(handle, event)
 		end
@@ -345,13 +349,16 @@ return function(env)
 			if not view.preview then view.preview = { id = event.streamId } end
 			local preview = view.preview
 			view.model = event.model or view.model
-			local suffix = event.limited and "\n\n[Live preview limited; the full reply will appear when complete.]" or ""
+			-- Older preview producers only supplied an aggregate limit flag.
+			local reasoningLimited = event.reasoningLimited == true or (event.reasoningLimited == nil and event.limited == true)
+			local textLimited = event.textLimited == true or (event.textLimited == nil and event.limited == true)
 			if util.trim(event.reasoning or "") ~= "" then
 				if not preview.thoughtHandle then
 					preview.ownsRun = view.run == nil; preview.run = openRun()
 					preview.thoughtHandle = message.reasoning(preview.run.rows, "", preview.run.slot())
 				end
-				preview.thoughtHandle.setText(event.reasoning .. suffix)
+				local suffix = reasoningLimited and "\n\n[Reasoning preview shortened.]" or ""
+				preview.thoughtHandle.setText(event.reasoning .. suffix, reasoningLimited)
 			end
 			if util.trim(event.text or "") ~= "" then
 				if not preview.textHandle then
@@ -359,6 +366,7 @@ return function(env)
 					preview.textHandle = message.agent(scroll.instance, "", nextOrder(), view.model, props)
 				end
 				preview.textHandle.setModel(view.model)
+				local suffix = textLimited and "\n\n[Reply preview shortened; waiting for the completed response.]" or ""
 				preview.textHandle.stream(event.text .. suffix)
 			end
 			ensureWorking().set(util.trim(event.text or "") ~= "" and "Receiving reply" or "Receiving reasoning")

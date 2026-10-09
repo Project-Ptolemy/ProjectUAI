@@ -2,7 +2,7 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.0.0** in **Project UAI 2.6.0**, alongside **UI LIB
+documents **embedding SDK 1.0.0** in **Project UAI 2.7.0**, alongside **UI LIB
 1.3.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a separate
 bundle with its own version and lifetime.
 
@@ -837,6 +837,10 @@ Filters constrain tool access; they do not create separate provider credentials
 or a separate client configuration.
 
 Permission methods are exposed through `uai.permissions`:
+
+In 2.7.0, new configurations default to `full` (**Allow everything**). Existing
+saved modes and per-tool rules remain effective. Hosts can explicitly select a
+different base mode through `setMode`; UI-free boot uses the same configuration.
 
 | Method | Behavior |
 | --- | --- |

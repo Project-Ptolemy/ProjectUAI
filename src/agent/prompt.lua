@@ -10,6 +10,34 @@ return function(env)
 	local state = env.require("agent/state")
 
 	local M = {}
+	local FILESYSTEM = [[
+Filesystem contract (current; supersedes old path-workaround memories):
+- Every file_* tool, check_luau and run_luau uses the SAME path namespace.
+  files/Game (123)/main.lua names one file under the app's files/ directory.
+  Pass paths from results unchanged. Never add the app root or another files/.
+  A returned files/files/... path is a real legacy folder; keep it exact.
+- Use the exact Current game files path below, not the game's display name.
+  Save authored scripts there and inspected/decompiled source in its dump/.
+  Other game/shared folders remain available; honor explicit user paths.
+- New folder and file names should use ASCII letters, digits, spaces, _ or -
+  (and file extensions). Preserve existing Unicode paths exactly; do not guess
+  replacements for mojibake. A failed path needs one parent listing, not repeated
+  prefix experiments. Report inaccessible legacy files without moving them.
+- pastes/... contains saved user input: read/compile it, then save edits under
+  files/ when needed. Client config, sessions and caches are not workspace files.
+- Start with named files or a narrow file_search; use file_read_many for related
+  slices and file_edit_many for targeted changes. file_write creates parents.
+  Continue returned offsets with the same query; incomplete results prove no absence.]]
+	local PACE = [[
+Work pace:
+- For routine reads, edits and tool selection, choose the next useful action and
+  act. Reserve deeper reasoning for ambiguity, difficult bugs or consequential
+  changes. Do not repeatedly re-plan settled work or narrate internal deliberation.
+- Batch independent calls; inspect results before dependent calls. Reuse unchanged
+  evidence. After reviewing changes, run only checks needed for the affected behavior;
+  do not repeat successful checks without a new change or unresolved concern.
+- Keep progress and final replies brief and concrete. Finish when the request is
+  satisfied; do not add unrelated exploration or setup work.]]
 	local SCRIPT_PROJECTS = [[
 File and script projects:
 - For a modular script, use project_scaffold to stage a working starter or read an
@@ -155,20 +183,6 @@ How to work:
 - Use instance_query to filter by name, class and tag while reading only the
   properties/attributes needed. Use instance_get_many for known paths. Keep exact
   quoted path segments in returned paths; dots or brackets may be part of a name.
-- Organise the workspace by game. Use the exact Current game files path in the
-  environment block; it is already filesystem-safe and includes the files/ root.
-  Do not derive a folder from the display name or prepend another files/ segment.
-  Scripts you write or edit live in that folder's root; decompiled or
-  dumped source -- script_source output, a decompiler, a saveinstance dump --
-  goes in its dump/ subfolder, kept apart from the code you author.
-- That per-game layout is a default, not a fence. Shared utilities, another
-  place's folder, cross-game notes and pastes/ all stay reachable: read and
-  write outside the current game's folder whenever the work calls for it or the
-  user names a path.
-- Use file_search for literal text across workspace files, file_read_many for
-  several sources or slices, and file_edit_many for ordered exact edits to one
-  file. A batch validates every edit before its one write. These reduce tool
-  round trips; request only the fields or slices needed for the current task.
 - Start with named files, the current Code document, selected instances, or a
   scoped query in the relevant service. Search game files with the exact game
   path and a filename glob; broaden only when those results do not answer the
@@ -391,22 +405,11 @@ Background chat:
 		return table.concat(lines, "\n")
 	end
 
-	-- Assembled fresh each turn. The order matters: identity, then the facts, then
-	-- the rules, then the mutable blocks last so they are closest to the
-	-- conversation and hardest to lose to attention decay.
+	-- Keep every static instruction ahead of live metadata. A new date, game,
+	-- model or task must not invalidate the reusable prefix of the prompt.
 	function M.build(opts)
 		opts = opts or {}
-		local parts = { IDENTITY, "", SKILLS_FIRST, "", NATIVE_WORKSPACE, "", SCRIPT_UI, "", SCRIPT_PROJECTS, "" }
-
-		parts[#parts + 1] = "Environment:"
-		parts[#parts + 1] = environmentBlock()
-		parts[#parts + 1] = ""
-
-		if opts.model and util.trim(opts.model) ~= "" then
-			parts[#parts + 1] = "You are running on model " .. tostring(opts.model) ..
-				(opts.provider and (" via " .. tostring(opts.provider)) or "") .. "."
-			parts[#parts + 1] = ""
-		end
+		local parts = { IDENTITY, "", SKILLS_FIRST, "", FILESYSTEM, "", PACE, "", NATIVE_WORKSPACE, "", SCRIPT_UI, "", SCRIPT_PROJECTS, "" }
 
 		parts[#parts + 1] = WORKING
 		parts[#parts + 1] = ""
@@ -417,6 +420,13 @@ Background chat:
 		parts[#parts + 1] = SCOPE
 		parts[#parts + 1] = ""
 		parts[#parts + 1] = STYLE
+		parts[#parts + 1] = ""
+		parts[#parts + 1] = "Environment:"
+		parts[#parts + 1] = environmentBlock()
+		if opts.model and util.trim(opts.model) ~= "" then
+			parts[#parts + 1] = "You are running on model " .. tostring(opts.model) ..
+				(opts.provider and (" via " .. tostring(opts.provider)) or "") .. "."
+		end
 
 		local permissions = env.require("agent/permissions")
 		parts[#parts + 1] = ""
@@ -500,13 +510,12 @@ Background chat:
 			"parent agent. Your delivered progress can appear in the user's monitor, but they cannot answer you here.",
 			"",
 			SKILLS_FIRST,
+			FILESYSTEM,
+			PACE,
 			NATIVE_WORKSPACE,
 			SCRIPT_UI,
 			SCRIPT_PROJECTS,
 			DELEGATION,
-			"",
-			"Environment:",
-			environmentBlock(),
 			"",
 			"Your task is fixed and stated below. You cannot ask the user questions. Your final message",
 			"is handed back to the parent agent as a report, so make it a complete answer to the task,",
@@ -514,11 +523,6 @@ Background chat:
 			"",
 			"Rules:",
 			"- Use tools to establish facts. Do not speculate.",
-			"- If you write files, follow the workspace layout: put game work under",
-			"  the exact Current game files path above; never derive it from the display name",
-			"  or prepend files/ again. Authored scripts go in that folder's root and",
-			"  decompiled or dumped source in its dump/ subfolder. It is a default, not a fence:",
-			"  other paths under files/ stay reachable.",
 			"- Begin with the named files/instances or a narrow query. Use file_read_many for",
 			"  related sources and instance_get_many for known paths. Reuse unchanged results;",
 			"  do not dump/decompile a whole game or create setup files for a targeted task.",
@@ -535,6 +539,9 @@ Background chat:
 			"  task over.",
 			"",
 			SCOPE,
+			"",
+			"Environment:",
+			environmentBlock(),
 			"",
 			"Task:",
 			tostring(task),

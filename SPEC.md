@@ -1,5 +1,7 @@
 # Project UAI — contract
 
+Current client release: **2.7.0 — October 9, 2026**.
+
 A universal Roblox AI agent client. Universal means: no game, no gateway and no
 host script is assumed. It runs standalone under an executor, embedded in a host
 script, or in any context that can call `loadstring`.
@@ -159,6 +161,9 @@ overlays and script resources, including replacement by the same window Id.
   Learned output caps and request repairs are scoped to endpoint, protocol and
   model. Older saved lessons adopt the current scope on first use.
   Both provider adapters protect retry callbacks and enforce these terminal states.
+  Streamed error events retain bounded, redacted error codes/messages, including
+  explicit plain-text SSE errors. Partial output or a later completion marker does
+  not turn a failed stream into a successful response.
 * Both adapters parse context-length refusals separately from output-token limits.
   A named window of at least 512 tokens is saved under the lowercased model id in
   `agent.forceContext`, only lowering an existing value. Like `record.maxTokensCap`,
@@ -285,6 +290,29 @@ Generation settings live in `runtime/config` and are persisted in `UAI/config.js
 | --- | --- | --- |
 | `agent.maxTokens` | 128000 | Saved reply limit; model limits and learned per-model caps apply when constructing requests. |
 | `agent.contextTokens` | 1000000 | Context budget before compaction. Larger contexts spend more of an executor's request window on upload and prefill. |
+| `agent.effort` | `"low"` | Prefer shorter reasoning where supported. Saved choices and explicit request/provider overrides remain effective; `"off"` omits the effort field. |
+| `permissions.mode` | `"full"` | Allow everything for new configurations. Saved modes and explicit tool rules are preserved. |
+
+The model modal edits the same global effort preference as Agent settings. It
+offers documented levels where known, and the global choices when reasoning
+support is manually enabled for an otherwise unknown model. Provider default
+omits the effort field. Model-specific clamping never rewrites the saved global
+choice. Open controls follow external settings changes and release subscriptions
+when closed. A manual reasoning claim does not establish which levels a provider accepts.
+
+Main and subagent prompts place standing rules before changing environment facts,
+keeping a stable prefix eligible for provider caching without guaranteeing cache
+support. Routine steps favor prompt action and focused checks, reserving deeper
+reasoning for difficult or consequential work.
+
+The transcript's 24,000-byte field retention is a display/storage bound, not a
+model reasoning budget. Reasoning events retain truncation metadata; the UI labels
+excerpts and estimates only visible text. Folded reasoning defers Markdown
+formatting and measurement until opened. Reopening and resizing reuse parsed text;
+formatting failures leave the original text readable.
+Live previews report independent `textLimited` and `reasoningLimited` flags,
+alongside the aggregate `limited` flag. Clipping one channel cannot label the
+other as an excerpt; legacy producers supplying only `limited` remain supported.
 
 ## 5. Tool contract
 
@@ -337,21 +365,28 @@ source bytes with UTF-8-safe continuation offsets, including batch reads.
 `runtime/workspace` supplies the exact per-place path in every main/subagent
 environment block, using cached place metadata rather than a product-info call
 on each step. The display name is separate from filesystem identity. New folder
-names retain readable UTF-8 within a 72-byte label, normalize to NFC when the host
-supports it, remove reserved/control characters, and always append PlaceId.
-Without a host normalizer, valid Unicode is preserved; no partial NFC is claimed.
-Existing folders and saved PlaceId selections in `workspace.json` take precedence,
-including bounded discovery of legacy repeated `files/` containers. They are
-never automatically renamed, flattened or merged. Scripts go in the game folder;
-decompiled/dumped source goes in `dump/`. Shared and cross-game files remain
+labels use ASCII letters, digits, spaces, underscores and hyphens, bounded to 72
+bytes, and always append PlaceId. Accessible existing folders and saved PlaceId
+selections in `workspace.json` take precedence, including bounded discovery of
+legacy repeated `files/` containers. Existing Unicode paths remain exact; an
+inaccessible saved Unicode folder falls back to a portable folder without moving
+its files. Discovery probes each candidate folder once, including failed probes
+repeated in recursive host listings. Damaged or unsupported identity files are left intact while the session
+selects an existing or portable default. Folders are never automatically renamed,
+flattened or merged. Scripts go in the game folder; decompiled/dumped source goes
+in `dump/`. Shared and cross-game files remain
 reachable. Initialization does not require inspecting or decompiling the game.
 
-File tools return canonical `files/...` paths that every file operation accepts
-unchanged. The namespace prefix is stripped once; a real nested `files/` directory
-stays a distinct path. Legacy workspace-relative paths remain supported. Reads
-also accept explicit `pastes/...` paths. Listings paginate with `offset` and
-`nextOffset`. Legacy-file migration verifies destination bytes before deleting
-sources, preserves conflicts, and never removes an incompletely listed directory.
+File tools return canonical `files/...` paths that file, search, compile and
+execution tools accept unchanged. The shared main/subagent filesystem contract
+supersedes old prefix workarounds. The namespace prefix is stripped once; a real
+nested `files/` directory stays distinct. Legacy workspace-relative paths remain
+supported. Reads also accept explicit `pastes/...` paths. Listings paginate with `offset` and
+`nextOffset`. Host listings resolve only unique existing paths within the requested
+directory. Ambiguous, corrupt and inaccessible entries are disclosed as incomplete,
+while usable entries remain available. Leading spaces in explicit paths are
+preserved. Legacy-file migration verifies destination bytes before deleting sources,
+preserves conflicts, and never removes an incompletely listed directory.
 
 `run_luau` uses a separate managed executor with a default 10-second deadline
 (configurable to 1–60 seconds), cooperative loop checkpoints, bounded output, and
@@ -865,10 +900,11 @@ Dismissal keeps the cooldown; opting out or successfully copying the invite
 disables reminders. Manual menu access stays available. UI-free boot schedules
 nothing; screen destruction and runtime disposal release the watcher.
 
-The player profile menu has a separate ProjectUAI entry alongside the existing
+The player profile menu has a branded ProjectUAI entry alongside the existing
 What's New entry. Its project/support modal opens the official repository on an
 explicit Star us on GitHub action, falling back to a copied or selectable URL
-when the host denies browser access. Viewing it does not mark release notes read.
+when the host denies browser access. Both entry and modal reuse the frame-drawn
+brand mark. Viewing it does not mark release notes read.
 
 UI LIB retains its existing per-window Light/Dark token palettes and live bindings.
 Its built-in text mode action, `GetTheme` and `ToggleTheme` use `SetTheme`;

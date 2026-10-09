@@ -17,6 +17,24 @@ return function(env)
 	-- answer as "frame count exceeded".
 	local M = { limits = { body = 8 * 1024 * 1024, frame = 1024 * 1024, chunks = 200000, calls = 64, arguments = 256000 } }
 
+	-- Keep a provider's actionable reason without retaining arbitrary response
+	-- objects. The terminal prefix prevents a failed stream from being retried.
+	function M.providerError(value, eventName)
+		local object = type(value) == "table" and value or nil
+		if eventName ~= "error" and not (object and (object.error or object.type == "error")) then return nil end
+		local detail = object and (object.error or object) or value
+		local message, code
+		if type(detail) == "table" then
+			message, code = detail.message or detail.detail or detail.reason, detail.code or detail.type
+		elseif type(detail) == "string" then message = detail end
+		if type(message) ~= "string" then message = "provider reported a stream error" end
+		if type(code) ~= "string" and type(code) ~= "number" then code = nil end
+		local log = env.require("runtime/log")
+		local text = (code and (util.ellipsis(log.redact(util.sanitise(tostring(code))), 80) .. ": ") or "")
+			.. util.ellipsis(log.redact(util.sanitise(message)), 600)
+		return "malformed_stream: " .. text
+	end
+
 	-- Incremental SSE framing. A socket message may contain several events or a
 	-- fraction of one, including a CRLF split between messages. HTTP reuses it for
 	-- buffered bodies so the two transports accept exactly the same SSE syntax.
@@ -222,6 +240,8 @@ return function(env)
 
 		function self.feedChunk(chunk)
 			if self.streamError then return false, self.streamError end
+			self.streamError = M.providerError(chunk)
+			if self.streamError then return false, self.streamError end
 			local ok = pcall(feed, chunk)
 			if not ok then self.streamError = "malformed_stream: invalid chunk or stream budget exceeded" end
 			return ok, self.streamError
@@ -279,15 +299,13 @@ return function(env)
 			frames = frames + 1
 			if done then return true end
 			local payload = util.trim(frame.data)
+			local decoded = util.decode(payload)
+			local providerError = M.providerError(decoded or payload, frame.event)
+			if providerError then streamError = streamError or providerError; return true end
 			if payload == "[DONE]" then done = true; return true end
 			if payload ~= "" then
-				local decoded = util.decode(payload)
 				if type(decoded) == "table" then
-					if decoded.error then
-						streamError = streamError or "malformed_stream: provider reported a stream error"
-					else
-						assembler.feedChunk(decoded)
-					end
+					assembler.feedChunk(decoded)
 				else streamError = streamError or "malformed_stream: invalid JSON frame" end
 			end
 			return true

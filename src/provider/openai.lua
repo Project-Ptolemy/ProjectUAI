@@ -486,7 +486,7 @@ return function(env)
 	-- never heard of is a refusal rather than a rounding.
 	function M.effortFor(record, request)
 		local wanted = request and request.effort
-		if wanted == nil then wanted = config.get("agent.effort", "high") end
+		if wanted == nil then wanted = config.get("agent.effort", "low") end
 		wanted = tostring(wanted or "")
 		if wanted == "" or wanted == "off" then return nil end
 		-- nearestEffort passes the level through for a model the user has manually

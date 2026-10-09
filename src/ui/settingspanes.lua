@@ -1142,11 +1142,11 @@ return function(env)
 			"Seconds before a tool is abandoned. Subagents are exempt: they run to their own budget below.",
 			"agent.toolTimeout", 5, 60, 1)
 		R.number(agent, "Request timeout",
-			"How long one model call may run before the transport gives up. The default is a day, the highest of any clock here: replies cannot stream incrementally in this client, so a reasoning model can think for a long time before the first byte. Lower it only for a quick model; the top stop is the default.",
+			"Configured wait for one model call. Native transports cap each request at 300 seconds; hosts and providers may stop sooner. Buffered HTTP displays text only after the response arrives.",
 			"agent.requestTimeout", REQUEST_STOPS)
 		R.toggle(agent, {
-			label = "Unlimited requests",
-			hint = "Ignore the timeout above and wait as long as the model takes, up to a day. The same wall as the default, spelled as a switch instead of a number: the slider can be lowered for a quick model without losing the day the heavy one needs. Stop still applies, and each attempt still ends at its own deadline.",
+			label = "Maximum request wait",
+			hint = "Use the transport's maximum wait instead of a shorter configured timeout. Native requests still stop after at most 300 seconds. Stop remains available.",
 			path = "agent.requestUnlimited",
 		})
 		R.number(agent, "Subagent budget",
@@ -1181,18 +1181,18 @@ return function(env)
 			"Share of the model's context window at which older turns are summarised, when the window is known. Lower compacts sooner and cheaper; higher keeps more history in view. The Context budget above is still a hard ceiling.",
 			"agent.contextFraction", 0.5, 0.95, 0.05)
 		R.number(agent, "Reply ceiling",
-			"max_tokens sent with each request. A value above the model's own limit is lowered to whatever the provider names in its refusal, once, and remembered.",
+			"Maximum generated tokens per request, including reasoning where the provider counts it. Model limits, available context and learned provider caps may lower it. This does not require the model to use the whole allowance.",
 			"agent.maxTokens", REPLY_STOPS)
 		R.number(agent, "Tool result cap",
-			"Characters kept from one tool result, roughly four per token. This is the floor on how much a file read or a page fetch can actually return, whatever the tool's own limit says.",
+			"Maximum bytes kept from one tool result. A tool's own page limit can be smaller. Roughly four bytes per token for English text; code and Unicode vary.",
 			"agent.resultCap", RESULT_STOPS)
 		R.choice(agent, "Effort",
-			"How hard a reasoning model works before it answers. Sent as the provider's "
-			.. "effort level and clamped to what the chosen model offers; models without one ignore it.",
+			"Low is the faster default; raise it for difficult tasks. Existing saved choices are kept. "
+			.. "Sent as the provider's effort level where supported; raw provider parameters can override it. Provider default omits the effort field and may still think extensively. The Thinking row shows visible text, not a 5,999-token limit.",
 			"agent.effort",
-			{ "low", "medium", "high", "xhigh", "max" },
-			{ "Low", "Medium", "High", "Very high", "Max" },
-			{ "Faster", "Smarter" })
+			{ "low", "medium", "high", "xhigh", "max", "off" },
+			{ "Low", "Medium", "High", "Very high", "Max", "Provider default" },
+			{ "Faster", "Provider default" })
 		R.number(agent, "Temperature",
 			"Lower is steadier; 0 is as deterministic as the provider allows. The current Claude models reject it, and it is not sent to them.",
 			"agent.temperature", 0, 1.5, 0.05)

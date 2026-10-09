@@ -1,6 +1,6 @@
 # Native client features and limits
 
-Current native feature contract for **2.6.0**, October 4, 2026.
+Current native feature contract for **2.7.0**, October 9, 2026.
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -8,6 +8,31 @@ Internal APIs are described in
 In-game release notes are under **App menu → What's new**, also available from
 **About → What's new**. Reload the updated native bundle to see the latest notes.
 Revised notes restore the unread marker even when the client version stays the same.
+
+Version 2.7.0 uses portable ASCII names for new game folders and one unchanged
+`files/...` path across file tools, search, compilation and execution. Existing
+accessible folders retain their names and locations; incomplete host listings
+return usable entries with an explicit warning.
+
+New configurations use Low reasoning effort. Saved choices remain effective in
+**Settings → Agent → Effort**. The model modal edits this same global setting for
+documented reasoners and models with **Options → Reasoning support** enabled.
+Provider default is available there too. Controls update when settings change.
+Thinking estimates describe visible text; clipped
+traces say **Excerpt**. Folded traces defer Markdown formatting and measurement
+until opened, reuse parsed text during resizing, and retain plain text if formatting
+fails. Provider stream errors retain useful bounded details without
+retrying an uncertain dispatch. See [provider behavior](PROVIDER_COMPATIBILITY.md)
+and the [release test checklist](TESTING_2.7.0.md).
+
+New access settings default to **Allow everything**, allowing reads, writes and
+execution unless an explicit tool rule says otherwise. Saved access modes and
+rules are preserved. The composer chip names the active mode.
+Live reasoning and answer previews disclose their limits independently, and
+game-folder discovery checks each unreadable candidate only once.
+
+The profile menu's ProjectUAI entry and support modal use the client's frame-drawn
+brand mark, which needs no image download. What's New remains a separate entry.
 
 Modals, Settings and Quick Chat enter and exit with short opacity transitions at
 their final dimensions. They do not scale their text or reflow controls during

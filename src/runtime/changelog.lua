@@ -19,6 +19,34 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "2.7.0",
+			revision = "2026-10-09-global-effort-access-preview-fixes",
+			date = "October 9, 2026",
+			title = "Portable files and faster routine work",
+			highlights = "One path contract across file and code tools, lighter reasoning defaults, clearer excerpts and provider errors, and a branded ProjectUAI menu.",
+			sections = {
+				{ category = "improved", label = "Routine work and response speed", items = {
+					"New configurations start at Low reasoning effort. Existing saved choices are kept; change Effort in Agent settings to lower them. Provider default is now selectable and omits the effort field.",
+					"The model modal exposes global effort for any model with Reasoning support enabled, includes Provider default, and follows setting changes. Known model scales remain constrained.",
+					"New access settings default to Allow everything. Existing saved modes and explicit tool rules are kept; the composer names the active mode.",
+					"Keep standing prompt instructions before changing environment facts so compatible providers can reuse more of their prompt cache. Routine work favors focused actions and only the relevant checks.",
+					"Folded reasoning waits until opened to format and measure its text. Reopening and resizing reuse parsed text; formatting failures retain readable plain text.",
+				} },
+				{ category = "fixed", label = "Paths and provider feedback", items = {
+					"File tools, search, check_luau and run_luau share unchanged files/... paths. New game folders use ASCII names; accessible existing and nested legacy folders remain in place.",
+					"Resolve different executor listing formats against actual paths. Keep usable entries from incomplete listings and preserve leading spaces. Inaccessible saved Unicode folders receive a portable default without moving their files.",
+					"Damaged or future-format game-folder identity files are preserved instead of silently replaced during prompt construction.",
+					"Recursive discovery probes each unreadable game folder only once. Live answer and reasoning previews show separate truncation notices, so one long channel cannot mislabel the other.",
+					"Thinking text clipped for transcript storage is labelled Excerpt. Other estimates say tokens shown; the old apparent 5,999-token limit was a display estimate, not a thinking budget.",
+					"Stream errors show bounded, redacted provider details, including plain-text errors. Partial output never turns a failed stream into success or causes a duplicate request. Native requests remain capped at 300 seconds.",
+				} },
+				{ category = "added", label = "Project identity", items = {
+					"The ProjectUAI profile-menu entry and support modal now show the existing frame-drawn brand mark without an image download. What's New remains separate.",
+					"UI LIB remains v1.3.0 and the embedding SDK v1.0.0.",
+				} },
+			},
+		},
+		{
 			version = "2.6.0",
 			revision = "2026-10-04-context-workspaces-themes",
 			date = "October 4, 2026",

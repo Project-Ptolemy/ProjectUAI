@@ -1,9 +1,8 @@
 -- Permission engine.
 --
--- The tools here can rewrite a game, run arbitrary code and delete files, so the
--- default is to ask. The interesting part is the asking: the loop runs on its own
--- thread and the answer comes from the interface, so a request yields until the
--- user decides, with a deadline so an unattended session cannot hang forever.
+-- New configurations allow all tool risk levels. Saved modes and per-tool rules
+-- still apply. When a mode or rule asks, the loop yields until the user decides,
+-- with a deadline so an unattended session cannot hang forever.
 return function(env)
 	local util = env.require("runtime/util")
 	local config = env.require("runtime/config")
@@ -39,11 +38,11 @@ return function(env)
 		readonly = "Inspection only. Nothing is changed, executed or written.",
 		ask = "Reads run freely. Anything that changes the game waits for you.",
 		auto = "Reads and writes run freely. Code execution and deletion still ask.",
-		full = "No prompts at all. Only sensible when you trust the provider.",
+		full = "Reads, writes and execution run without approval unless a tool rule says otherwise.",
 	}
 
 	function M.mode()
-		local value = config.get("permissions.mode", "ask")
+		local value = config.get("permissions.mode", "full")
 		return MATRIX[value] and value or "ask"
 	end
 

@@ -6,6 +6,7 @@ return function(env)
 	local overlay = env.require("ui/overlay")
 	local P = env.require("ui/primitives")
 	local R = env.require("ui/settingsrows")
+	local icons = env.require("ui/icons")
 	local M = {}
 	local REPOSITORY = "https://github.com/Project-Ptolemy/ProjectUAI"
 	local current
@@ -17,6 +18,11 @@ return function(env)
 			width = theme.size.modalWide, onClose = function() current = nil end })
 		if not modal then return nil end
 		current = modal
+		local identity = P.row(modal.content, { name = "ProjectIdentity", gap = theme.space.sm,
+			size = UDim2.new(1, 0, 0, theme.size.avatar), alignY = "Center", layoutOrder = 0 })
+		local mark = P.frame(identity, { size = UDim2.fromOffset(theme.size.avatar, theme.size.avatar), layoutOrder = 1 })
+		icons.brand(mark, theme.size.avatar)
+		P.text(identity, { text = "Project UAI", role = "strong", auto = "X", layoutOrder = 2 })
 		local support = R.section(modal.content, { name = "ProjectSupport", title = "Enjoying ProjectUAI?", layoutOrder = 1 })
 		R.paragraph(support, "A star on GitHub helps others discover the project. Browse the source, follow development, or share an issue there.",
 			{ color = theme.color.textSecondary, layoutOrder = 1 })

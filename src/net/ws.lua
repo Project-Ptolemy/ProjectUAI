@@ -32,15 +32,16 @@ return function(env)
 			failure, finished = message, true
 			return false, message
 		end
-		local function payload(text)
+		local function payload(text, eventName)
 			if finished then return true end
 			text = util.trim(text)
 			if text == "" then return true end
 			if text == "[DONE]" then finished = true; return true end
 			if #text > limits.frame or #frames >= limits.chunks then return fail("malformed_stream: socket frame budget exceeded") end
 			local decoded = util.decode(text)
+			local providerError = sse.providerError(decoded or text, eventName)
+			if providerError then return fail(providerError) end
 			if type(decoded) ~= "table" then return fail("malformed_stream: invalid socket JSON") end
-			if decoded.error or decoded.type == "error" then return fail("malformed_stream: gateway reported a stream error") end
 			if type(decoded.choices) ~= "table" and type(decoded.usage) ~= "table" then
 				return fail("malformed_stream: gateway must return Chat Completions chunks, not Responses or Realtime events")
 			end
@@ -53,7 +54,7 @@ return function(env)
 			if spec.onFrame and not pcall(spec.onFrame, canonical) then return fail("malformed_stream: socket frame callback failed") end
 			return true
 		end
-		local decoder = sse.decoder(function(frame) return payload(frame.data) end)
+		local decoder = sse.decoder(function(frame) return payload(frame.data, frame.event) end)
 		local function receive(message)
 			if not accepting or finished or aborted() then return end
 			messages = messages + 1

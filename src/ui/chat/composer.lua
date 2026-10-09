@@ -776,7 +776,7 @@ return function(env)
 
 		function composer.syncContext()
 			if not alive() then return end
-			local shortModes = { ask = "Ask first", auto = "Auto", full = "Full access" }
+			local shortModes = { ask = "Ask first", auto = "Auto", full = "Allow everything" }
 			permissionLabel.Text = shortModes[permissions.mode()] or permissions.MODE_LABELS[permissions.mode()] or permissions.mode()
 			permissionLabel.TextColor3 = permissions.mode() == "full"
 				and theme.color.warn or theme.color.textSecondary

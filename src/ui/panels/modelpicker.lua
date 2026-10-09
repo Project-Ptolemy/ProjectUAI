@@ -94,17 +94,22 @@ return function(env)
 			for _, child in ipairs(effort:GetChildren()) do if child:IsA("GuiObject") then child:Destroy() end end
 			local record = providers.active()
 			local levels = record and traits.effortLevels(record.model)
-			local wanted = config.get("agent.effort", "high")
-			local sending = record and traits.nearestEffort(record.model, wanted) or wanted
-			P.text(effort, { text = levels and "Reasoning effort" or "No documented effort control", name = levels and "EffortLabel" or "NoEffort",
+			-- A manual reasoning claim is honored by both request adapters. Offer
+			-- the global preferences here too, without inventing documented traits.
+			if not levels and record and traits.thinkingStyle(record.model) then levels = { "low", "medium", "high", "xhigh", "max" } end
+			local wanted = config.get("agent.effort", "low")
+			local sending = wanted == "off" and "off" or (record and traits.nearestEffort(record.model, wanted) or wanted)
+			P.text(effort, { text = levels and "Reasoning effort (global)" or "No documented effort control", name = levels and "EffortLabel" or "NoEffort",
 				role = "caption", color = theme.color.textTertiary, size = UDim2.new(1, 0, 0, theme.text.caption.height), layoutOrder = 1 })
 			if levels then
 				local strip = P.scroll(effort, { name = "EffortPills", horizontal = true, gap = theme.space.xs,
 					size = UDim2.new(1, 0, 0, control), layoutOrder = 2, bar = 0 })
-				for index, level in ipairs(levels) do
-					P.button(strip.instance, { name = "Effort_" .. level, text = level:gsub("^%l", string.upper),
+				local choices = util.copy(levels)
+				choices[#choices + 1] = "off"
+				for index, level in ipairs(choices) do
+					P.button(strip.instance, { name = "Effort_" .. level, text = level == "off" and "Provider default" or level:gsub("^%l", string.upper),
 						variant = level == sending and "secondary" or "ghost", size = "sm", layoutOrder = index,
-						onClick = function() config.set("agent.effort", level); notify(); renderEffort() end })
+						onClick = function() config.set("agent.effort", level); notify() end })
 				end
 			end
 			local height = levels and (control + theme.text.caption.height + theme.space.sm) or 0
@@ -215,7 +220,7 @@ return function(env)
 						end })
 					elseif id ~= "" and value == "reasoning" then
 						local claims = config.get("agent.forceReasoning", {}) or {}
-						claims[id] = not forced; config.set("agent.forceReasoning", claims); renderEffort(); notify()
+						claims[id] = not forced; config.set("agent.forceReasoning", claims); notify()
 					elseif id ~= "" and value == "context" then
 						local claims = config.get("agent.forceContext", {}) or {}
 						overlay.prompt({ title = "Context window", description = "Token limit. Leave empty to use the documented value.",
@@ -226,7 +231,7 @@ return function(env)
 									overlay.toast("Enter a positive token count", "warn", 2); return
 								end
 								claims[id] = number and math.floor(number) or nil
-								config.set("agent.forceContext", claims); if not modal.closed then render(); notify() end
+								config.set("agent.forceContext", claims); notify()
 							end })
 					end
 				end })
@@ -234,6 +239,10 @@ return function(env)
 		P.button(modal.footer, { name = "PickerDone", text = "Done", variant = "primary", size = "sm", layoutOrder = 3,
 			onClick = function() modal.close() end })
 		local unsubscribe = providers.changed:connect(function(kind) if kind ~= "health" then render() end end)
+		local unsubscribeConfig = config.changed:connect(function(path)
+			if path == nil or path == "agent" or path == "agent.effort" or path == "agent.forceReasoning"
+				or path == "agent.forceContext" then render() end
+		end)
 		local unsubscribeResponsive = responsive.changed:connect(function()
 			if modal.closed then return end
 			local target = math.max(theme.size.control, responsive.minTarget())
@@ -249,7 +258,7 @@ return function(env)
 			for _, entry in ipairs(rows) do entry.button.instance.Size = UDim2.new(1, 0, 0, control) end
 			render()
 		end)
-		modal.scrim.Destroying:Connect(function() unsubscribe(); unsubscribeResponsive() end)
+		modal.scrim.Destroying:Connect(function() unsubscribe(); unsubscribeConfig(); unsubscribeResponsive() end)
 		render()
 		modal.render = render
 		return modal

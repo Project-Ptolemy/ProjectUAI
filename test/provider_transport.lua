@@ -313,4 +313,61 @@ case("executor WebSocket connector aliases are detected", function()
 	end
 end)
 
+case("provider stream failures retain bounded actionable details in both protocols", function()
+	local f = F.new()
+	local sse, messages = f.env.require("net/sse"), f.env.require("provider/anthropic")
+	for _, entry in ipairs({
+		{ '{"error":{"type":"overloaded_error","message":"Capacity unavailable; try later"}}', "overloaded_error", "Capacity unavailable" },
+		{ '{"type":"error","code":429,"message":"Daily quota exhausted"}', "429", "Daily quota exhausted" },
+		{ '{"error":"Model unavailable"}', "Model unavailable", "Model unavailable" },
+		{ '"Quota exhausted"', "Quota exhausted", "Quota exhausted" },
+		{ "Upstream capacity exhausted", "Upstream capacity", "exhausted" },
+	}) do
+		local body = "event: error\ndata: " .. entry[1] .. "\n\n"
+		for _, parsed in ipairs({ sse.parse(body), messages.parseStream(body) }) do
+			check("code and useful reason survive", has(parsed.streamError, entry[2]) and has(parsed.streamError, entry[3]))
+			check("provider failure remains terminal", f.env.require("net/http").terminal(parsed.streamError))
+		end
+	end
+	local secret = "sk-fixture-secret-1234"
+	local reason = secret .. " " .. string.rep("\230\184\184", 1000)
+	local body = "data: " .. f.h.json.encode({ error = { message = reason } }) .. "\n\n"
+	local parsed = sse.parse(body)
+	check("diagnostics redact credentials and stay bounded UTF-8", not has(parsed.streamError, secret)
+		and #parsed.streamError < 750 and f.env.require("runtime/util").validUtf8(parsed.streamError))
+	local good = "data: " .. chunk(f, "partial") .. "\n\n"
+	parsed = sse.parse(good .. body .. "data: [DONE]\n\n")
+	check("a completion marker cannot erase a stream failure", parsed.streamError ~= nil)
+	f.healthy(); f.close()
+end)
+
+case("buffered errors fail both adapters without shrinking caps or retrying", function()
+	for _, style in ipairs({ "openai", "anthropic" }) do
+		local f = F.new()
+		local record = { id = "stream-error", label = "Stream error", model = "fixture-model", api = style,
+			baseUrl = "https://fixture.test/v1", apiKey = "fixture-key", params = {} }
+		f.h.http.handler = function()
+			return { StatusCode = 200, Body = 'event: error\ndata: {"error":{"code":"quota","message":"Daily quota exhausted"}}\n\n',
+				Headers = { ["Content-Type"] = "text/event-stream" } }
+		end
+		local result, why = f.run(function()
+			return f.env.require("provider/" .. style).complete(record, { messages = { { role = "user", content = "hello" } }, stream = true })
+		end)
+		check(style .. " exposes the provider reason", not result and has(why, "Daily quota exhausted"))
+		check(style .. " performs exactly one request", f.h.http.requestCount == 1 and record.maxTokensCap == nil)
+		check(style .. " failure remains terminal", f.env.require("net/http").terminal(why))
+		f.healthy(); f.close()
+	end
+end)
+
+case("actionable socket errors never cause a second dispatch", function()
+	for _, body in ipairs({ 'event: error\ndata: Upstream quota exhausted\n\n', '{"error":{"code":"quota","message":"Upgrade your quota"}}' }) do
+		local f = fixture(function(_, socket) socket.OnMessage:Fire(body) end)
+		local result, why = f.complete()
+		check("error reaches caller with its real cause", not result and has(why, "quota"))
+		check("failed dispatch is never duplicated", f.h.http.requestCount == 0 and f.sockets[1].sends == 1)
+		f.cleaned(); f.close()
+	end
+end)
+
 suite.finish()

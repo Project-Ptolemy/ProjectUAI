@@ -230,50 +230,54 @@ return function(env)
 		-- means "everything".
 		local base = M.root
 		if opts.scope and SCOPES[opts.scope] then base = base .. "/" .. opts.scope end
-		local trimmed = util.trim(tostring(path or ""))
+		local trimmed = tostring(path or ""):gsub("\\", "/"):gsub("/+$", "")
 		local full
 		if trimmed == "" then
 			full = base
 		else
 			local clean = M.sanitise(trimmed)
 			if not clean then return {}, "bad path" end
+			trimmed = clean
 			full = base .. "/" .. clean
 		end
 		local scopePrefix = (base ~= M.root) and (base:sub(#M.root + 2) .. "/") or ""
 		local ok, entries = pcall(caps.fn.listfiles, full)
 		if not ok then return {}, tostring(entries) end
 		if type(entries) ~= "table" then return {}, "host returned an invalid file listing" end
-		local out, rejected = {}, 0
+		local out, rejected, seen = {}, 0, {}
 		for _, entry in ipairs(entries) do
 			local normal = tostring(entry):gsub("\\", "/"):gsub("/+$", "")
-			local relative = normal
-			if util.startsWith(normal, M.root .. "/") then relative = normal:sub(#M.root + 2)
+			local candidates, checked = {}, {}
+			local function consider(relative)
+				if checked[relative] then return end
+				checked[relative] = true
+				if not M.sanitise(relative) or relative == trimmed
+					or (trimmed ~= "" and not util.startsWith(relative, trimmed .. "/")) then return end
+				local directory = M.isDir(relative, opts)
+				if directory or M.exists(relative, opts) then
+					candidates[#candidates + 1] = { path = relative, name = relative:match("[^/]+$"), isDir = directory }
+				end
+			end
+			-- Explicit host-root paths have one meaning. Relative host listings can
+			-- be app-, scope- or directory-relative; resolve only an existing unique
+			-- candidate inside the requested directory. Never strip a real files/
+			-- child blindly, and never return corrupt names the host cannot open.
+			if util.startsWith(normal, base .. "/") then consider(normal:sub(#base + 2))
+			elseif normal:match("^/") or normal:match("^%a:") then
+				local at = normal:find("/" .. base .. "/", 1, true)
+				if at then consider(normal:sub(at + #base + 2)) end
 			else
-				-- Match an entire root segment, never the last occurrence of its
-				-- name inside a legitimate child folder (e.g. files/UAI/notes).
-				local at = normal:find("/" .. M.root .. "/", 1, true)
-				if at then relative = normal:sub(at + #M.root + 2) end
+				consider(normal)
+				if scopePrefix ~= "" and util.startsWith(normal, scopePrefix) then consider(normal:sub(#scopePrefix + 1)) end
+				if trimmed ~= "" then consider(trimmed .. "/" .. normal) end
 			end
-			-- Inside a scope the paths are reported relative to the scope, so a
-			-- scoped caller sees "notes/plan.txt" rather than "files/notes/plan.txt"
-			-- -- the prefix is the caller's own business and restating it in every
-			-- row is noise.
-			if scopePrefix ~= "" and util.startsWith(relative, scopePrefix) then
-				relative = relative:sub(#scopePrefix + 1)
-			end
-			if not relative:find("/", 1, true) and trimmed ~= "" then relative = trimmed .. "/" .. relative end
-			if M.sanitise(relative) then
-				out[#out + 1] = {
-					path = relative,
-					name = relative:match("[^/]+$") or relative,
-					isDir = caps.fn.isfolder and select(2, pcall(caps.fn.isfolder, base .. "/" .. relative)) == true or false,
-				}
-			else
-				rejected = rejected + 1
-			end
+			if #candidates == 1 then
+				local item = candidates[1]
+				if not seen[item.path] then out[#out + 1] = item; seen[item.path] = true end
+			else rejected = rejected + 1 end
 		end
 		table.sort(out, function(a, b) return a.path < b.path end)
-		return out, rejected > 0 and "host listing contains unsupported paths; listing is incomplete" or nil
+		return out, rejected > 0 and "host listing contains ambiguous, inaccessible or unsupported paths; listing is incomplete" or nil
 	end
 
 	function M.readJson(path, fallback)

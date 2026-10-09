@@ -1,5 +1,12 @@
 # Context, workspaces, tool efficiency, and UI investigation
 
+Historical investigation for 2.6.0. **2.7.0, October 9, 2026**, supersedes its
+new-folder Unicode/NFC policy: generated game folders now use ASCII plus PlaceId,
+while accessible existing Unicode paths remain exact. Current behavior and
+verification are in [NATIVE_CLIENT.md](NATIVE_CLIENT.md) and
+[TESTING_2.7.0.md](TESTING_2.7.0.md). The findings and results below describe the
+earlier implementation.
+
 This pass traced source behavior and exercised focused offline regressions. No
 production user session traces were supplied, so it does not claim measured
 end-to-end Roblox or provider latency improvements.

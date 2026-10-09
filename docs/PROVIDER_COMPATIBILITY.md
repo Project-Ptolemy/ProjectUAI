@@ -1,6 +1,6 @@
 # Provider compatibility and WebSockets
 
-Applies to **2.6.0**, October 4, 2026.
+Applies to **2.7.0**, October 9, 2026.
 
 UAI implements two inference protocols: **Chat Completions** and **Anthropic
 Messages**. A provider works through one of these APIs, including when it is a
@@ -11,6 +11,36 @@ The compatibility checks use synthetic HTTP responses and socket events. They
 need no running models, API keys or paid inference. Live server availability,
 model quality, tool-call accuracy, executor networking and TLS are outside that
 coverage.
+
+## Response speed and reasoning display
+
+New configurations use Low effort on supported reasoning models. Older saved
+choices remain effective; select **Settings → Agent → Effort → Low** to change
+them. Higher effort can help difficult tasks but may delay the first response.
+Provider default omits the field; it does not disable thinking. Raw provider
+parameters can override the effort setting, and unsupported models may ignore it.
+The model modal exposes the same global setting for documented models and for
+any model with **Options → Reasoning support** enabled. Known scales remain
+clamped; enabling an unknown model does not establish its accepted effort levels.
+
+There is no 5,999-token thinking cap. Retained transcript fields are bounded to
+24,000 bytes, which the old display divided by four to estimate tokens. Clipped
+reasoning now says **Excerpt**. Other estimates say **tokens shown**: provider
+summaries and visible text do not measure internal reasoning or billed usage.
+The reply allowance, known context window and provider limits still apply.
+Live answer and reasoning previews have separate limit flags, so a long answer
+cannot label an otherwise complete reasoning trace as an excerpt.
+
+Standing prompt rules precede changing environment metadata so compatible
+providers can reuse more of their prompt cache. Actual cache use and latency
+depend on the endpoint. Buffered executor HTTP delivers the response at completion;
+UI changes cannot expose tokens before delivery. Native requests still have a
+300-second maximum, regardless of a higher configured wait.
+
+Stream failures preserve the provider's error code and message when supplied,
+including plain-text `event: error` responses. Details are redacted and bounded.
+An error after partial text still fails the request; it cannot cause a duplicate
+socket/HTTP dispatch or execute a partially delivered tool call.
 
 ## Image input
 

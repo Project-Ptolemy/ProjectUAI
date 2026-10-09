@@ -8,13 +8,13 @@ return function(env)
 	function M.new(session, model, aborted)
 		local handle = { id = util.uid("stream") }
 		local assembly, content, reasoning = sse.assembler(), "", ""
-		local closed, pending, limited, last, generation = false, false, false, nil, 0
+		local closed, pending, last, generation = false, false, nil, 0
 		local full = {}
 		local function append(value, parts, channel)
 			if full[channel] or #parts == 0 then return value end
 			local joined = value .. table.concat(parts)
 			if #joined > M.previewBytes then
-				limited, full[channel] = true, true
+				full[channel] = true
 				return joined:sub(1, text.clamp(joined, M.previewBytes + 1) - 1)
 			end
 			return joined
@@ -24,17 +24,20 @@ return function(env)
 			if closed or aborted() then return end
 			last = clock.ms()
 			session.emit("assistant:preview", { streamId = handle.id, model = model,
-				text = content, reasoning = reasoning, limited = limited })
+				text = content, reasoning = reasoning, limited = full.content == true or full.reasoning == true,
+				textLimited = full.content == true, reasoningLimited = full.reasoning == true })
 		end
 		function handle.feed(frame)
 			if closed or aborted() then return end
 			local chunk = type(frame) == "table" and frame or util.decode(frame)
 			if type(chunk) ~= "table" or chunk.error or not assembly.feedChunk(chunk) then return end
 			if type(assembly.model) == "string" and util.trim(assembly.model) ~= "" then model = assembly.model end
-			local priorContent, priorReasoning, priorLimit = content, reasoning, limited
+			local priorContent, priorReasoning = content, reasoning
+			local priorTextLimit, priorReasoningLimit = full.content, full.reasoning
 			content, reasoning = append(content, assembly.content, "content"), append(reasoning, assembly.reasoning, "reasoning")
 			assembly.content, assembly.reasoning = {}, {}
-			if content == priorContent and reasoning == priorReasoning and limited == priorLimit then return end
+			if content == priorContent and reasoning == priorReasoning
+				and full.content == priorTextLimit and full.reasoning == priorReasoningLimit then return end
 			if not last or clock.ms() - last >= 100 then flush()
 			elseif not pending then
 				pending = true; local queued = generation

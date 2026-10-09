@@ -49,6 +49,10 @@ return function(env)
 		end
 		for _, key in ipairs({ "kind", "id", "call", "callId", "at", "name", "label", "text", "message", "arguments" }) do keep(key) end
 		for key in pairs(payload) do keep(key) end
+		if payload.kind == "assistant:reasoning" and type(payload.text) == "string" then
+			copy.textTruncated = payload.textTruncated == true or copy.text ~= payload.text
+			bytes = bytes + 32
+		end
 		copy.retainedBytes = bytes
 		return copy, bytes
 	end

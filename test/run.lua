@@ -3167,15 +3167,14 @@ scenario("effort reads as a scale rather than a number", function()
 	local hit = slider and slider:FindFirstChildOfClass("TextButton")
 	truthy("with something to drag", hit ~= nil)
 
-	-- Words, not numbers. What the scale costs and buys is the part a reader needs,
-	-- and "xhigh" is not a quantity anyone can place on a bare track.
+	-- The labels distinguish lower effort from the optional provider default.
 	contains("the near end says what it buys", harness.textOf(), "Faster")
-	contains("and the far end too", harness.textOf(), "Smarter")
+	contains("and the far end too", harness.textOf(), "Provider default")
 
 	if hit then
 		harness.drag(hit, 0, 0, 100000, 0)
-		check("the far end spends the most", handle.config.get("agent.effort"), "max")
-		contains("and names itself", harness.textOf(), "Max")
+		check("the far end delegates effort to the provider", handle.config.get("agent.effort"), "off")
+		contains("and names itself", harness.textOf(), "Provider default")
 		harness.drag(hit, 0, 0, -100000, 0)
 		check("the near end the least", handle.config.get("agent.effort"), "low")
 	end
@@ -3858,14 +3857,13 @@ scenario("the composer states what is actually in force", function()
 	truthy("the runtime chip exists", runtime ~= nil)
 	contains("and names the host it is on", harness.textOf(runtime), "OfflineHarness")
 
-	-- The permission chip said "Bypass permissions" on a client whose mode was "ask",
-	-- which is the one place a fake label was also a safety problem.
+	-- The chip follows the active mode, including the default and saved changes.
 	local permissionLabel = harness.byName("PermissionLabel")
 	truthy("the permission chip exists", permissionLabel ~= nil)
-	check("and reads the mode in force", permissionLabel.Text, "Ask first")
-	handle.env.require("agent/permissions").setMode("full")
+	check("and reads the mode in force", permissionLabel.Text, "Allow everything")
+	handle.env.require("agent/permissions").setMode("ask")
 	harness.settle(1)
-	check("changing the mode changes the label", permissionLabel.Text, "Full access")
+	check("changing the mode changes the label", permissionLabel.Text, "Ask first")
 
 	local modelLabel = harness.byName("ModelLabel")
 	contains("the model is the one the provider is pointed at", modelLabel.Text, "claude-opus-5")
