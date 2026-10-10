@@ -31,6 +31,9 @@ Portable files, faster routine work, and clearer reasoning and provider feedback
 - Repair an output-ceiling refusal that names the field in the gateway's own
   spelling (for example HCNSEC's `field MaxTokens invalid`): lower the ceiling to
   the bound it states, retry, and remember it for later turns.
+- Point OpenRouter app attribution, the Cowork bridge download and the published
+  loader and site links at the project's new Project-Ptolemy repository after the
+  move from the personal account.
 
 ## 2.6.0 — October 4, 2026
 

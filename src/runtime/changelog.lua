@@ -20,7 +20,7 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.7.0",
-			revision = "2026-10-09-global-effort-access-preview-fixes-camelcase-field-repairs",
+			revision = "2026-10-10-repository-transfer-and-app-attribution",
 			date = "October 9, 2026",
 			title = "Portable files and faster routine work",
 			highlights = "One path contract across file and code tools, lighter reasoning defaults, clearer excerpts and provider errors, and a branded ProjectUAI menu.",
@@ -44,6 +44,9 @@ return function(env)
 				{ category = "added", label = "Project identity", items = {
 					"The ProjectUAI profile-menu entry and support modal now show the existing frame-drawn brand mark without an image download. What's New remains separate.",
 					"UI LIB remains v1.3.0 and the embedding SDK v1.0.0.",
+				} },
+				{ category = "improved", label = "Project links and app attribution", items = {
+					"OpenRouter app attribution, the Cowork bridge download and the published loader and site links now use the project's new Project-Ptolemy repository after the move from the personal account.",
 				} },
 			},
 		},
