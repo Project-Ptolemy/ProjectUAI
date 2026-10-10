@@ -467,6 +467,40 @@ return function(env)
 		return true, record
 	end
 
+	-- The OpenRouter attribution URL moved with the repository. A record saved
+	-- before the move carries the retired value in the headers copied from its
+	-- preset at creation, and saved headers deliberately override the built-in
+	-- default, so the old app would keep receiving that client's traffic forever.
+	-- Rewrite only the exact retired value: a referer the user set themselves is
+	-- left alone. Idempotent, and writes nothing when there is nothing to change.
+	local RETIRED_REFERER = "https://carldv.github.io/ProjectUAI/"
+	function M.migrate()
+		local preset = catalog.get("openrouter")
+		local replacement = preset and preset.headers and preset.headers["HTTP-Referer"]
+		if type(replacement) ~= "string" or replacement == "" then return 0 end
+		local stored = config.get("providers.list", {})
+		if type(stored) ~= "table" then return 0 end
+		local retired = string.gsub(RETIRED_REFERER, "/+$", "")
+		local changed = 0
+		for _, record in ipairs(stored) do
+			local headers = type(record) == "table" and record.headers
+			if type(headers) == "table" then
+				for key, value in pairs(headers) do
+					if type(key) == "string" and key:lower() == "http-referer" and type(value) == "string"
+						and string.gsub(value, "/+$", "") == retired then
+						headers[key] = replacement
+						changed = changed + 1
+					end
+				end
+			end
+		end
+		if changed > 0 then
+			config.set("providers.list", stored)
+			config.save()
+		end
+		return changed
+	end
+
 	function M.remove(id)
 		local list = config.get("providers.list", {})
 		local kept = {}

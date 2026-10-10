@@ -269,6 +269,11 @@ local function start()
 	env.require("agent/hooks").adoptContext()
 	env.require("agent/registry").load()
 
+	-- Before anything reads the provider list: saved records keep the attribution
+	-- headers they were created with, so the repository move has to be carried into
+	-- existing installs here rather than only into records created from now on.
+	env.require("provider/registry").migrate()
+
 	-- The workspace migration, before anything that reads files/: the file tools,
 	-- the paste fallbacks, the attach menu. For a returning user with older files
 	-- this is the step between "it used to see my notes" and the tidy layout, so it

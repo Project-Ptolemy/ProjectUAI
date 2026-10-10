@@ -206,6 +206,32 @@ case("header overrides are case insensitive and identity is host scoped", functi
 	f.healthy(); f.close()
 end)
 
+case("the retired OpenRouter attribution URL migrates in saved records", function()
+	local f = F.new(); local registry = f.env.require("provider/registry")
+	-- A record saved before the repository move: its copied preset headers still
+	-- carry the retired referer, which overrides the built-in default.
+	local legacy = recordFor(f, "openrouter")
+	legacy.headers["HTTP-Referer"] = "https://carldv.github.io/ProjectUAI/"
+	check("legacy record saves", registry.save(legacy))
+	local custom = recordFor(f, "custom")
+	custom.headers = { ["HTTP-Referer"] = "https://example.test/keep-me/" }
+	check("custom record saves", registry.save(custom))
+	local near = recordFor(f, "custom")
+	near.id, near.label = "fixture-near", "Near miss"
+	near.headers = { ["http-referer"] = "https://carldv.github.io/ProjectUAI/archive" }
+	check("near-miss record saves", registry.save(near))
+
+	check("one saved record migrates", registry.migrate() == 1)
+	check("referer points at the repository", registry.get("fixture-openrouter").headers["HTTP-Referer"]
+		== "https://github.com/Project-Ptolemy/ProjectUAI")
+	check("a user-set referer is untouched", registry.get("fixture-custom").headers["HTTP-Referer"]
+		== "https://example.test/keep-me/")
+	check("a similar URL is untouched", registry.get("fixture-near").headers["http-referer"]
+		== "https://carldv.github.io/ProjectUAI/archive")
+	check("a second boot changes nothing", registry.migrate() == 0)
+	f.healthy(); f.close()
+end)
+
 case("discovery separates drafts and changes in connection/auth", function()
 	local f = F.new(); local models = f.env.require("provider/models"); local a, b = recordFor(f), recordFor(f)
 	a.id, b.id = "", ""; a.baseUrl, b.baseUrl = "http://localhost:1234/v1", "http://localhost:8000/v1"

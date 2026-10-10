@@ -33,7 +33,8 @@ Portable files, faster routine work, and clearer reasoning and provider feedback
   the bound it states, retry, and remember it for later turns.
 - Point OpenRouter app attribution, the Cowork bridge download and the published
   loader and site links at the project's new Project-Ptolemy repository after the
-  move from the personal account.
+  move from the personal account. Saved OpenRouter providers are updated on the
+  next start; a referer set by hand is left alone.
 
 ## 2.6.0 — October 4, 2026
 

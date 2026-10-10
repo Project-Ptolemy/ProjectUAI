@@ -20,7 +20,7 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.7.0",
-			revision = "2026-10-10-repository-transfer-and-app-attribution",
+			revision = "2026-10-10-repository-transfer-and-saved-record-migration",
 			date = "October 9, 2026",
 			title = "Portable files and faster routine work",
 			highlights = "One path contract across file and code tools, lighter reasoning defaults, clearer excerpts and provider errors, and a branded ProjectUAI menu.",
@@ -46,7 +46,7 @@ return function(env)
 					"UI LIB remains v1.3.0 and the embedding SDK v1.0.0.",
 				} },
 				{ category = "improved", label = "Project links and app attribution", items = {
-					"OpenRouter app attribution, the Cowork bridge download and the published loader and site links now use the project's new Project-Ptolemy repository after the move from the personal account.",
+					"OpenRouter app attribution, the Cowork bridge download and the published loader and site links now use the project's new Project-Ptolemy repository after the move from the personal account. Saved OpenRouter providers pick up the new URL on the next start; a referer set by hand is left alone.",
 				} },
 			},
 		},
