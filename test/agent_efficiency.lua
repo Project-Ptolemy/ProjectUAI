@@ -173,10 +173,10 @@ case("main and child prompts share the canonical workspace without synchronous n
 		check("both agents receive the same verbatim path", has(main, "Current game files: " .. workspace.path .. "/")
 			and has(child, "Current game files: " .. workspace.path .. "/"))
 		check("both prompts replace obsolete prefix workarounds", has(main, "supersedes old path-workaround memories") and has(child, "supersedes old path-workaround memories")
-			and has(main, "check_luau and run_luau uses the SAME") and has(child, "real legacy folder"))
-		check("pace applies to parent and child", has(main, "Reserve deeper reasoning") and has(child, "Reserve deeper reasoning"))
+			and has(main, "check_luau and run_luau share one namespace") and has(child, "real legacy folder"))
+		check("pace applies to parent and child", has(main, "Do not overthink routine steps") and has(child, "Do not overthink routine steps"))
 		check("both agents can choose bulk reads without broad game setup", has(main, "file_read_many") and has(child, "file_read_many")
-			and has(main, "Do not inventory or decompile an entire game") and has(child, "do not dump/decompile a whole game"))
+			and has(main, "Avoid whole-game inventories") and has(child, "Avoid whole-game inventories"))
 	end
 	check("rebuilding prompts makes no Marketplace requests", calls == 0)
 	f.healthy(); f.close()
@@ -192,7 +192,7 @@ case("changing live environment leaves all standing rules in the reusable prefix
 	check("main prefix remains byte-identical", first:sub(1, boundary - 1) == nextPrompt:sub(1, boundary - 1))
 	check("child prefix remains byte-identical", child:sub(1, childBoundary - 1) == nextChild:sub(1, childBoundary - 1))
 	check("dynamic facts still refresh", has(nextPrompt, "Different game") and has(nextPrompt, "model second") and has(nextChild, "Second task"))
-	check("working rules precede metadata", has(first:sub(1, boundary - 1), "Do not inventory or decompile an entire game"))
+	check("working rules precede metadata", has(first:sub(1, boundary - 1), "Avoid whole-game inventories"))
 	f.healthy(); f.close()
 end)
 

@@ -1000,7 +1000,7 @@ scenario("the subagent switch lifts a child's own limits", function()
 	for _, entry in ipairs(chatRequests(harness)) do
 		if tostring(entry.body):find("You are a subagent", 1, true) then childBody = tostring(entry.body) end
 	end
-	contains("the child was told it has no step limit", childBody or "", "no step limit and no clock")
+	contains("the child was told it has no step limit", childBody or "", "No turn/time budget; tool deadlines and Stop still apply")
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
@@ -2721,7 +2721,7 @@ scenario("context overflow recovers the same turn on both wire protocols", funct
 			model = "Relayed-Unknown", handler = function(entry)
 				if not entry.body then return { StatusCode = 404, Body = "{}" } end
 				local body = json.decode(entry.body)
-				if body.max_tokens == 512 then
+				if body.tools == nil then
 					summaries[#summaries + 1] = body
 					return { StatusCode = 200, Body = response("Keep the lighthouse; the dock is unfinished.") }
 				end
@@ -2736,6 +2736,9 @@ scenario("context overflow recovers the same turn on both wire protocols", funct
 			end,
 		})
 		local session = handle.sessions.current()
+		-- Keep the fixed catalogue below the learned window: this tests removable
+		-- history, not an irreducibly oversized tool schema.
+		session.toolFilter = { game_info = true }
 		for index = 1, 20 do
 			session.ctx.pushUser(("old question "):rep(100))
 			session.ctx.pushAssistant({ content = ("old answer "):rep(100) })
@@ -2745,6 +2748,7 @@ scenario("context overflow recovers the same turn on both wire protocols", funct
 		check(api .. " learns the real context window", handle.config.get("agent.forceContext")["relayed-unknown"], 12000)
 		check(api .. " retries the main request once", #main, 2)
 		check(api .. " makes a separate summary request", #summaries, 1)
+		truthy(api .. " summary uses a bounded output budget", summaries[1] and summaries[1].max_tokens > 0 and summaries[1].max_tokens <= 512)
 		truthy(api .. " the retry has less history", main[2] and #main[2].messages < #main[1].messages)
 		contains(api .. " the retry includes the rolling summary", main[2] and json.encode(main[2]), "Keep the lighthouse")
 		contains(api .. " the latest question survives", main[2] and json.encode(main[2]), "Finish the dock")
@@ -2760,7 +2764,7 @@ end)
 	local harness, handle = bootWith({ handler = function(entry)
 		if not entry.body then return { StatusCode = 404, Body = "{}" } end
 		local body = json.decode(entry.body)
-		if body.max_tokens == 512 then return { StatusCode = 200, Body = chatBody({ content = "Earlier facts" }) } end
+		if body.tools == nil then return { StatusCode = 200, Body = chatBody({ content = "Earlier facts" }) } end
 		attempts[body.model] = (attempts[body.model] or 0) + 1
 		if body.model == "fallback" then return { StatusCode = 200, Body = chatBody({ model = "fallback", content = "Fallback answered" }) } end
 		return { StatusCode = 400, Body = json.encode({ error = { message = "maximum context length is 12000 tokens" } }) }
@@ -2773,6 +2777,7 @@ end)
 	assert(handle.providers.save(fallback))
 	handle.providers.setActive(primary.id)
 	local session = handle.sessions.current()
+	session.toolFilter = { game_info = true }
 	for index = 1, 8 do session.ctx.pushUser("question"); session.ctx.pushAssistant({ content = "answer" }) end
 	session.send("continue")
 	harness.settle(20)
@@ -2787,7 +2792,7 @@ scenario("context recovery learns and retries a smaller fallback model", functio
 	local harness, handle = bootWith({ handler = function(entry)
 		if not entry.body then return { StatusCode = 404, Body = "{}" } end
 		local body = json.decode(entry.body)
-		if body.max_tokens == 512 then return { StatusCode = 200, Body = chatBody({ content = "Remember the lighthouse" }) } end
+		if body.tools == nil then return { StatusCode = 200, Body = chatBody({ content = "Remember the lighthouse" }) } end
 		attempts[body.model] = (attempts[body.model] or 0) + 1
 		if body.model == "harness-model" then return { StatusCode = 401, Body = '{"error":"primary unavailable"}' } end
 		if attempts[body.model] == 1 then
@@ -2802,6 +2807,7 @@ scenario("context recovery learns and retries a smaller fallback model", functio
 	handle.providers.setActive(primary.id)
 	handle.config.set("agent.fallback", true)
 	local session = handle.sessions.current()
+	session.toolFilter = { game_info = true }
 	for index = 1, 8 do session.ctx.pushUser("question"); session.ctx.pushAssistant({ content = "answer" }) end
 	session.send("continue")
 	harness.settle(10)
@@ -2819,7 +2825,7 @@ scenario("context recovery stops on cancellation or uncompactable history", func
 		local harness, handle = bootWith({ handler = function(entry)
 			if not entry.body then return { StatusCode = 404, Body = "{}" } end
 			local body = json.decode(entry.body)
-			if body.max_tokens == 512 then
+			if body.tools == nil then
 				summaries = summaries + 1
 				session.abortFlag = true
 				return { StatusCode = 200, Body = chatBody({ content = "summary" }) }
@@ -2828,6 +2834,7 @@ scenario("context recovery stops on cancellation or uncompactable history", func
 			return { StatusCode = 400, Body = '{"error":{"message":"maximum context length is 12000 tokens"}}' }
 		end })
 		session = handle.sessions.current()
+		session.toolFilter = { game_info = true }
 		if cancel then
 			for index = 1, 8 do session.ctx.pushUser("old question"); session.ctx.pushAssistant({ content = "answer" }) end
 		end
@@ -6290,7 +6297,7 @@ scenario("custom instructions reach the system prompt", function()
 	handle.sessions.current().send("hello")
 	harness.settle(6)
 	falsy("without instructions the prompt has no block",
-		tostring(sent[1].messages[1].content):find("Your user's instructions", 1, true) ~= nil)
+		tostring(sent[1].messages[1].content):find("Your user's standing instructions", 1, true) ~= nil)
 
 	-- The pane renders the textarea, and blurring it writes the config path.
 	handle.show("settings")
@@ -6306,11 +6313,11 @@ scenario("custom instructions reach the system prompt", function()
 	handle.sessions.current().send("hello again")
 	harness.settle(6)
 	local promptText = tostring(sent[#sent].messages[1].content)
-	contains("the block is in the prompt", promptText, "Your user's instructions")
+	contains("the block is in the prompt", promptText, "Your user's standing instructions")
 	contains("carrying the text verbatim", promptText, "Always answer in Spanish. Keep it short.")
 	truthy("after the built-in rules, so it wins",
-		promptText:find("Style:", 1, true) ~= nil
-			and promptText:find("Style:", 1, true) < promptText:find("Your user's instructions", 1, true))
+		promptText:find("Communication:", 1, true) ~= nil
+			and promptText:find("Communication:", 1, true) < promptText:find("Your user's standing instructions", 1, true))
 
 	-- The copy action puts the same assembled prompt on the clipboard.
 	local copy = harness.byName("CopySystemPrompt")
@@ -6567,9 +6574,9 @@ scenario("a subagent has no ask tool and knows what it is", function()
 	-- The brief states the identity and the no-asking rule in words.
 	local brief = handle.env.require("agent/prompt").subagent("a task", {})
 	contains("it says what it is", brief, "subagent of UAI")
-	contains("and that nobody can answer it", brief, "no user to ask")
-	contains("with what to do instead", brief, "state both readings")
-	contains("and where dumped files belong", brief, "dump/ subfolder")
+	contains("and that nobody can answer it", brief, "You cannot ask the user questions")
+	contains("with what to do instead", brief, "report findings, changes, checks and blockers")
+	contains("and where dumped files belong", brief, "and its dump/ for")
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
@@ -6593,19 +6600,19 @@ scenario("the system prompt teaches denials, dates and asking early", function()
 	harness.settle(6)
 
 	local promptText = tostring(sent[1].messages[1].content)
-	contains("a denial is the user's answer", promptText, "the user's answer")
-	contains("which must not be retried", promptText, "Do not repeat the call")
-	contains("asking early beats asking late", promptText, "Ask early, not after")
+	contains("permission decisions are respected", promptText, "Respect permission decisions")
+	contains("which must not be retried", promptText, "never\n  retry denied calls")
+	contains("questions resolve material ambiguity", promptText, "missing information materially")
 	-- The date comes from the real clock rather than the mock's virtual one, so the
 	-- assertion is on the shape of the line rather than a fixed date.
 	truthy("the date is stated", promptText:find("Date: %d%d%d%d%-%d%d%-%d%d %d%d:%d%d UTC") ~= nil,
 		"no Date line in the prompt")
-	contains("and quotes must be exact", (promptText:gsub("\n%s+", " ")), "character for character")
+	contains("and quotes must be exact", promptText, "Quote exact evidence")
 	-- The per-game workspace layout: authored scripts in the game folder root,
 	-- dumps in its dump/ subfolder, and the whole thing a default rather than a fence.
-	contains("game work has a per-place home", promptText, "Organise the workspace by game")
-	contains("dumps are kept apart from authored code", promptText, "dump/ subfolder")
-	contains("the layout does not fence the agent in", promptText, "default, not a fence")
+	contains("game work has a per-place home", promptText, "Use the exact Current game files path")
+	contains("dumps are kept apart from authored code", promptText, "and its dump/ for")
+	contains("explicit user paths override the default", promptText, "honor explicit user paths")
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)

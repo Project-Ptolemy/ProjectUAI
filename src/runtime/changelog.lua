@@ -20,11 +20,22 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.7.0",
-			revision = "2026-10-10-repository-transfer-and-saved-record-migration",
+			revision = "2026-10-10-focused-agent-context-and-permissions",
 			date = "October 9, 2026",
-			title = "Portable files and faster routine work",
-			highlights = "One path contract across file and code tools, lighter reasoning defaults, clearer excerpts and provider errors, and a branded ProjectUAI menu.",
+			title = "Focused agents and portable files",
+			highlights = "Smaller prompts, relevant skill and memory reads, clearer Roblox capability guidance, consistent permissions, and one path contract across file and code tools.",
 			sections = {
+				{ category = "improved", label = "October 10: focused agent work", items = {
+					"Shorter shared main/subagent instructions remove conflicting workflow rules and include specialized guidance only for the tools offered. Routine work needs no mandatory task list, delegation or repeated planning.",
+					"Read relevant or explicitly requested skills and reuse unchanged bodies still in context. The enabled inventory fits within 3 KiB and names omissions; full inventories and bodies remain available through paginated reads.",
+					"Prompts include a 2 KiB memory-key index instead of saved values. Search keys/values or read exact keys with continuation offsets; old workarounds remain available without becoming standing instructions or reordering saved entries.",
+					"Subagents receive the current model, host instructions, reply language, tool scope and their own task list. Follow-ups take precedence over the original assignment while retaining useful evidence.",
+					"Roblox guidance distinguishes local effects from server-confirmed results and directs agents to inspect available actions before reporting specific limits. Game rules or anticheat alone do not justify blanket refusals of ordinary scripting requests.",
+				} },
+				{ category = "fixed", label = "October 10: permission handling", items = {
+					"Tool discovery and execution use the same permission rules, including explicit allow/ask overrides in read-only mode. Capability checks and conversation scopes still apply.",
+					"Unanswered approval timeouts and cancelled prompts are reported separately from user declines, saved rules and mode restrictions. Late answers cannot execute a settled call or save a rule; agents continue other allowed work without an extra confirmation.",
+				} },
 				{ category = "improved", label = "Routine work and response speed", items = {
 					"New configurations start at Low reasoning effort. Existing saved choices are kept; change Effort in Agent settings to lower them. Provider default is now selectable and omits the effort field.",
 					"The model modal exposes global effort for any model with Reasoning support enabled, includes Provider default, and follows setting changes. Known model scales remain constrained.",

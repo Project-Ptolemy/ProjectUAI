@@ -55,7 +55,7 @@ return function(env)
 		for _, entry in pairs(permissions.pending) do
 			if entry.tool == tool then pending[#pending + 1] = entry end
 		end
-		for _, entry in ipairs(pending) do entry.resolve(false, false) end
+		for _, entry in ipairs(pending) do entry.cancel() end
 		return true
 	end
 
@@ -202,19 +202,17 @@ return function(env)
 	--
 	-- Tools the host cannot run are omitted rather than described-and-refused: a
 	-- model shown a tool will use it, and a turn spent learning that writefile does
-	-- not exist here is a wasted turn. Read-only mode omits everything that writes,
-	-- for the same reason.
+	-- not exist here is a wasted turn. Discovery and dispatch share one permission
+	-- decision, including explicit rules overriding the base mode.
 	function M.definitions(opts)
 		opts = opts or {}
 		M.load()
-		local readonly = permissions.mode() == "readonly"
 		local out = {}
 		for _, name in ipairs(M.order) do
 			local tool = M.tools[name]
 			local allow = true
 			if M.missingCapability(tool) then allow = false end
-			if readonly and tool.risk ~= "read" then allow = false end
-			if permissions.ruleFor(name) == "deny" then allow = false end
+			if permissions.check(tool) == "deny" then allow = false end
 			if not M.groupEnabled(tool.group) then allow = false end
 			if opts.only and not opts.only[name] then allow = false end
 			-- A tool that must not exist for this conversation at all -- ask_user in a
@@ -360,15 +358,29 @@ return function(env)
 
 		local allowed, source = permissions.request(tool, coerced, ctx)
 		if blocked() then return result end
-		if M.missingCapability(tool) or permissions.check(tool) == "deny" then
-			result.text, result.error = "The tool's capability or permission changed while approval was pending.", "unavailable"
-			return result
-		end
 		if not allowed then
-			result.text = string.format("The user did not approve %s (%s). Do not retry it; ask what to do instead.",
-				name, source or "denied")
 			result.error = "denied"
 			result.denied = true
+			if source == "timeout" then
+				result.text = "Approval for " .. name .. " timed out without a user response."
+				result.error, result.denied = "approval timeout", nil
+			elseif source == "cancelled" or source == "aborted" then
+				result.text = "Approval for " .. name .. " was cancelled before a user decision."
+				result.error, result.denied = "approval cancelled", nil
+			elseif source == "mode" then
+				result.text = name .. " is blocked by permission mode " .. permissions.mode() .. "."
+			elseif source == "rule" then
+				result.text = name .. " is blocked by a saved permission rule."
+			else
+				result.text = "The user did not approve " .. name .. "."
+			end
+			result.text = result.text .. " This call did not run. Continue other allowed work; do not repeat or bypass this call."
+			result.data = { permission = source, executed = false }
+			result.ms = clock.since(started)
+			return result
+		end
+		if M.missingCapability(tool) or permissions.check(tool) == "deny" then
+			result.text, result.error = "The tool's capability or permission changed before execution; this call did not run.", "unavailable"
 			result.ms = clock.since(started)
 			return result
 		end

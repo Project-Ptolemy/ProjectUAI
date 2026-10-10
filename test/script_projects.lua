@@ -208,7 +208,7 @@ suite.case("main and subagent prompts explain the project workflow and limits", 
 	local f = fixture(); local prompt = f.env.require("agent/prompt")
 	for _, text in ipairs({ prompt.build(), prompt.subagent("Build a script") }) do
 		check("project workflow is present", text:find("project_scaffold", 1, true) and text:find("project_patch_read", 1, true) and text:find("script_test", 1, true))
-		check("review and coverage limits are present", text:find("Review source changes before checks", 1, true) and text:find("not Luau type inference", 1, true) and text:find("shared native game state", 1, true))
+		check("review and coverage limits are present", text:find("Review source changes before checks", 1, true) and text:find("not Luau type inference", 1, true) and text:find("shared native", 1, true) and text:find("game state", 1, true))
 	end
 	f.close()
 end)

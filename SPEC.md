@@ -302,8 +302,21 @@ when closed. A manual reasoning claim does not establish which levels a provider
 
 Main and subagent prompts place standing rules before changing environment facts,
 keeping a stable prefix eligible for provider caching without guaranteeing cache
-support. Routine steps favor prompt action and focused checks, reserving deeper
-reasoning for difficult or consequential work.
+support. Shared rules favor direct action, relevant skill reads and focused checks.
+Task lists and delegation are useful options, not mandatory setup for routine work.
+The loop builds tool definitions once per request and passes them to the prompt
+builder; specialized workflow sections follow the offered catalogue. An unscoped
+prompt preview includes all sections. Subagents receive their own plan, permission
+mode, selected model, host instructions and reply language, and follow-ups take
+precedence over the original task. Custom instructions override workflow/style
+defaults but cannot override tool permissions.
+
+Saved memory values are retrieved on demand through `memory_read`, not injected
+as standing instructions. A stable, quoted key index fits within 2 KiB; omitted
+keys remain discoverable by literal case-insensitive search over keys/values or
+paginated full reads. Exact-key reads also paginate within the tool result budget.
+Current instructions and observed state supersede historical facts. Stored memory
+is preserved, and listing it never sorts the persisted array in place.
 
 The transcript's 24,000-byte field retention is a display/storage bound, not a
 model reasoning budget. Reasoning events retain truncation metadata; the UI labels
@@ -335,6 +348,14 @@ handler may yield. Raising an error is caught and reported to the model as a too
 error, not a crash. Returning `{ ok = false, text = "..." }` reports a semantic
 failure without raising. Dispatch rechecks disabled groups and the session's tool
 filters before execution, including after a pending approval resolves.
+
+Discovery and dispatch use the same permission decision: explicit tool rules
+override the base mode, including `allow` or `ask` rules in read-only mode.
+Capability and conversation-scope checks still apply. A rejected tool result
+distinguishes saved rules, the mode, a user's decision, an unanswered approval
+timeout and cancellation. Timeout/cancellation never claims the user declined,
+executes the pending call, or saves a denial rule. Late answers cannot revive a
+settled prompt. The agent continues other allowed work without a redundant question.
 
 The prompt asks for successive batches of normally 1–4 independent calls, waits
 for their results, and discourages dozens of calls in one response. Dependent
@@ -418,14 +439,15 @@ instead of dropping unfinished edits/options. A token-limited tool batch produce
 an error result for every call without executing any, allowing the model to send
 smaller complete calls on its next step.
 
-Main and subagent prompts require reading every enabled skill before replying or
-performing other work in each new or resumed conversation. The environment supplies
-names, filenames and descriptions; `skills_read` supplies the body. Both skill
-bodies and `skills_list` paginate through UTF-8-safe byte offsets within the result
-budget. Restricted subagent presets include the skills group and explicitly exclude
-its write/install/delete tools. Disabled skills remain unreadable; denied or
-unavailable reads do not require retries. Changed skills and bodies lost through
-compaction must be read again.
+Main and subagent prompts read relevant or explicitly requested enabled skills
+before applying them; unrelated skills require no reads. The environment supplies
+a stable inventory of names, exact filenames and descriptions within 3 KiB, with
+an explicit omission notice. `skills_list` supplies the complete inventory and
+`skills_read` supplies bodies, both through UTF-8-safe byte-offset pages within
+the result budget. Restricted subagents retain skill reads without write/install/
+delete tools. Disabled skills remain unreadable; denied or unavailable reads need
+no retries. Reuse unchanged bodies retained in context, including on resume; read
+needed bodies again after changes or compaction removes them.
 
 The Project Gravity tool group resolves the live `_GRAVITY_CONTEXT` for each
 action, falling back to `env.context.gravity`. Desktop and mobile Gravity

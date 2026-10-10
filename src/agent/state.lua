@@ -21,6 +21,7 @@ return function(env)
 	local TODO_LIMIT = 24
 	local MEMORY_LIMIT = 60
 	local MEMORY_VALUE_CAP = 600
+	local MEMORY_INDEX_CAP = 2048
 
 	local M = {
 		todosChanged = signal.new("todos"),
@@ -168,7 +169,8 @@ return function(env)
 	end
 
 	function M.memoryList()
-		local list = entries()
+		local list = {}
+		for index, entry in ipairs(entries()) do list[index] = entry end
 		table.sort(list, function(a, b) return tostring(a.key) < tostring(b.key) end)
 		return list
 	end
@@ -176,6 +178,26 @@ return function(env)
 	function M.clearMemory()
 		config.set("memory.entries", {})
 		M.memoryChanged:fire({})
+	end
+
+	-- Discovery only: old workaround prose must not become standing instructions.
+	-- Keep complete keys; omitted keys remain searchable through memory_read.
+	function M.memoryIndex()
+		if not M.memoryEnabled() then return nil end
+		local list = M.memoryList()
+		if #list == 0 then return nil end
+		local lines, bytes, shown = {}, 0, 0
+		for _, entry in ipairs(list) do
+			local line = "- " .. util.encode(tostring(entry.key))
+			if bytes + #line + 1 <= MEMORY_INDEX_CAP - 100 then
+				lines[#lines + 1] = line
+				bytes, shown = bytes + #line + 1, shown + 1
+			end
+		end
+		if shown < #list then
+			lines[#lines + 1] = string.format("%d more keys; use memory_read with query or paginate the full list.", #list - shown)
+		end
+		return table.concat(lines, "\n")
 	end
 
 	function M.memoryBlock()

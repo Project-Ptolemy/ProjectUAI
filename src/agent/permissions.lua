@@ -35,9 +35,9 @@ return function(env)
 	}
 
 	M.MODE_HINTS = {
-		readonly = "Inspection only. Nothing is changed, executed or written.",
-		ask = "Reads run freely. Anything that changes the game waits for you.",
-		auto = "Reads and writes run freely. Code execution and deletion still ask.",
+		readonly = "Reads are allowed; writes and execution are denied unless a tool rule overrides this.",
+		ask = "Reads run freely; writes and execution request approval unless a tool rule overrides this.",
+		auto = "Reads and writes run freely; execution and deletion ask unless a tool rule overrides this.",
 		full = "Reads, writes and execution run without approval unless a tool rule says otherwise.",
 	}
 
@@ -124,21 +124,27 @@ return function(env)
 		end
 
 		local id = util.uid("perm")
-		local answered, allowed, remembered = false, false, false
+		local answered, allowed, answerSource = false, false, nil
 		-- Which conversation is waiting. A prompt is per-session state -- the thread
 		-- parked on it belongs to one turn -- and sweeping the whole table when any
 		-- turn ended is what made a second conversation unusable.
 		local session = ctx and ctx.session or nil
 
-		local function resolve(decision, remember)
+		local function settle(decision, remember, reason)
 			if answered then return end
 			answered = true
 			allowed = decision == true
-			remembered = remember == true
+			answerSource = reason
 			M.pending[id] = nil
-			if remembered and config.get("permissions.remember", true) then
+			if remember == true and config.get("permissions.remember", true) then
 				M.setRule(tool.name, allowed and "allow" or "deny")
 			end
+		end
+		local function resolve(decision, remember)
+			settle(decision, remember, remember == true and "remembered" or "asked")
+		end
+		local function cancel()
+			settle(false, false, "cancelled")
 		end
 
 		M.pending[id] = {
@@ -147,6 +153,7 @@ return function(env)
 			at = clock.ms(),
 			session = session,
 			resolve = resolve,
+			cancel = cancel,
 		}
 
 		if ctx and ctx.emit then
@@ -164,19 +171,19 @@ return function(env)
 		local waited = 0
 		while not answered and waited < ASK_TIMEOUT do
 			if ctx and ctx.aborted and ctx.aborted() then
-				resolve(false, false)
+				settle(false, false, "aborted")
 				return false, "aborted"
 			end
 			waited = waited + (clock.wait(0.1) or 0.1)
 		end
 
 		if not answered then
-			resolve(false, false)
+			settle(false, false, "timeout")
 			log.warn("permissions", "no answer for " .. tool.name .. ", denied after " .. tostring(ASK_TIMEOUT) .. "s")
 			return false, "timeout"
 		end
 
-		return allowed, remembered and "remembered" or "asked"
+		return allowed, answerSource
 	end
 
 	-- Called when a turn ends mid-prompt: an unanswered request must not leave a
@@ -192,7 +199,7 @@ return function(env)
 		for id, entry in pairs(M.pending) do
 			if session == nil or entry.session == session then
 				M.pending[id] = nil
-				entry.resolve(false, false)
+				entry.cancel()
 				swept = swept + 1
 			end
 		end

@@ -323,12 +323,24 @@ return function(env)
 			session.emit("status", { text = turn == 1 and "Thinking" or ("Working (step " .. turn .. ")") })
 
 			local record = providers.active()
+			-- Build the catalogue once so prompt guidance matches this request's scope.
+			local exclude = session.toolExclude
+			if session.named or session.headless then
+				exclude = util.copy(exclude or {})
+				exclude.conversation_rename = true
+			end
+			local definitions = registry.definitions({
+				only = session.toolFilter,
+				groups = session.toolGroups,
+				exclude = exclude,
+			})
 			-- A session may carry its own brief. A subagent does: it answers to the
 			-- parent agent rather than to the user, so inheriting the main prompt
 			-- would have it write a chat reply instead of a report.
 			local systemText
 			if type(session.systemPrompt) == "function" then
-				systemText = session.systemPrompt()
+				systemText = session.systemPrompt({ tools = definitions, model = record and record.model,
+					provider = record and record.label, session = session })
 			elseif type(session.systemPrompt) == "string" and util.trim(session.systemPrompt) ~= "" then
 				systemText = session.systemPrompt
 			else
@@ -338,25 +350,13 @@ return function(env)
 					-- Which conversation this is for. The task list rides on the session,
 					-- so a prompt built without it is built without the plan.
 					session = session,
+					tools = definitions,
 				})
 			end
 
-			-- A conversation the user has named keeps that name: the rename tool is
-			-- absent from its catalogue rather than described and refused, the same
-			-- way a missing capability or a disabled group is handled. A headless
-			-- child has no visible title to name either.
-			local exclude = session.toolExclude
-			if session.named or session.headless then
-				exclude = util.copy(exclude or {})
-				exclude.conversation_rename = true
-			end
 			local request = {
 				messages = ctx.wire(systemText),
-				tools = registry.definitions({
-					only = session.toolFilter,
-					groups = session.toolGroups,
-					exclude = exclude,
-				}),
+				tools = definitions,
 				stream = session.stream,
 				onFrame = session.onFrame,
 			}

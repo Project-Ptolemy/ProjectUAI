@@ -7,7 +7,7 @@
 -- can write one with the file functions -- both paths converge here.
 --
 -- The environment carries the enabled inventory, not the bodies. Every
--- conversation is instructed to read all enabled bodies first, using resumable
+-- conversation reads relevant or explicitly requested bodies, using resumable
 -- tool reads so a long playbook is not silently truncated by the result cap.
 --
 -- Frontmatter is the same shape Claude Code uses, so a repo of existing
@@ -28,6 +28,7 @@ return function(env)
 	local signal = env.require("runtime/signal")
 
 	local READ_CAP = 12000
+	local INDEX_CAP = 3072
 
 	local M = {
 		changed = signal.new("skills"),
@@ -109,7 +110,10 @@ return function(env)
 				end
 			end
 		end
-		table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
+		table.sort(out, function(a, b)
+			if a.name:lower() == b.name:lower() then return a.file < b.file end
+			return a.name:lower() < b.name:lower()
+		end)
 		return out
 	end
 
@@ -271,13 +275,21 @@ return function(env)
 	function M.indexBlock()
 		if not fsx.enabled then return nil end
 		local list = M.list()
-		local lines = {}
+		local lines, bytes, omitted = {}, 0, 0
 		for _, skill in ipairs(list) do
 			if skill.enabled then
 				local description = skill.description ~= "" and skill.description or "no description"
-				lines[#lines + 1] = "- " .. skill.name .. " [" .. skill.file .. "]: " .. util.ellipsis(description, 100)
+				local line = "- " .. util.ellipsis(skill.name:gsub("%s+", " "), 80) .. " [" .. skill.file .. "]: "
+					.. util.ellipsis(description:gsub("%s+", " "), 100)
+				if bytes + #line + 1 <= INDEX_CAP - 100 then
+					lines[#lines + 1] = line
+					bytes = bytes + #line + 1
+				else
+					omitted = omitted + 1
+				end
 			end
 		end
+		if omitted > 0 then lines[#lines + 1] = tostring(omitted) .. " more enabled skills; use skills_list for the complete inventory." end
 		if #lines == 0 then return nil end
 		return table.concat(lines, "\n")
 	end

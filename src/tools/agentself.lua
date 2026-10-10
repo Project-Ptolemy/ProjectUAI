@@ -198,7 +198,7 @@ return function(env)
 		{
 			name = "todo_write",
 			risk = "read",
-			description = "Replace the task list with the full set of items and their statuses. Use for any job with more than about three steps; keep exactly one item active.",
+			description = "Replace the full task list. Use when substantial work benefits from a tracked plan; keep one item active while work remains. Routine tool sequences need no list.",
 			parameters = {
 				type = "object",
 				properties = {
@@ -577,23 +577,36 @@ return function(env)
 		{
 			name = "memory_read",
 			risk = "read",
-			description = "List everything currently remembered, or read one key.",
+			description = "Read a saved memory by exact key, search keys/values with a literal query, or list all memories. Historical facts may be stale; current instructions and observed state take precedence. Follow returned offsets with the same filters.",
 			parameters = {
 				type = "object",
 				properties = {
-					key = { type = "string", description = "Omit to list every memory." },
+					key = { type = "string", description = "Exact key; omit to search or list." },
+					query = { type = "string", description = "Case-insensitive literal text in keys or values; omit key when searching." },
+					offset = { type = "integer", minimum = 1, description = "Byte offset from the previous page." },
+					limit = { type = "integer", minimum = 200, maximum = 64000, description = "Maximum bytes, bounded by the tool result budget." },
 				},
 				required = {},
 			},
 			run = function(args)
-				if args.key and util.trim(args.key) ~= "" then
-					local value = state.recall(args.key)
-					if not value then return "Nothing is stored under '" .. tostring(args.key) .. "'." end
-					return tostring(args.key) .. ": " .. value
+				local key, query = util.trim(args.key or ""), util.trim(args.query or ""):lower()
+				if key ~= "" and query ~= "" then return H.fail("use key or query, not both") end
+				if key ~= "" then
+					local value = state.recall(key)
+					if not value then return "Nothing is stored under '" .. key .. "'." end
+					return H.readSlice("Saved memory", key .. ": " .. value, args, 4000)
 				end
 				local list = state.memoryList()
 				if #list == 0 then return "Nothing is remembered yet." end
-				return H.list(list, 60, function(entry) return entry.key .. ": " .. entry.value end)
+				local lines = {}
+				for _, entry in ipairs(list) do
+					if query == "" or tostring(entry.key):lower():find(query, 1, true)
+						or tostring(entry.value):lower():find(query, 1, true) then
+						lines[#lines + 1] = "- " .. entry.key .. ": " .. entry.value
+					end
+				end
+				if #lines == 0 then return "No memories match that query." end
+				return H.readSlice("Saved memories (" .. #lines .. " matches)", table.concat(lines, "\n"), args, 4000)
 			end,
 		},
 		{

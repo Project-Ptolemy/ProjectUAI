@@ -529,7 +529,7 @@
               </li>
               <li class="tool-row" data-tool-name="memory_read">
                 <div class="tool-row-heading"><code>memory_read</code><span class="risk risk-read">Read</span></div>
-                <p>List everything currently remembered, or read one key.</p>
+                <p>Read a saved memory by exact key, search keys/values with a literal query, or list all memories. Historical facts may be stale; current instructions and observed state take precedence. Follow returned offsets with the same filters.</p>
               </li>
               <li class="tool-row" data-tool-name="memory_write">
                 <div class="tool-row-heading"><code>memory_write</code><span class="risk risk-read">Read</span></div>
@@ -541,7 +541,7 @@
               </li>
               <li class="tool-row" data-tool-name="todo_write">
                 <div class="tool-row-heading"><code>todo_write</code><span class="risk risk-read">Read</span></div>
-                <p>Replace the task list with the full set of items and their statuses. Use for any job with more than about three steps; keep exactly one item active.</p>
+                <p>Replace the full task list. Use when substantial work benefits from a tracked plan; keep one item active while work remains. Routine tool sequences need no list.</p>
               </li>
               <li class="tool-row" data-tool-name="wait">
                 <div class="tool-row-heading"><code>wait</code><span class="risk risk-read">Read</span></div>
@@ -1022,11 +1022,11 @@
               </li>
               <li class="tool-row" data-tool-name="skills_list">
                 <div class="tool-row-heading"><code>skills_list</code><span class="risk risk-read">Read</span></div>
-                <p>List the installed markdown skills (playbooks) with their one-line descriptions and whether each is enabled. The same list appears in the environment block each turn; use this to refresh the inventory, including switched-off ones. Follow continuation offsets to see every entry.</p><span class="tool-needs">Requires fs</span>
+                <p>List the installed markdown skills (playbooks) with their one-line descriptions and whether each is enabled. A bounded enabled index appears in the environment; use this for omitted entries or to refresh the inventory, including switched-off ones. Follow continuation offsets to see every entry.</p><span class="tool-needs">Requires fs</span>
               </li>
               <li class="tool-row" data-tool-name="skills_read">
                 <div class="tool-row-heading"><code>skills_read</code><span class="risk risk-read">Read</span></div>
-                <p>Read a skill&#39;s body. REQUIRED FIRST in every conversation, before replying or other actions: read EVERY enabled skill, including in subagent conversations. Follow continuation offsets until each body is fully read; descriptions are not bodies.</p><span class="tool-needs">Requires fs</span>
+                <p>Read an enabled skill requested by the user or relevant to the task before applying it. Follow continuation offsets for the complete body; inventory descriptions are not bodies. Reuse unchanged bodies still in context; skip unrelated skills.</p><span class="tool-needs">Requires fs</span>
               </li>
               <li class="tool-row" data-tool-name="skills_write">
                 <div class="tool-row-heading"><code>skills_write</code><span class="risk risk-write">Write</span></div>

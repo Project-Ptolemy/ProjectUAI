@@ -815,8 +815,11 @@ The base modes are:
 
 Per-tool rules can be `allow`, `ask`, or `deny`, and override the base decision
 in permission checks. Exact names win over prefix rules ending in `*`; otherwise
-the most specific matching prefix wins. Read-only discovery still omits
-non-read tools. Capability, disabled-group, and session-scope checks also apply.
+the most specific matching prefix wins. Tool discovery uses the same decision as
+dispatch: read-only mode omits writes unless a specific rule allows them or asks
+for approval. Capability, disabled-group, and session-scope checks also apply.
+Approval timeouts and cancelled prompts are reported separately from user denials;
+none executes the pending call or creates a remembered denial.
 
 For a narrowly scoped workbench conversation:
 

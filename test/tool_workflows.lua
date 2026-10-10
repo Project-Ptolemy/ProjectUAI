@@ -50,17 +50,17 @@ local function fixture()
 	return h, env, registry, run, ctx, make, write
 end
 
-scenario("every conversation receives skills-first instructions and a readable inventory", function()
+scenario("main and child prompts select relevant skills and retain a readable inventory", function()
 	local h, env = fixture()
 	local skills, prompt = env.require("runtime/skills"), env.require("agent/prompt")
 	assert(skills.save("First", "Standing instructions", "A complete skill body."))
 	assert(skills.save("Disabled", "Do not read", "A disabled body."))
 	skills.setEnabled("Disabled.md", false)
 	for _, text in ipairs({ prompt.build({}), prompt.subagent("Inspect the scene") }) do
-		check("skills-first rule precedes the environment", text:find("Skills FIRST", 1, true) < text:find("Environment:", 1, true))
-		check("new and resumed conversations must read every enabled skill", contains(text, "EVERY new or resumed") and contains(text, "read EVERY enabled skill"))
-		check("reads precede user-facing words", contains(text, "before a greeting"))
-		check("continuations and lost skill context must be reread", contains(text, "every continuation offset") and contains(text, "after compaction"))
+		check("skill guidance precedes the environment", text:find("Skills:", 1, true) < text:find("Environment:", 1, true))
+		check("explicit and relevant skills are selected", contains(text, "explicitly requested by the user or relevant") and contains(text, "Skip unrelated and disabled skills"))
+		check("unchanged bodies survive resume without forced reads", contains(text, "Resuming alone does not require rereading") and not contains(text, "read EVERY"))
+		check("continuations and lost skill context must be reread", contains(text, "continuation offset") and contains(text, "after compaction"))
 		check("the inventory identifies enabled filenames without disabled bodies", contains(text, "First.md") and not contains(text, "Disabled.md") and not contains(text, "A complete skill body."))
 		check("unavailable skills do not create retry loops", contains(text, "read is denied or unavailable"))
 	end
@@ -92,7 +92,7 @@ scenario("skill inventories paginate beyond forty and duplicate names resolve by
 	local h, env, registry, run = fixture()
 	local fs = env.require("runtime/fsx")
 	for index = 1, 55 do
-		assert(fs.write(string.format("skill-%02d.md", index), "---\nname: Shared\ndescription: A standing playbook.\n---\nBody " .. index, { scope = "skills" }))
+		assert(fs.write(string.format("skill-%02d.md", index), "---\nname: Shared\ndescription: A standing playbook with a longer description for inventory pagination.\n---\nBody " .. index, { scope = "skills" }))
 	end
 	env.require("runtime/config").set("agent.resultCap", 600)
 	local pieces, offset = {}, 1
@@ -105,6 +105,9 @@ scenario("skill inventories paginate beyond forty and duplicate names resolve by
 	until not offset
 	local inventory = table.concat(pieces)
 	for index = 1, 55 do check("every enabled file is discoverable", contains(inventory, string.format("skill-%02d.md", index))) end
+	local index = env.require("runtime/skills").indexBlock()
+	check("prompt inventory is bounded and discloses omissions", #index <= 3072 and contains(index, "more enabled skills") and contains(index, "skills_list"))
+	check("duplicate display names retain a deterministic index", index == env.require("runtime/skills").indexBlock())
 	check("duplicate display names can be read by exact filename", contains(run("skills_read", { name = "skill-55.md" }).text, "Body 55"))
 end)
 

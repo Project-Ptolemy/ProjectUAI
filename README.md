@@ -85,7 +85,15 @@ falling back. Repeated compactions merge the previous summary, and a failed summ
 request preserves earlier facts. Open **Message options → Context breakdown** for a
 colored usage bar, category totals, model window, and compaction point. Compaction
 notices show the estimated token reduction. Individual saved facts can be deleted
-in **Settings → Skills → Memory**.
+in **Settings → Skills → Memory**. Prompts include a bounded index of saved memory
+keys; `memory_read` retrieves relevant values by exact key or search, with
+continuation offsets for longer results. Old workaround notes stay available
+without being injected as instructions into every request.
+
+The shared prompt favors direct action and focused verification. Specialized
+workflow sections follow each conversation's available tools; routine work needs
+no mandatory task list or delegation. This reduces prompt overhead without
+lowering the configured model context window or changing permissions.
 
 A turn stops after twenty-four tool rounds by default, which is there to catch a
 runaway rather than to end the work; **Unlimited tool calls** in Settings removes
@@ -811,12 +819,13 @@ even when the client version stays the same.
 
 ## Skills
 
-The main and subagent prompts require reading every enabled skill before the first
-reply or other work in each new or resumed conversation. Skill bodies are read
-through `skills_read`; the inventory alone does not count. Long bodies and
-`skills_list` results have byte-offset continuations that fit the tool result
-budget. Restricted subagents can read skills without gaining skill-writing tools.
-Disabled skills are skipped, and unavailable or denied reads are reported once.
+Main and subagents read skills relevant to the task or explicitly requested by the
+user before applying them. Unchanged bodies still in context are reused; unrelated
+skills need no reads. The enabled inventory is bounded to 3 KiB and discloses omitted
+entries. Use `skills_list` for the full inventory and `skills_read` for bodies;
+both paginate within the tool result budget. Restricted subagents retain read-only
+skill access. Disabled skills are skipped; denied or unavailable reads are reported
+once. Needed bodies are reread when changed or removed by compaction.
 
 ## Unloading
 

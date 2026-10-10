@@ -4,6 +4,32 @@
 
 Portable files, faster routine work, and clearer reasoning and provider feedback.
 
+### October 10 update
+
+- Shorten and share main/subagent instructions, remove conflicting workflow rules,
+  and include specialized guidance only for the tools offered in that request.
+  Routine work no longer requires a task list, delegation, or repeated planning.
+- Read relevant or explicitly requested skills and reuse unchanged bodies still
+  in context. Bound the enabled skill inventory to 3 KiB with an omission notice;
+  the complete inventory and bodies remain available through paginated reads.
+- Replace injected memory values with a 2 KiB key index. Search saved keys/values
+  or read exact keys with continuation offsets, keeping old workarounds available
+  without treating them as current instructions or reordering stored entries.
+- Give subagents the current model, host instructions, reply language, tool scope
+  and their own task list. Let follow-up requests take precedence over the original
+  assignment while retaining useful evidence.
+- Clarify ordinary Roblox client actions and distinguish local effects from
+  server-confirmed results. Direct agents to inspect available actions and report
+  specific limits; game rules or anticheat alone do not justify blanket refusals
+  of ordinary scripting requests.
+- Make tool discovery match execution permissions, including explicit allow/ask
+  rules in read-only mode. Preserve capability checks and conversation scopes.
+- Distinguish permission rules and user declines from unanswered approval timeouts
+  or cancelled prompts. Late answers cannot execute a settled call or save a rule;
+  agents continue other allowed work without an extra confirmation.
+
+### Earlier 2.7.0 changes
+
 - Use one concise filesystem contract for file tools, search, compilation and
   execution. Preserve canonical paths and existing nested folders; generate ASCII
   game folders and recover from inaccessible saved Unicode paths without moving data.

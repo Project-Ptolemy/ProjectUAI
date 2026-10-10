@@ -727,7 +727,7 @@ return function(env)
 		-- refused.
 		local excluded = { ask_user = true, conversation_rename = true }
 		if record.preset ~= "full" then
-			-- Every preset must be able to read skills first. This does not grant a
+			-- Every preset can read relevant skills. This does not grant a
 			-- restricted worker permission to change the user's standing playbooks.
 			excluded.skills_write, excluded.skills_install, excluded.skills_delete = true, true, true
 		end
@@ -755,10 +755,15 @@ return function(env)
 		-- later -- is built against the environment and the switches in force then.
 		-- Carrying it on the session, instead of swapping the prompt module's builder, is
 		-- what makes two subagents dispatched in the same batch safe.
-		child.systemPrompt = function()
+		child.systemPrompt = function(request)
+			request = request or {}
 			return prompt.subagent(task_text, {
 				extra = (opts.extra or "") .. "\nNative workspace references are shared with the user. Respect this subagent's tool scope; never use a controller or generated script to bypass a denied native action.",
 				unlimited = M.unlimited(),
+				tools = request.tools,
+				model = request.model,
+				provider = request.provider,
+				session = child,
 			})
 		end
 

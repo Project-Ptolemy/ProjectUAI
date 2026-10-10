@@ -2,8 +2,8 @@
 --
 -- These are the agent's half of the skills engine. The other half is the
 -- environment block, which carries only the index -- names and one-line
--- descriptions. The model must use skills_read to fetch every enabled body
--- before replying in each conversation; both the inventory and bodies paginate.
+-- descriptions. The model reads selected bodies before applying them;
+-- both the inventory and bodies paginate.
 --
 -- Reading is risk "read"; writing, deleting and installing are "write", so
 -- each passes the permission prompt -- an installed playbook is instructions
@@ -19,8 +19,8 @@ return function(env)
 			risk = "read",
 			needs = { "fs" },
 			description = "List the installed markdown skills (playbooks) with their one-line "
-				.. "descriptions and whether each is enabled. The same list appears in the "
-				.. "environment block each turn; use this to refresh the inventory, including "
+				.. "descriptions and whether each is enabled. A bounded enabled index appears in the "
+				.. "environment; use this for omitted entries or to refresh the inventory, including "
 				.. "switched-off ones. Follow continuation offsets to see every entry.",
 			parameters = { type = "object", properties = {
 				offset = { type = "integer", description = "1-based byte offset from a previous page. Default 1.", minimum = 1 },
@@ -51,9 +51,9 @@ return function(env)
 			name = "skills_read",
 			risk = "read",
 			needs = { "fs" },
-			description = "Read a skill's body. REQUIRED FIRST in every conversation, before replying "
-				.. "or other actions: read EVERY enabled skill, including in subagent conversations. "
-				.. "Follow continuation offsets until each body is fully read; descriptions are not bodies.",
+			description = "Read an enabled skill requested by the user or relevant to the task before applying it. "
+				.. "Follow continuation offsets for the complete body; inventory descriptions are not bodies. "
+				.. "Reuse unchanged bodies still in context; skip unrelated skills.",
 			parameters = {
 				type = "object",
 				properties = {
