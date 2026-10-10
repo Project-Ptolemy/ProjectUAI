@@ -393,7 +393,11 @@ return function(env)
 			local okTimeout, value = pcall(timeout, coerced, ctx)
 			timeout = okTimeout and tonumber(value) or nil
 		end
-		timeout = tonumber(timeout) or config.get("agent.toolTimeout", 25)
+		local function validTimeout(value)
+			value = tonumber(value)
+			return value and value > 0 and value < math.huge and value or nil
+		end
+		timeout = validTimeout(timeout) or validTimeout(config.get("agent.toolTimeout", 25)) or 25
 		if blocked() then return result end
 
 		-- The call's id travels with the context so a tool that emits events of its own
@@ -424,18 +428,23 @@ return function(env)
 			end
 			scoped.progress = function(text) scoped.emit("tool:progress", { text = tostring(text) }) end
 		end
-		local finished, ok, value = clock.timeout(timeout, function()
+		local finished, ok, value, stoppedWaiting = clock.timeout(timeout, function()
 			if scoped.aborted() then return { ok = false, text = "Stopped before " .. name .. " ran." } end
 			return tool.run(coerced, scoped, prepared)
-		end)
+		end, scoped.aborted)
 		settled = true
 
 		if not finished then
 			expired = true
-			result.text = string.format(
-				"%s did not finish within %ds. It may still be running, but nothing will collect its result, so treat it as lost. Do not retry the same call.",
-				name, timeout)
-			result.error = "timeout"
+			if stoppedWaiting == "aborted" then
+				result.text = "Stopped waiting for " .. name .. ". The call may still be running; cancellation does not undo its effects. Do not retry the same call."
+				result.error = "aborted"
+			else
+				result.text = string.format(
+					"%s did not finish within %gs. It may still be running, but nothing will collect its result, so treat it as lost. Do not retry the same call.",
+					name, timeout)
+				result.error = "timeout"
+			end
 			result.ms = clock.since(started)
 			return result
 		end

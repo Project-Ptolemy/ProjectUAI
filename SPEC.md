@@ -311,6 +311,12 @@ mode, selected model, host instructions and reply language, and follow-ups take
 precedence over the original task. Custom instructions override workflow/style
 defaults but cannot override tool permissions.
 
+Each provider attempt receives that provider's model identity, including fallback
+and context recovery. Request hooks receive a fresh copy of messages and tool
+schemas per attempt; changes do not mutate saved conversation history, registered
+tools or subsequent attempts. Hook cancellation is checked before dispatch, and
+a replacement request supplies the frame callback for that attempt.
+
 Saved memory values are retrieved on demand through `memory_read`, not injected
 as standing instructions. A stable, quoted key index fits within 2 KiB; omitted
 keys remain discoverable by literal case-insensitive search over keys/values or
@@ -356,6 +362,12 @@ distinguishes saved rules, the mode, a user's decision, an unanswered approval
 timeout and cancellation. Timeout/cancellation never claims the user declined,
 executes the pending call, or saves a denial rule. Late answers cannot revive a
 settled prompt. The agent continues other allowed work without a redundant question.
+
+Stop and scope/permission revocation release tool waiters on the next scheduler
+check without closing native continuations. Cancelled calls suppress late progress
+and results and remain cancelled if permissions or the active turn change. Native
+effects may still finish; cancellation never claims rollback. Invalid dynamic tool
+timeouts fall back to the configured positive finite deadline, then 25 seconds.
 
 The prompt asks for successive batches of normally 1–4 independent calls, waits
 for their results, and discourages dozens of calls in one response. Dependent

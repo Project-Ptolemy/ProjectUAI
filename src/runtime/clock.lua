@@ -273,7 +273,7 @@ return function(env)
 		return util.clamp(floor + M.random() * (ceiling - floor), 0, cap)
 	end
 
-	-- Runs fn on its own thread and stops waiting after `seconds`.
+	-- Runs fn on its own thread and stops waiting after `seconds` or cancellation.
 	--
 	-- Deliberately leave the worker alive: an engine or executor call may still
 	-- own a continuation for it. Closing it can cause "cannot resume dead coroutine"
@@ -283,7 +283,8 @@ return function(env)
 	-- first check happens before any yield: task.spawn runs inline until the first
 	-- yield, so code that never yields is already finished and must not be billed
 	-- a scheduler tick.
-	function M.timeout(seconds, fn)
+	function M.timeout(seconds, fn, aborted)
+		if aborted and aborted() then return false, false, nil, "aborted" end
 		local done, ok, result = false, false, nil
 		task.spawn(scheduled(function()
 			ok, result = pcall(fn)
@@ -293,9 +294,9 @@ return function(env)
 			local elapsed = 0
 			repeat
 				elapsed = elapsed + (task.wait() or 0)
-			until done or elapsed >= seconds
+			until done or (aborted and aborted()) or elapsed >= seconds
 		end
-		if not done then return false, false, nil end
+		if not done then return false, false, nil, aborted and aborted() and "aborted" or "timeout" end
 		return true, ok, result
 	end
 

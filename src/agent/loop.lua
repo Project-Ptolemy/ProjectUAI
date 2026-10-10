@@ -93,7 +93,7 @@ return function(env)
 	-- so a rate-limited primary does not end the turn. Only when every candidate
 	-- has failed does the turn fail, and the message names the first failure --
 	-- which is almost always the informative one.
-	local function complete(session, request, recoverContext)
+	local function complete(session, requestFor, recoverContext)
 		local epoch = session.toolEpoch
 		local function aborted() return session.toolEpoch ~= epoch or session.aborted() end
 		local chain = providers.chain()
@@ -115,8 +115,17 @@ return function(env)
 			local recovered = false
 			while true do
 				if aborted() then return nil, "aborted" end
-				local payload = { record = record, request = request, session = session }
-				hooks.run("preRequest", payload)
+				local function prepare()
+					local request = requestFor(record)
+					-- Hooks may edit nested messages and schemas. Keep those changes out
+					-- of saved history, registered tools and later provider attempts.
+					if hooks.count("preRequest") > 0 then request = util.deepCopy(request) end
+					local payload = { record = record, request = request, session = session }
+					hooks.run("preRequest", payload)
+					return payload
+				end
+				local payload = prepare()
+				if aborted() then return nil, "aborted" end
 				local accounting = session.ctx.observeRequest(payload.request.messages, payload.request.tools, record)
 				local maxTokens = payload.request.maxTokens or config.get("agent.maxTokens", 4096)
 				local outputCeiling
@@ -129,8 +138,8 @@ return function(env)
 					if available < 1 and not recovered and recoverContext and recoverContext(record) then
 						recovered = true
 						if aborted() then return nil, "aborted" end
-						payload = { record = record, request = request, session = session }
-						hooks.run("preRequest", payload)
+						payload = prepare()
+						if aborted() then return nil, "aborted" end
 						accounting = session.ctx.observeRequest(payload.request.messages, payload.request.tools, record)
 						maxTokens = payload.request.maxTokens or config.get("agent.maxTokens", 4096)
 						available = math.floor(window - session.ctx.pressure(record))
@@ -184,7 +193,7 @@ return function(env)
 					onFrame = function(frame)
 						if aborted() then return end
 						preview.feed(frame)
-						if request.onFrame then request.onFrame(frame) end
+						if payload.request.onFrame then payload.request.onFrame(frame) end
 					end,
 				})
 				preview.close()
@@ -322,7 +331,7 @@ return function(env)
 
 			session.emit("status", { text = turn == 1 and "Thinking" or ("Working (step " .. turn .. ")") })
 
-			local record = providers.active()
+			local record = providers.chain()[1]
 			-- Build the catalogue once so prompt guidance matches this request's scope.
 			local exclude = session.toolExclude
 			if session.named or session.headless then
@@ -337,29 +346,24 @@ return function(env)
 			-- A session may carry its own brief. A subagent does: it answers to the
 			-- parent agent rather than to the user, so inheriting the main prompt
 			-- would have it write a chat reply instead of a report.
-			local systemText
-			if type(session.systemPrompt) == "function" then
-				systemText = session.systemPrompt({ tools = definitions, model = record and record.model,
-					provider = record and record.label, session = session })
-			elseif type(session.systemPrompt) == "string" and util.trim(session.systemPrompt) ~= "" then
-				systemText = session.systemPrompt
-			else
-				systemText = prompt.build({
-					model = record and record.model or nil,
-					provider = record and record.label or nil,
-					-- Which conversation this is for. The task list rides on the session,
-					-- so a prompt built without it is built without the plan.
-					session = session,
-					tools = definitions,
-				})
+			local systemText, promptRecord, promptModel, promptProvider
+			local function requestFor(candidate)
+				local model, provider = candidate and candidate.model, candidate and candidate.label
+				if systemText == nil or candidate ~= promptRecord or model ~= promptModel or provider ~= promptProvider then
+					local options = { tools = definitions, model = model, provider = provider, session = session }
+					if type(session.systemPrompt) == "function" then
+						systemText = session.systemPrompt(options)
+					elseif type(session.systemPrompt) == "string" and util.trim(session.systemPrompt) ~= "" then
+						systemText = session.systemPrompt
+					else
+						systemText = prompt.build(options)
+					end
+					promptRecord, promptModel, promptProvider = candidate, model, provider
+				end
+				return { messages = ctx.wire(systemText), tools = definitions,
+					stream = session.stream, onFrame = session.onFrame }
 			end
-
-			local request = {
-				messages = ctx.wire(systemText),
-				tools = definitions,
-				stream = session.stream,
-				onFrame = session.onFrame,
-			}
+			local request = requestFor(record)
 
 			ctx.observeRequest(request.messages, request.tools, record)
 			local before = ctx.tokens()
@@ -369,9 +373,7 @@ return function(env)
 			local summary = ctx.compact(summarise, { model = record and record.model, record = record, aborted = compactionAborted })
 			if summary then session.emit("compact", { summary = summary, before = before, after = ctx.tokens() }) end
 			if compactionAborted() then return stopped(session) end
-			request.messages = ctx.wire(systemText)
-
-			local result, err, usedRecord, accounting = complete(session, request, function(refusedRecord)
+			local result, err, usedRecord, accounting = complete(session, requestFor, function(refusedRecord)
 				if session.aborted() then return false end
 				local prior = ctx.tokens()
 				local recoverSummary = config.get("agent.compaction", true) ~= false and summariser(session, refusedRecord) or nil
@@ -379,7 +381,6 @@ return function(env)
 					force = true, aborted = compactionAborted })
 				if not folded then return false end
 				session.emit("compact", { summary = folded, before = prior, after = ctx.tokens() })
-				request.messages = ctx.wire(systemText)
 				return true
 			end)
 			record = usedRecord or record

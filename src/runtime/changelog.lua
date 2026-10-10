@@ -20,7 +20,7 @@ return function(env)
 	local ENTRIES = {
 		{
 			version = "2.7.0",
-			revision = "2026-10-10-focused-agent-context-and-permissions",
+			revision = "2026-10-10-request-isolation-and-tool-cancellation",
 			date = "October 9, 2026",
 			title = "Focused agents and portable files",
 			highlights = "Smaller prompts, relevant skill and memory reads, clearer Roblox capability guidance, consistent permissions, and one path contract across file and code tools.",
@@ -33,8 +33,12 @@ return function(env)
 					"Roblox guidance distinguishes local effects from server-confirmed results and directs agents to inspect available actions before reporting specific limits. Game rules or anticheat alone do not justify blanket refusals of ordinary scripting requests.",
 				} },
 				{ category = "fixed", label = "October 10: permission handling", items = {
+					"Stop and permission/scope revocation release tool waiters promptly while native continuations remain safe to resume. Late progress/results are discarded, old calls stay cancelled, and invalid dynamic timeouts use a finite fallback.",
 					"Tool discovery and execution use the same permission rules, including explicit allow/ask overrides in read-only mode. Capability checks and conversation scopes still apply.",
 					"Unanswered approval timeouts and cancelled prompts are reported separately from user declines, saved rules and mode restrictions. Late answers cannot execute a settled call or save a rule; agents continue other allowed work without an extra confirmation.",
+				} },
+				{ category = "fixed", label = "October 10: provider attempts", items = {
+					"Fallback prompts identify the provider/model actually receiving the request. Request hooks use fresh message and schema copies, preserving saved history and preventing edits from accumulating across attempts. Hook cancellation and replacement frame callbacks are honored.",
 				} },
 				{ category = "improved", label = "Routine work and response speed", items = {
 					"New configurations start at Low reasoning effort. Existing saved choices are kept; change Effort in Agent settings to lower them. Provider default is now selectable and omits the effort field.",

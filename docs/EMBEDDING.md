@@ -779,10 +779,15 @@ domain validation and any game/server authorization appropriate to the action.
 
 ### Work that yields or changes the world
 
-Check `ctx.aborted()` before effects and after every yield. For an operation on a
-selected instance or document, capture its exact identity/revision, then check
-that state again immediately before applying changes. An approval may remain
-pending while the game changes.
+Check `ctx.aborted()` before effects and after every yield. Stop or scope/permission
+revocation ends the dispatch wait promptly without closing a native continuation.
+Late progress/results are discarded, and restoring permission cannot revive the
+old invocation. Dynamic timeout functions must return positive finite seconds;
+invalid values use the configured deadline, or 25 seconds if that is also invalid.
+
+For an operation on a selected instance or document, capture its exact identity/
+revision, then check that state again immediately before applying changes. An
+approval may remain pending while the game changes.
 
 Use `prepare` for read-only binding of a concrete target or plan before approval,
 then validate that binding in `run`. Preparation is not a place for effects: it
@@ -904,9 +909,12 @@ Registering `onError` alone does not collect runtime failures.
 `preRequest` uses **`payload.request`**, not `payload.body`. Useful request
 members are `messages`, `tools`, `toolChoice`, `stream`, `temperature`,
 `maxTokens`, and `extra`. These are the runtime request fields before a provider
-adapter constructs its wire body. Hooks can run more than once during a turn or
-fallback; make transforms idempotent. Do not append the same instruction on every
-retry without checking whether it already exists.
+adapter constructs its wire body. Hooks can run more than once during a turn,
+fallback or context recovery. Each attempt starts with fresh messages and tool
+schemas; in-place request edits do not change saved history, registered tools or
+later attempts. The prompt identifies the provider/model receiving that attempt.
+Keep external side effects idempotent. Cancellation during a hook prevents dispatch,
+and a replacement request's `onFrame` callback applies to that attempt.
 
 Replacing `payload.record` does not switch the captured provider in the current
 request path. Records are shared live configuration; mutating one can affect

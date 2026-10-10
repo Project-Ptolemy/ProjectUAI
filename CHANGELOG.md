@@ -6,6 +6,13 @@ Portable files, faster routine work, and clearer reasoning and provider feedback
 
 ### October 10 update
 
+- Refresh model/provider identity on fallback requests. Isolate request-hook
+  edits from saved conversation history, registered tool schemas and later attempts;
+  honor cancellation and replacement frame callbacks before dispatch.
+- Release tool waiters promptly on Stop or permission/scope revocation without
+  closing native continuations. Discard late progress/results and prevent old
+  invocations from reviving after a new turn or restored permission. Invalid dynamic
+  timeouts use a finite fallback, and fractional deadlines are reported accurately.
 - Shorten and share main/subagent instructions, remove conflicting workflow rules,
   and include specialized guidance only for the tools offered in that request.
   Routine work no longer requires a task list, delegation, or repeated planning.
