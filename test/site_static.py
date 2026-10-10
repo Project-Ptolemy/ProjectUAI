@@ -125,7 +125,7 @@ def validate_html(base):
             if url.fragment and not url.path:
                 check(unquote(url.fragment) in doc.ids, "Broken page anchor: " + url.fragment)
 
-    loader = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/CarlDV/ProjectUAI/main/dist/uai.lua"))()'
+    loader = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"))()'
     check(doc.ids["loadstringCode"].text.strip() == loader, "The copyable loader is incorrect")
     tools = [node.attrs["data-tool-name"] for node in doc.elements if "data-tool-name" in node.attrs]
     groups = [node.attrs["data-group"] for node in doc.elements if node.has_class("tool-group")]

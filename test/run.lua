@@ -5684,7 +5684,7 @@ scenario("OpenRouter requests carry Project UAI app attribution and disable Clau
 	local headers = requests[1] and requests[1].headers or {}
 
 	check("openrouter user agent is ProjectUAI", headers["User-Agent"], "ProjectUAI/1.0.0")
-	check("openrouter referer is ProjectUAI website", headers["HTTP-Referer"], "https://carldv.github.io/ProjectUAI/")
+	check("openrouter referer is ProjectUAI repository", headers["HTTP-Referer"], "https://github.com/Project-Ptolemy/ProjectUAI")
 	check("openrouter title is Project UAI", headers["X-Title"], "Project UAI")
 	check("openrouter modern title is Project UAI", headers["X-OpenRouter-Title"], "Project UAI")
 	check("openrouter categories are set", headers["X-OpenRouter-Categories"], "game,cli-agent")

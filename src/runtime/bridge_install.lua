@@ -6,8 +6,8 @@ return function(env)
 	local fsx = env.require("runtime/fsx")
 	local http = env.require("net/http")
 	local M = { busy = false }
-	local API = "https://api.github.com/repos/CarlDV/ProjectUAI/"
-	local RAW = "https://raw.githubusercontent.com/CarlDV/ProjectUAI/"
+	local API = "https://api.github.com/repos/Project-Ptolemy/ProjectUAI/"
+	local RAW = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/"
 	function M.download(progress)
 		if M.busy then return false, "Bridge download is already running." end
 		if not fsx.enabled or not caps.fn.makefolder or not caps.fn.isfile then

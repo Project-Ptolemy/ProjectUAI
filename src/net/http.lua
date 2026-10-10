@@ -140,7 +140,7 @@ return function(env)
 		if kind == "openrouter" then
 			return {
 				["User-Agent"] = "ProjectUAI/1.0.0",
-				["HTTP-Referer"] = "https://carldv.github.io/ProjectUAI/",
+				["HTTP-Referer"] = "https://github.com/Project-Ptolemy/ProjectUAI",
 				["X-Title"] = "Project UAI",
 				["X-OpenRouter-Title"] = "Project UAI",
 				["X-OpenRouter-Categories"] = "game,cli-agent",
@@ -173,7 +173,7 @@ return function(env)
 		if isOpenRouter then
 			-- Ensure OpenRouter attribution headers are always present for rankings and app stats
 			if not headerMap.get(headers, "HTTP-Referer") then
-				headers["HTTP-Referer"] = "https://carldv.github.io/ProjectUAI/"
+				headers["HTTP-Referer"] = "https://github.com/Project-Ptolemy/ProjectUAI"
 			end
 			if not headerMap.get(headers, "X-Title") then
 				headers["X-Title"] = "Project UAI"
