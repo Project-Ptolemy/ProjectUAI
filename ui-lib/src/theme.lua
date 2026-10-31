@@ -7,6 +7,7 @@ return function(env)
 		Target = 40, TouchTarget = 44, TouchSlop = 8, Gap = 12, Pad = 20, MobilePad = 12,
 		Header = 72, Footer = 30, Sidebar = 196, Tabs = 52, Avatar = 36,
 		Radius = 10, FieldRadius = 6, Scrollbar = 3, Width = 780, Height = 580, Compact = 640,
+		SeasonalArt = 72, SeasonalArtCompact = 44, SeasonalArtMinimum = 28,
 	}
 	M.Type = { Display = 26, Title = 20, Heading = 15, Body = 14, Caption = 12, Small = 11, Eyebrow = 10 }
 	M.Motion = { Fast = 0.10, Enter = 0.16, Toggle = 0.14, Press = 0.06 }

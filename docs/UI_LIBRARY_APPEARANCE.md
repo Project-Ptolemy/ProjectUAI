@@ -32,6 +32,13 @@ April 22, Pride throughout June, and International Peace Day on September 21.
 They use berry/rose, blue-green/leaf green, violet/magenta/cyan, and slate
 teal/sky blue respectively.
 
+Every seasonal palette also supplies native frame artwork in a reserved band
+below the header: pumpkins and ghosts, fir trees and snowflakes, stars and
+confetti, hearts, a globe with leaves, a rainbow ribbon, or a dove with olive
+branches. Scenes stay separate from controls and shrink on compact windows.
+They are static and need no image assets or network downloads. Ordinary palettes
+have no seasonal band.
+
 `GetAppearance().Palette` keeps your saved choice, while `GetActivePalette()`
 reports the currently displayed palette. Explicit seasonal choices take
 precedence over the calendar and remain available year-round. Scripts control

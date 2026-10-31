@@ -754,6 +754,29 @@ return function(env)
 			M.navCollapse.instance.Visible = responsive.isMobile() or responsive.mode == "window"
 		end
 		if M.maximiseButton then M.maximiseButton.instance.Visible = responsive.mode ~= "tv" end
+		M.layoutSeasonalArt()
+	end
+
+	-- Seasonal scenes have their own strip below the normal header. Short windows
+	-- give that room back to the working panel instead of drawing across its text.
+	function M.layoutSeasonalArt()
+		if not M.window or not M.mainHolder or not M.body or not M.body.Parent then return end
+		local headerHeight = M.window.headerHeight or theme.size.header
+		local artHeight = 0
+		local band = M.seasonalBand
+		if band and band.Parent then
+			local available = M.mainHolder.AbsoluteSize.Y - headerHeight
+			if available >= theme.size.seasonalArt + theme.size.seasonalArtMinContent then
+				artHeight = theme.size.seasonalArt
+			end
+			band.Position = UDim2.fromOffset(0, headerHeight)
+			band.Size = UDim2.new(1, 0, 0, artHeight)
+			band.Visible = artHeight > 0
+			if artHeight > 0 and M.seasonalArt then M.seasonalArt:Layout(M.mainHolder.AbsoluteSize.X, artHeight) end
+		end
+		local offset = headerHeight + artHeight
+		M.body.Position = UDim2.new(0.5, 0, 0, offset)
+		M.body.Size = UDim2.new(1, 0, 1, -offset)
 	end
 
 	-- The header reads left to right as what you are looking at, then the window
@@ -980,6 +1003,27 @@ return function(env)
 			anchor = Vector2.new(0.5, 0),
 			position = UDim2.new(0.5, 0, 0, headerHeight),
 		})
+		if theme.seasonalArtName then
+			local band = P.frame(host, {
+				name = "SeasonalBand", size = UDim2.new(1, 0, 0, theme.size.seasonalArt),
+				position = UDim2.fromOffset(0, headerHeight), clip = true, visible = false,
+			})
+			band.Active, band.Selectable = false, false
+			local art = env.require("ui/seasonal_art").new(band)
+			M.seasonalBand, M.seasonalArt = band, art
+			art:Update(theme.seasonalArtName, {
+				Mode = "Dark", Canvas = theme.color.canvas, Accent = theme.color.accent,
+				Text = theme.color.text, Secondary = theme.color.textSecondary,
+			})
+			band.Destroying:Connect(function()
+				art:Destroy()
+				if M.seasonalBand == band then M.seasonalBand, M.seasonalArt = nil, nil end
+			end)
+		else
+			M.seasonalBand, M.seasonalArt = nil, nil
+		end
+		host:GetPropertyChangedSignal("AbsoluteSize"):Connect(M.layoutSeasonalArt)
+		M.layoutSeasonalArt()
 
 		M.panels = {}
 		M.showPanel(M.panel)

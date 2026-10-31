@@ -384,6 +384,19 @@ return function(env)
 		local footer = T.Size.Footer
 		if self._compact and height < 240 then nav = 0 end
 		if height < header + footer + self.Target then header = 0 end
+		local artwork = 0
+		if self._seasonalArt and self._seasonalArt.SceneName and not keyboardVisible then
+			local room = height - header - nav - search - footer - 12 - self.Target * 2
+			artwork = math.min(self._compact and T.Size.SeasonalArtCompact or T.Size.SeasonalArt, math.max(0, room))
+			if artwork < T.Size.SeasonalArtMinimum then artwork = 0 end
+		end
+		if self._seasonalBand then
+			self._seasonalBand.Position = UDim2.fromOffset(0, header)
+			self._seasonalBand.Size = UDim2.fromOffset(width, artwork)
+			self._seasonalBand.Visible = artwork > 0
+			self._seasonalArt:Layout(width, artwork)
+		end
+		local bodyHeader = header + artwork
 		self.Frame.Size = UDim2.fromOffset(math.floor(width), math.floor(height))
 		self.Frame.Position = UDim2.fromOffset(math.floor(x), math.floor(y))
 		self._header.Size = UDim2.new(1, 0, 0, header)
@@ -418,16 +431,16 @@ return function(env)
 			self._profile.Frame.Position = UDim2.new(0, 0, 1, -footer - profileHeight)
 			if self._compact then profileHeight = 0 end
 		end
-		self._rail.Position = UDim2.fromOffset(0, header)
-		self._rail.Size = UDim2.fromOffset(sidebar, math.max(0, height - header - footer))
+		self._rail.Position = UDim2.fromOffset(0, bodyHeader)
+		self._rail.Size = UDim2.fromOffset(sidebar, math.max(0, height - bodyHeader - footer))
 		self._rail.Visible = not self._compact
-		self._navCaption.Position = UDim2.fromOffset(20, header + 12)
+		self._navCaption.Position = UDim2.fromOffset(20, bodyHeader + 12)
 		self._navCaption.Size = UDim2.fromOffset(math.max(0, sidebar - 40), 14 * self.TextScale)
 		self._navCaption.Visible = not self._compact
-		self._nav.Position = UDim2.fromOffset(0, header + railHeading)
+		self._nav.Position = UDim2.fromOffset(0, bodyHeader + railHeading)
 		self._nav.Visible = not self._compact or nav > 0
 		self._nav.Size = self._compact and UDim2.new(1, 0, 0, nav)
-			or UDim2.new(0, sidebar, 1, -header - railHeading - footer - profileHeight)
+			or UDim2.new(0, sidebar, 1, -bodyHeader - railHeading - footer - profileHeight)
 		self._navLayout.FillDirection = self._compact and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
 		self._nav.ScrollingDirection = self._compact and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
 		self._nav.AutomaticCanvasSize = self._compact and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
@@ -439,7 +452,7 @@ return function(env)
 			tab._button.Size = UDim2.fromOffset(tabWidth, self.Target)
 		end
 		self:_RevealTab()
-		local top = header + nav
+		local top = bodyHeader + nav
 		local inset = self._compact and 6 or 10
 		self._contentWidth = math.max(1, width - sidebar - inset * 2)
 		self._workspace.Position = UDim2.fromOffset(sidebar + inset, top + 6)

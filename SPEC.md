@@ -205,6 +205,13 @@ Dark/Light mode and custom colors remain in effect; profiles keep the saved
 palette and automatic preference. `GetActivePalette()` exposes the effective
 palette. Owned date checks update live windows within 60 seconds and stop on
 destruction/replacement; hosts without a local calendar keep the saved palette.
+Seasonal themes also mount a static native-frame scene below the header, with
+recognizable holiday artwork and an explicitly reserved layout band. Decorations
+never participate in input or replace navigation, the profile, or attribution.
+Compact and keyboard layouts prioritize working controls. The reusable
+`ui-lib/src/seasonal_art.lua` renderer is also emitted as the generated client
+module `src/ui/seasonal_art.lua` by `tools/build_ui_lib.js`; author it once under
+the library, and never edit the generated client copy.
 
 UI LIB 1.6.0 adds `NumberInput`, selectable `TextView`, searchable/paged `ItemList`,
 `ActionGroup`, `Callout` and `KeyValue`. Item lists retain at most 500 records with
@@ -1502,6 +1509,10 @@ conversation state and drafts. The date watcher is owned by the mounted app
 and released on destruction/unload. General → Appearance exposes the theme
 choice and automatic-seasonal toggle.
 If the host cannot read a local calendar, automatic selection keeps Standard.
+The same effective theme controls the seasonal artwork band above the main
+panels. Header actions retain their ordinary input and drag ownership. Artwork
+uses the shared generated renderer, stays noninteractive, and releases with
+the mounted window. Ordinary themes omit the band.
 
 Four token groups are settings rather than constants, and each has to change what
 is on screen or it is decoration:
@@ -1901,6 +1912,7 @@ luajit test/check.lua --native # lint, parse and link native modules
 luajit test/code_workspace.lua # shared source/history/actions and UI fixtures
 luajit test/native_workspace.lua # identities, typed edits, capture/replay
 luajit test/run.lua --native # load dist/uai.lua against the mock client, native scenarios
+luajit test/seasonal_art.lua # seasonal scenes, reserved layout, drafts and owned cleanup
 luajit test/iy_control.lua   # IY selectors, native configuration and plugin contracts
 luajit test/tool_workflows.lua # batch tools, pagination, scopes, cancellation
 luajit test/attachments.lua    # exact saved inputs, compact payloads, upload recovery
