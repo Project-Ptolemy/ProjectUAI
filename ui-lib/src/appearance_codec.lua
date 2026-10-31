@@ -6,7 +6,7 @@ return function(env)
 	local fields = {
 		palette = "Palette", contrast = "Contrast", density = "Density", shape = "Shape",
 		typography = "Typography", tabHeader = "TabHeader", cornerRadius = "CornerRadius",
-		textScale = "TextScale", reducedMotion = "ReducedMotion",
+		textScale = "TextScale", reducedMotion = "ReducedMotion", seasonalTheme = "SeasonalTheme",
 	}
 	local function encodeColor(color) return { color.R, color.G, color.B } end
 	local function decodeColor(rgb, label)

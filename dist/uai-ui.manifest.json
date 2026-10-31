@@ -1,8 +1,8 @@
 {
   "format": "project-uai-ui",
   "version": "1.6.0",
-  "sha256": "1a7e7370ef11dddd726e04141246e888875b44a0cee53e06c73bf67362bc25fd",
-  "bytes": 239044,
+  "sha256": "cfa2d24c9e1e8bf66b27023350dd74f43b3a056a61047375b27c6e4364fddae5",
+  "bytes": 250522,
   "loaderSha256": "9b442518b403da2e3ab09d4f9c841fbb8c8700b1b84bd1d5aaca4456671a1f99",
   "modules": [
     {
@@ -12,13 +12,13 @@
     },
     {
       "id": "appearance",
-      "bytes": 6458,
-      "sha256": "680479eeb59bf46eea4f1bcf8037bbb84f1531f7026c6bcc2dca387b6053edfd"
+      "bytes": 6810,
+      "sha256": "d617eec609126b07fb92f96f025615eb55f2f30ad5364bd778c1d63d57239011"
     },
     {
       "id": "appearance_codec",
-      "bytes": 2059,
-      "sha256": "c5a3e26dc6aba69483b9cbfd13b4ffde2766142b6fbffdad380930595e370c10"
+      "bytes": 2092,
+      "sha256": "5d536b2c098af1d24289c3d9c25fc1887f183ac5a6e71dfcc9c8cbb99298f717"
     },
     {
       "id": "callout",
@@ -77,8 +77,8 @@
     },
     {
       "id": "library",
-      "bytes": 3783,
-      "sha256": "f25370092aad91b409ecbb3cf13f6427b2768a1c210ff16a26aa7fdf0aedc57a"
+      "bytes": 4714,
+      "sha256": "a890fc68268b0da4ed1234e752217f1158cabfdc0fcaa2e2f97f2f2d7c053b6a"
     },
     {
       "id": "motion",
@@ -97,8 +97,8 @@
     },
     {
       "id": "palettes",
-      "bytes": 2747,
-      "sha256": "168c87274d0fbaea22e4aa9a90b1bac68151d981369ea2611296402659282763"
+      "bytes": 10969,
+      "sha256": "78d7e754d70739e43ee0ac60eb678258de0ab1a1a01d07cf9a3ce6421ed817f3"
     },
     {
       "id": "profile",
@@ -109,6 +109,11 @@
       "id": "profiles",
       "bytes": 2149,
       "sha256": "448a5ffa4cd8a7b51ab06f11f1e04460fc332b4ad5364bab0ea6f2ed85f0ae13"
+    },
+    {
+      "id": "seasons",
+      "bytes": 1628,
+      "sha256": "9f590e17e2773faedd01671f4ce611b7b358a6b37a0159babdf2912035d2f59c"
     },
     {
       "id": "shape",
@@ -132,8 +137,8 @@
     },
     {
       "id": "theme",
-      "bytes": 4890,
-      "sha256": "6dc1891a50a0676a13da72cb99651e5d6fbd4b2018d70cd983c29a4e9f3067c8"
+      "bytes": 4932,
+      "sha256": "009913f9af2dfcf0f0abb345476d5a8621b0cdb803e4f422b481fe55d59e7bae"
     },
     {
       "id": "typography",
@@ -152,8 +157,8 @@
     },
     {
       "id": "window",
-      "bytes": 45713,
-      "sha256": "65b805f935f7b99ea575df1bace6ff17e58b2abdeac9efb0516cfd5a4619b260"
+      "bytes": 45925,
+      "sha256": "e4edc7957f075ca909dfb9457cc2bd873a0e1b6f27cd123130d9e4e479405f2e"
     }
   ]
 }

@@ -47,6 +47,9 @@ ScreenGui is deleted.
 Appearance is supplied automatically; scripts do not need to declare settings
 controls. The first tab your script adds opens by default, and Appearance remains
 last in navigation. On mobile, drag the bottom-right grip to resize the window.
+Seasonal palettes turn on automatically each year using the player's local date:
+Halloween October 30–November 2, Christmas December 20–26, and New Year
+December 31–January 2, plus the celebrations listed under Appearance below.
 
 Agents: read `ui_library_docs` sections `quickstart`, `controls`, and `lifecycle`
 before writing a script UI. Use declarative tabs, sections, and controls plus
@@ -256,7 +259,7 @@ See the [form recipe](UI_LIBRARY_FORMS.md) and [working example](../ui-lib/examp
 
 `UI:CreateWindow(options)` accepts `Id`, `Title`, `Subtitle`, optional
 `Width = 780` / `Height = 580`, `Search = true`, `Theme = "Dark" / "Light"`, `ThemeToggle = true`,
-`Palette = "Neutral"`, `Contrast = "Standard"`, `Density = "Comfortable"`,
+`Palette = "Neutral"`, `SeasonalTheme = true`, `Contrast = "Standard"`, `Density = "Comfortable"`,
 `Shape = "Rounded"`, `Typography = "Sans"`, `TabHeader = "Simple"`,
 `Accent = Color3`, `Colors = { token = Color3 }`, optional `CornerRadius` (0–16),
 `TextScale = 1` (0.85–1.5), `ToggleKey = Enum.KeyCode.RightShift`
@@ -307,7 +310,7 @@ reveals matching collapsed sections, and displays a clear empty state.
 Window methods: `Show()`, `Hide()`, `Minimize()`, `Toggle()`, `Destroy()`,
 `SelectTab(idOrTab)`, `GetActiveTab()`, `SetTitle(title, subtitle?)`,
 `SetSearch(text)`, `GetSearch()`, `Reveal(controlId)`,
-`SetTheme("Dark"|"Light", accent?)`, `GetTheme()`, `ToggleTheme()`, `SetTextScale(number)`,
+`SetTheme("Dark"|"Light", accent?)`, `GetTheme()`, `GetActivePalette()`, `ToggleTheme()`, `SetTextScale(number)`,
 `SetReducedMotion(boolean)`, `Get(controlId)`,
 `SetSize(width, height)`, `GetSize()`, `ResetSize()`,
 `SetAppearance(options)`, `GetAppearance()`, `ResetAppearance()`.
@@ -373,7 +376,7 @@ appearance supplied at creation. The fixed attribution remains visible.
 
 `GetAppearance()` returns a fresh table containing `Theme`, optional `Accent`,
 `Colors` (custom token overrides), `CornerRadius`, `TextScale`, `ReducedMotion`,
-`Palette`, `Contrast`, `Density`, `Shape`, `Typography`, and `TabHeader`.
+`Palette`, `SeasonalTheme`, `Contrast`, `Density`, `Shape`, `Typography`, and `TabHeader`.
 `SetAppearance(options)` accepts any subset of these fields and validates the
 complete change before applying it. `Accent = false` restores the default accent.
 Supplying `Colors` replaces the whole override map; `Colors = {}` clears it.
@@ -392,7 +395,8 @@ window:SetAppearance({
 
 | Preference | Choices |
 | --- | --- |
-| Palette | Neutral (default), Graphite (warm), Ocean, Forest, Rose |
+| Palette | Neutral (default), Graphite (warm), Ocean, Forest, Rose, Halloween, Christmas, NewYear, Valentine, EarthDay, Pride, Peace |
+| SeasonalTheme | true (default), false; automatically uses seasonal palettes on the local dates below |
 | Contrast | Standard, High; High strengthens text, border and status contrast |
 | Density | Comfortable, Compact, Spacious; touch targets remain at least 44 pixels |
 | Shape | Rounded (8 px), Soft (14 px), Square (0 px); explicit CornerRadius takes precedence and reports Custom when needed |
@@ -408,6 +412,41 @@ programmatic `SetAppearance({ Palette = ... })` preserves them. Include
 retains all preferences; older profiles keep current values for omitted fields.
 See [appearance recipes](UI_LIBRARY_APPEARANCE.md), [structured readouts](UI_LIBRARY_READOUTS.md),
 and [searchable lists and actions](UI_LIBRARY_COLLECTIONS.md).
+
+The automatic seasonal schedule repeats every year, with both endpoints included:
+
+| Palette | Local dates | Appearance |
+| --- | --- | --- |
+| Valentine | February 14 | Berry surfaces and rose |
+| EarthDay | April 22 | Blue-green surfaces and leaf green |
+| Pride | June 1–30 | Violet surfaces, magenta and cyan |
+| Peace | September 21 | Slate teal surfaces and sky blue |
+| Halloween | October 30–November 2 | Plum surfaces and pumpkin orange |
+| Christmas | December 20–26 | Evergreen surfaces and cranberry red |
+| NewYear | December 31–January 2 | Midnight blue surfaces and gold |
+
+Automatic changes keep the chosen Dark/Light mode and saved `Palette`, `Accent`,
+and `Colors`. `GetAppearance().Palette` reports the saved choice;
+`GetActivePalette()` reports the palette currently displayed. Outside the
+season, the saved palette returns. Explicitly choosing any seasonal palette
+displays it year-round, taking precedence over the calendar. The picker labels
+NewYear as New Year, Valentine as Valentine's Day, EarthDay as Earth Day, and
+Peace as Peace Day.
+Custom accents and color overrides still apply to the active palette.
+Set `SeasonalTheme = false` to disable automatic changes. The library checks
+the local date at creation and at most every 60 seconds while automation is
+needed, including hidden or minimized windows. Destroying or replacing a
+window releases its date watcher. Hosts without a readable local-date API keep
+the saved palette.
+The full Project UAI client exposes its own enable switch under Settings →
+General → Appearance; library scripts set `SeasonalTheme` through the API.
+
+```lua
+-- Select a seasonal appearance at any time of year.
+window:SetAppearance({ Palette = "Christmas" })
+-- Keep the ordinary palette regardless of the calendar.
+window:SetAppearance({ Palette = "Neutral", SeasonalTheme = false })
+```
 
 Supported `Colors` keys are `Canvas`, `Sidebar`, `Chrome`, `Surface`, `Raised`,
 `Input`, `Hover`, `Pressed`, `Track`, `Border`, `Subtle`, `Edge`, `Text`, `Secondary`,
@@ -531,7 +570,8 @@ any, ignore removed/unknown control Ids, and reject changed control types.
 Configuration JSON is limited to 256 KiB. Values marked `Persist = false` are
 neither exported nor imported.
 
-Exports also include the window's mode, optional custom accent, color overrides,
+Exports also include the window's saved palette, automatic seasonal preference,
+mode, optional custom accent, color overrides,
 corner radius, text scale, and reduced motion in an optional `appearance` field.
 The automatic settings controls are not duplicated in `values`.
 Imports validate appearance and all known control values
@@ -1083,7 +1123,7 @@ API; new reusable controls and lifecycle capabilities belong in `ui-lib/src`.
 
 | Module | Responsibility |
 | --- | --- |
-| `library.lua` | Public UI object, window lookup, configuration method composition |
+| `library.lua` | Public UI object, window lookup, configuration methods, owned seasonal refresh |
 | `window.lua` | Window creation, input, safe layout, visibility, lifetime |
 | `containers.lua` | Tabs, sections, control constructor exposure, search/layout |
 | `controls.lua` | Base control contract and common control implementations |
@@ -1097,6 +1137,7 @@ API; new reusable controls and lifecycle capabilities belong in `ui-lib/src`.
 | `appearance.lua` | Automatic settings, silent preference reflection, palette editing |
 | `core.lua` | Resource scopes, instance helpers, layout/measurement, callbacks |
 | `theme.lua` | Shared visual tokens and theme values |
+| `seasons.lua` | Local-date seasonal schedule and palette selection |
 | `motion.lua` | Owned reversible transitions and reduced-motion handling |
 | `overlays.lua` | Dialogs, notifications, and overlay ownership |
 | `profile.lua` | Local player profile and experience information |
@@ -1170,6 +1211,7 @@ luajit test/ui_library_tasks.lua
 luajit test/ui_library_navigation.lua
 luajit test/ui_library_examples.lua
 luajit test/ui_library_theme.lua
+luajit test/ui_library_seasons.lua
 luajit test/ui_library_mobile.lua
 luajit test/ui_library_appearance.lua
 luajit test/ui_library_semantics.lua

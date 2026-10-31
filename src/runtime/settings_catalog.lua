@@ -4,6 +4,10 @@ return function(env)
 	local M = {}
 	local groups = {
 		{ "general", "General", "appearance text notifications conversation", {
+			{ "ui.theme", "Theme", "standard Halloween Christmas New Year Valentine's Day Earth Day Pride Peace palette colors" },
+			{ "ui.seasonalThemes", "Automatic seasonal themes",
+				"Halloween October 30 November 2 Christmas December 20 26 New Year December 31 January 2 "
+					.. "Valentine's Day February 14 Earth Day April 22 Pride June 1 30 Peace September 21 local date schedule holiday" },
 			{ "ui.fontScale", "Text scale", "size accessibility zoom" },
 			{ "ui.showReasoning", "Show reasoning", "thinking" },
 			{ "ui.showToolCode", "Show the code a tool was given", "scripts" },

@@ -195,6 +195,17 @@ username and game. Motion is owned, reversible,
 and reduced-motion aware; cleanup settles active transitions exactly.
 See `docs/UI_LIBRARY.md` for the public API.
 
+The library's `SeasonalTheme` preference defaults to true. Ordinary saved
+palettes temporarily resolve to Halloween October 30–November 2, Christmas
+December 20–26, and NewYear December 31–January 2 annually, inclusive, using
+the player's local date. Additional seasons are Valentine February 14, EarthDay
+April 22, Pride June 1–30, and Peace September 21. Explicit seasonal palettes
+take precedence year-round.
+Dark/Light mode and custom colors remain in effect; profiles keep the saved
+palette and automatic preference. `GetActivePalette()` exposes the effective
+palette. Owned date checks update live windows within 60 seconds and stop on
+destruction/replacement; hosts without a local calendar keep the saved palette.
+
 UI LIB 1.6.0 adds `NumberInput`, selectable `TextView`, searchable/paged `ItemList`,
 `ActionGroup`, `Callout` and `KeyValue`. Item lists retain at most 500 records with
 1–20 visible records per page; action groups own 1–8 actions; key/value readouts
@@ -1478,6 +1489,19 @@ is `color.solid`, a cream fill with dark text, which is deliberately not the acc
 `test/run.lua` computes WCAG contrast over every pair the interface actually puts
 together, for every accent and every code palette, and fails the build under 4.5:1
 for text, so a token cannot be retuned into something unreadable.
+
+Seasonal appearance adds `ui.theme` (`default`, `halloween`, `christmas`,
+`newyear`, `valentine`, `earthday`, `pride`, or `peace`) and `ui.seasonalThemes`
+(true by default). The default theme follows
+the same inclusive local-date schedule as UI LIB; a named theme applies
+year-round. Halloween uses plum surfaces and pumpkin orange, Christmas uses
+evergreen and cranberry red, and New Year uses midnight blue and gold. The
+saved accent remains available when the ordinary theme returns. Automatic
+changes use the existing theme-change presentation lifecycle, preserving
+conversation state and drafts. The date watcher is owned by the mounted app
+and released on destruction/unload. General → Appearance exposes the theme
+choice and automatic-seasonal toggle.
+If the host cannot read a local calendar, automatic selection keeps Standard.
 
 Four token groups are settings rather than constants, and each has to change what
 is on screen or it is decoration:

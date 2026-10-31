@@ -22,6 +22,8 @@ return function(env)
 		ui = {
 			density = "comfortable",
 			accent = "claude",
+			theme = "default",
+			seasonalThemes = true,
 			layout = "auto",
 			panel = "chat",
 			fontScale = 1,

@@ -20,7 +20,7 @@ return function(env)
 	function M.defaults()
 		return { Theme = "Dark", Palette = "Neutral", Contrast = "Standard", Density = "Comfortable",
 			Shape = "Rounded", Typography = "Sans", TabHeader = "Simple", Colors = {},
-			CornerRadius = shape.radius("Rounded"), TextScale = 1, ReducedMotion = false }
+			CornerRadius = shape.radius("Rounded"), TextScale = 1, ReducedMotion = false, SeasonalTheme = true }
 	end
 	function M.normalizeAppearance(options, current)
 		assert(type(options) == "table", "Appearance must be a table")
@@ -36,7 +36,7 @@ return function(env)
 			elseif key == "TabHeader" then assert(value == "Simple" or value == "Detailed" or value == "Hidden", "Unknown TabHeader")
 			elseif key == "Accent" then if value ~= false then color(value, "Accent") end
 			elseif key == "Colors" then assert(type(value) == "table", "Colors must be a table")
-			elseif key == "ReducedMotion" then assert(type(value) == "boolean", "ReducedMotion must be a boolean")
+			elseif key == "ReducedMotion" or key == "SeasonalTheme" then assert(type(value) == "boolean", key .. " must be a boolean")
 			elseif key == "CornerRadius" or key == "TextScale" then
 				local low, high = key == "CornerRadius" and 0 or 0.85, key == "CornerRadius" and 16 or 1.5
 				assert(type(value) == "number" and value == value and value >= low and value <= high, key .. " is outside its supported range")

@@ -497,8 +497,9 @@ return function(env)
 		local appearance = T.normalizeAppearance({ Theme = options.Theme, Accent = options.Accent, Colors = options.Colors,
 			Palette = options.Palette, Contrast = options.Contrast, Density = options.Density, Shape = options.Shape,
 			Typography = options.Typography, TabHeader = options.TabHeader, CornerRadius = options.CornerRadius,
-			TextScale = options.TextScale, ReducedMotion = options.ReducedMotion })
-		local theme = T.resolve(appearance.Theme, appearance.Accent, appearance.Colors, appearance.Palette, appearance.Contrast)
+			TextScale = options.TextScale, ReducedMotion = options.ReducedMotion, SeasonalTheme = options.SeasonalTheme })
+		local activePalette = env.require("seasons").palette(appearance.Palette, appearance.SeasonalTheme)
+		local theme = T.resolve(appearance.Theme, appearance.Accent, appearance.Colors, activePalette, appearance.Contrast)
 		if options.Parent ~= nil then assert(typeof(options.Parent) == "Instance", "Parent must be a Roblox instance") end
 		if options.ToggleKey ~= nil and options.ToggleKey ~= false then
 			assert(typeof(options.ToggleKey) == "EnumItem" and tostring(options.ToggleKey):find("Enum.KeyCode.", 1, true) == 1, "ToggleKey must be an Enum.KeyCode or false")
@@ -514,6 +515,7 @@ return function(env)
 			Theme = theme, TextScale = appearance.TextScale, CornerRadius = appearance.CornerRadius,
 			Palette = appearance.Palette, Contrast = appearance.Contrast, Density = appearance.Density, Shape = appearance.Shape,
 			Typography = appearance.Typography, TabHeader = appearance.TabHeader,
+			SeasonalTheme = appearance.SeasonalTheme, _activePalette = activePalette,
 			_themeName = appearance.Theme, _accent = appearance.Accent, _colors = appearance.Colors,
 			_scope = C.scope(), _paint = {}, _paintNodes = {}, _reflow = {}, _keys = {}, _motions = {}, _presses = {}, Controls = {}, Tabs = {}, _toasts = {},
 			ReducedMotion = options.ReducedMotion == true, _motionOverride = options.ReducedMotion,

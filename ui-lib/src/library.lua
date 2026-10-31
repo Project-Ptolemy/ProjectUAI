@@ -2,6 +2,7 @@ return function(env)
 	local Window = env.require("window")
 	local C, T = env.require("core"), env.require("theme")
 	local appearance = env.require("appearance")
+	local seasons = env.require("seasons")
 	local methods = env.require("config")
 	for _, id in ipairs({ "values", "tasks", "profiles" }) do
 		for name, method in pairs(env.require(id)) do if name:match("^%u") then methods[name] = method end end
@@ -10,16 +11,28 @@ return function(env)
 		return { Theme = self._themeName, Accent = self._accent, Colors = C.copy(self._colors or {}),
 			CornerRadius = self.CornerRadius or T.Size.Radius, TextScale = self.TextScale, ReducedMotion = self.ReducedMotion,
 			Palette = self.Palette, Contrast = self.Contrast, Density = self.Density, Shape = self.Shape,
-			Typography = self.Typography, TabHeader = self.TabHeader }
+			Typography = self.Typography, TabHeader = self.TabHeader, SeasonalTheme = self.SeasonalTheme }
+	end
+	function methods.GetActivePalette(self) return self._activePalette end
+	function methods._ScheduleSeasonal(self)
+		if self._seasonalCancel then self._seasonalCancel(); self._seasonalCancel = nil end
+		if not self.Alive or not self.SeasonalTheme or seasons.manual(self.Palette) or not seasons.current() then return end
+		self._seasonalCancel = self._scope:Delay(seasons.nextCheck(), function()
+			self._seasonalCancel = nil
+			if seasons.palette(self.Palette, self.SeasonalTheme) ~= self._activePalette then self:SetAppearance({})
+			else self:_ScheduleSeasonal() end
+		end)
 	end
 	function methods.SetAppearance(self, options)
 		assert(self.Alive, "Window is destroyed")
 		local value = T.normalizeAppearance(options, self:GetAppearance())
-		local palette = T.resolve(value.Theme, value.Accent, value.Colors, value.Palette, value.Contrast)
+		local activePalette = seasons.palette(value.Palette, value.SeasonalTheme)
+		local palette = T.resolve(value.Theme, value.Accent, value.Colors, activePalette, value.Contrast)
 		self.Theme, self._themeName, self._accent, self._colors = palette, value.Theme, value.Accent, value.Colors
 		self.CornerRadius, self.TextScale = value.CornerRadius, value.TextScale
 		self.Palette, self.Contrast, self.Density, self.Shape = value.Palette, value.Contrast, value.Density, value.Shape
 		self.Typography, self.TabHeader = value.Typography, value.TabHeader
+		self.SeasonalTheme, self._activePalette = value.SeasonalTheme, activePalette
 		if options.ReducedMotion ~= nil then self._motionOverride = value.ReducedMotion end
 		self.ReducedMotion = value.ReducedMotion
 		if self._themeIcon then self._themeIcon(value.Theme == "Light") end
@@ -27,6 +40,7 @@ return function(env)
 		self:_Layout()
 		self:_Filter()
 		if self._appearanceSync then self._appearanceSync() end
+		self:_ScheduleSeasonal()
 		return self
 	end
 	function methods.ResetAppearance(self)
@@ -67,6 +81,8 @@ return function(env)
 		window._mountingAppearance = true
 		appearance.mount(window)
 		window._mountingAppearance = nil
+		window:OnDestroy(function() window._seasonalCancel = nil end)
+		window:_ScheduleSeasonal()
 		return window
 	end
 	function UI:GetWindow(id) return env.windows[id] end

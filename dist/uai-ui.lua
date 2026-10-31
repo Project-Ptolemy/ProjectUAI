@@ -98,6 +98,7 @@ return function(env)
 	local T = env.require("theme")
 	local M = {}
 	local prefix = "__uai_appearance_"
+	local paletteLabels = { NewYear = "New Year", Valentine = "Valentine's Day", EarthDay = "Earth Day", Pride = "Pride", Peace = "Peace Day" }
 	function M.mount(window)
 		local tab = window:Tab({ Id = prefix .. "tab", Title = "Appearance" })
 		window._appearanceTab = tab
@@ -120,10 +121,15 @@ return function(env)
 				window:SetAppearance(patch)
 			end)
 			choice.Description, choice.Options = description, C.copy(choices[key])
+			if key == "Palette" then
+				for index, name in ipairs(choice.Options) do
+					if paletteLabels[name] then choice.Options[index] = { Label = paletteLabels[name], Value = name } end
+				end
+			end
 			if key == "Shape" then choice.Options[#choice.Options + 1] = { Label = "Custom radius", Value = "Custom", Disabled = true } end
 			controls[key] = section:Dropdown(choice)
 		end
-		preference(personalize, "Palette", "palette", "Palette", "Coordinated neutral, warm, blue, green, or rose surfaces.")
+		preference(personalize, "Palette", "palette", "Palette", "Coordinated everyday colors or a seasonal palette to keep year-round.")
 		preference(personalize, "Contrast", "contrast", "Contrast", "High contrast strengthens text, borders, and status colors.")
 		controls.Accent = personalize:ColorPicker(options("accent", "Accent color", window.Theme.Accent, function(value)
 			local overrides = window:GetAppearance().Colors
@@ -215,7 +221,7 @@ return function(env)
 	local fields = {
 		palette = "Palette", contrast = "Contrast", density = "Density", shape = "Shape",
 		typography = "Typography", tabHeader = "TabHeader", cornerRadius = "CornerRadius",
-		textScale = "TextScale", reducedMotion = "ReducedMotion",
+		textScale = "TextScale", reducedMotion = "ReducedMotion", seasonalTheme = "SeasonalTheme",
 	}
 	local function encodeColor(color) return { color.R, color.G, color.B } end
 	local function decodeColor(rgb, label)
@@ -2625,6 +2631,7 @@ return function(env)
 	local Window = env.require("window")
 	local C, T = env.require("core"), env.require("theme")
 	local appearance = env.require("appearance")
+	local seasons = env.require("seasons")
 	local methods = env.require("config")
 	for _, id in ipairs({ "values", "tasks", "profiles" }) do
 		for name, method in pairs(env.require(id)) do if name:match("^%u") then methods[name] = method end end
@@ -2633,16 +2640,28 @@ return function(env)
 		return { Theme = self._themeName, Accent = self._accent, Colors = C.copy(self._colors or {}),
 			CornerRadius = self.CornerRadius or T.Size.Radius, TextScale = self.TextScale, ReducedMotion = self.ReducedMotion,
 			Palette = self.Palette, Contrast = self.Contrast, Density = self.Density, Shape = self.Shape,
-			Typography = self.Typography, TabHeader = self.TabHeader }
+			Typography = self.Typography, TabHeader = self.TabHeader, SeasonalTheme = self.SeasonalTheme }
+	end
+	function methods.GetActivePalette(self) return self._activePalette end
+	function methods._ScheduleSeasonal(self)
+		if self._seasonalCancel then self._seasonalCancel(); self._seasonalCancel = nil end
+		if not self.Alive or not self.SeasonalTheme or seasons.manual(self.Palette) or not seasons.current() then return end
+		self._seasonalCancel = self._scope:Delay(seasons.nextCheck(), function()
+			self._seasonalCancel = nil
+			if seasons.palette(self.Palette, self.SeasonalTheme) ~= self._activePalette then self:SetAppearance({})
+			else self:_ScheduleSeasonal() end
+		end)
 	end
 	function methods.SetAppearance(self, options)
 		assert(self.Alive, "Window is destroyed")
 		local value = T.normalizeAppearance(options, self:GetAppearance())
-		local palette = T.resolve(value.Theme, value.Accent, value.Colors, value.Palette, value.Contrast)
+		local activePalette = seasons.palette(value.Palette, value.SeasonalTheme)
+		local palette = T.resolve(value.Theme, value.Accent, value.Colors, activePalette, value.Contrast)
 		self.Theme, self._themeName, self._accent, self._colors = palette, value.Theme, value.Accent, value.Colors
 		self.CornerRadius, self.TextScale = value.CornerRadius, value.TextScale
 		self.Palette, self.Contrast, self.Density, self.Shape = value.Palette, value.Contrast, value.Density, value.Shape
 		self.Typography, self.TabHeader = value.Typography, value.TabHeader
+		self.SeasonalTheme, self._activePalette = value.SeasonalTheme, activePalette
 		if options.ReducedMotion ~= nil then self._motionOverride = value.ReducedMotion end
 		self.ReducedMotion = value.ReducedMotion
 		if self._themeIcon then self._themeIcon(value.Theme == "Light") end
@@ -2650,6 +2669,7 @@ return function(env)
 		self:_Layout()
 		self:_Filter()
 		if self._appearanceSync then self._appearanceSync() end
+		self:_ScheduleSeasonal()
 		return self
 	end
 	function methods.ResetAppearance(self)
@@ -2690,6 +2710,8 @@ return function(env)
 		window._mountingAppearance = true
 		appearance.mount(window)
 		window._mountingAppearance = nil
+		window:OnDestroy(function() window._seasonalCancel = nil end)
+		window:_ScheduleSeasonal()
 		return window
 	end
 	function UI:GetWindow(id) return env.windows[id] end
@@ -3126,7 +3148,8 @@ __UI_MODULES["palettes"] = (function()
 -- Semantic palettes keep content scripts independent of concrete color values.
 return function(env)
 	local rgb = Color3.fromRGB
-	local M = { Names = { "Neutral", "Graphite", "Ocean", "Forest", "Rose" } }
+	local M = { Names = { "Neutral", "Graphite", "Ocean", "Forest", "Rose", "Halloween", "Christmas", "NewYear",
+		"Valentine", "EarthDay", "Pride", "Peace" } }
 	local modes = {
 		Dark = {
 			Canvas = rgb(24, 24, 27), Sidebar = rgb(19, 19, 22), Chrome = rgb(22, 22, 25),
@@ -3153,8 +3176,143 @@ return function(env)
 		Forest = { Dark = rgb(136, 203, 158), Light = rgb(38, 111, 70) },
 		Rose = { Dark = rgb(227, 153, 194), Light = rgb(155, 56, 111) },
 	}
+	local seasonal = {
+		Halloween = {
+			Dark = {
+				Canvas = rgb(26, 20, 32), Sidebar = rgb(20, 15, 26), Chrome = rgb(23, 17, 29),
+				Surface = rgb(35, 27, 43), Raised = rgb(46, 34, 54), Input = rgb(23, 17, 29),
+				Hover = rgb(58, 43, 66), Pressed = rgb(70, 51, 77), Track = rgb(58, 43, 66),
+				Border = rgb(116, 85, 126), Subtle = rgb(61, 43, 70), Edge = rgb(84, 60, 96),
+				Text = rgb(255, 242, 226), Secondary = rgb(221, 203, 225), Muted = rgb(183, 161, 193),
+				Accent = rgb(255, 157, 67), Primary = rgb(255, 157, 67), OnPrimary = rgb(20, 20, 24),
+			},
+			Light = {
+				Canvas = rgb(255, 247, 233), Sidebar = rgb(247, 235, 215), Chrome = rgb(251, 240, 223),
+				Surface = rgb(255, 251, 244), Raised = rgb(244, 226, 204), Input = rgb(252, 242, 226),
+				Hover = rgb(238, 216, 193), Pressed = rgb(226, 199, 173), Track = rgb(230, 209, 187),
+				Border = rgb(166, 135, 108), Subtle = rgb(231, 214, 194), Edge = rgb(214, 188, 161),
+				Text = rgb(49, 31, 57), Secondary = rgb(84, 57, 85), Muted = rgb(115, 85, 111),
+				Accent = rgb(141, 51, 15), Primary = rgb(141, 51, 15), OnPrimary = rgb(255, 255, 255),
+			},
+		},
+		Christmas = {
+			Dark = {
+				Canvas = rgb(17, 29, 25), Sidebar = rgb(13, 23, 20), Chrome = rgb(15, 26, 22),
+				Surface = rgb(24, 38, 31), Raised = rgb(31, 49, 40), Input = rgb(15, 26, 22),
+				Hover = rgb(40, 60, 48), Pressed = rgb(50, 73, 58), Track = rgb(37, 56, 45),
+				Border = rgb(88, 124, 101), Subtle = rgb(38, 57, 46), Edge = rgb(62, 91, 73),
+				Text = rgb(255, 246, 229), Secondary = rgb(209, 221, 204), Muted = rgb(169, 191, 169),
+				Accent = rgb(241, 128, 132), Primary = rgb(239, 199, 124), OnPrimary = rgb(20, 20, 24),
+			},
+			Light = {
+				Canvas = rgb(250, 249, 239), Sidebar = rgb(234, 240, 228), Chrome = rgb(243, 246, 233),
+				Surface = rgb(255, 253, 245), Raised = rgb(229, 238, 220), Input = rgb(247, 248, 236),
+				Hover = rgb(217, 230, 209), Pressed = rgb(202, 219, 193), Track = rgb(220, 232, 211),
+				Border = rgb(132, 158, 125), Subtle = rgb(217, 229, 207), Edge = rgb(189, 209, 178),
+				Text = rgb(27, 49, 35), Secondary = rgb(57, 81, 61), Muted = rgb(87, 112, 84),
+				Accent = rgb(159, 39, 61), Primary = rgb(32, 83, 48), OnPrimary = rgb(255, 255, 255),
+			},
+		},
+		NewYear = {
+			Dark = {
+				Canvas = rgb(18, 23, 38), Sidebar = rgb(13, 18, 31), Chrome = rgb(15, 20, 34),
+				Surface = rgb(25, 32, 49), Raised = rgb(34, 42, 64), Input = rgb(15, 20, 34),
+				Hover = rgb(43, 53, 79), Pressed = rgb(54, 65, 94), Track = rgb(40, 49, 72),
+				Border = rgb(98, 113, 155), Subtle = rgb(42, 52, 77), Edge = rgb(67, 82, 117),
+				Text = rgb(255, 248, 231), Secondary = rgb(210, 216, 237), Muted = rgb(166, 180, 210),
+				Accent = rgb(239, 199, 124), Primary = rgb(239, 199, 124), OnPrimary = rgb(20, 20, 24),
+			},
+			Light = {
+				Canvas = rgb(247, 248, 253), Sidebar = rgb(234, 239, 250), Chrome = rgb(241, 244, 252),
+				Surface = rgb(255, 254, 247), Raised = rgb(231, 236, 248), Input = rgb(245, 247, 253),
+				Hover = rgb(220, 227, 243), Pressed = rgb(204, 214, 234), Track = rgb(220, 229, 245),
+				Border = rgb(138, 153, 181), Subtle = rgb(221, 230, 246), Edge = rgb(194, 206, 228),
+				Text = rgb(28, 39, 69), Secondary = rgb(61, 76, 108), Muted = rgb(89, 106, 139),
+				Accent = rgb(126, 80, 16), Primary = rgb(37, 55, 98), OnPrimary = rgb(255, 255, 255),
+			},
+		},
+	}
+	local function variant(base, overrides)
+		local result = {}
+		for key, value in pairs(base) do result[key] = value end
+		for key, value in pairs(overrides) do result[key] = value end
+		return result
+	end
+	seasonal.Valentine = {
+		Dark = variant(seasonal.Halloween.Dark, {
+			Canvas = rgb(31, 18, 27), Sidebar = rgb(25, 13, 21), Chrome = rgb(28, 15, 24),
+			Surface = rgb(43, 25, 36), Raised = rgb(56, 32, 47), Input = rgb(28, 15, 24),
+			Hover = rgb(70, 41, 58), Pressed = rgb(83, 48, 68), Track = rgb(66, 37, 53),
+			Border = rgb(141, 87, 114), Subtle = rgb(74, 40, 58), Edge = rgb(105, 61, 83),
+			Text = rgb(255, 240, 246), Secondary = rgb(231, 201, 216), Muted = rgb(195, 160, 178),
+			Accent = rgb(245, 150, 181), Primary = rgb(245, 150, 181),
+		}),
+		Light = variant(seasonal.Halloween.Light, {
+			Canvas = rgb(255, 245, 248), Sidebar = rgb(250, 231, 240), Chrome = rgb(253, 238, 245),
+			Surface = rgb(255, 250, 252), Raised = rgb(245, 220, 233), Input = rgb(254, 241, 246),
+			Hover = rgb(240, 207, 224), Pressed = rgb(231, 191, 213), Track = rgb(240, 211, 226),
+			Border = rgb(177, 126, 152), Subtle = rgb(241, 214, 229), Edge = rgb(221, 180, 202),
+			Text = rgb(68, 29, 49), Secondary = rgb(99, 54, 77), Muted = rgb(124, 82, 105),
+			Accent = rgb(141, 35, 73), Primary = rgb(141, 35, 73),
+		}),
+	}
+	seasonal.EarthDay = {
+		Dark = variant(seasonal.Christmas.Dark, {
+			Canvas = rgb(16, 29, 31), Sidebar = rgb(11, 22, 25), Chrome = rgb(13, 26, 29),
+			Surface = rgb(22, 40, 42), Raised = rgb(30, 52, 54), Input = rgb(13, 26, 29),
+			Hover = rgb(40, 65, 65), Pressed = rgb(49, 79, 78), Track = rgb(35, 59, 61),
+			Border = rgb(88, 135, 127), Subtle = rgb(39, 64, 61), Edge = rgb(60, 103, 93),
+			Text = rgb(236, 252, 241), Secondary = rgb(199, 227, 215), Muted = rgb(156, 193, 181),
+			Accent = rgb(108, 208, 166), Primary = rgb(147, 207, 237),
+		}),
+		Light = variant(seasonal.Christmas.Light, {
+			Canvas = rgb(242, 251, 245), Sidebar = rgb(227, 242, 233), Chrome = rgb(236, 248, 239),
+			Surface = rgb(250, 255, 248), Raised = rgb(217, 237, 224), Input = rgb(239, 249, 243),
+			Hover = rgb(205, 230, 215), Pressed = rgb(190, 218, 202), Track = rgb(209, 232, 219),
+			Border = rgb(117, 159, 139), Subtle = rgb(211, 234, 222), Edge = rgb(177, 208, 190),
+			Text = rgb(25, 54, 46), Secondary = rgb(49, 83, 73), Muted = rgb(76, 112, 97),
+			Accent = rgb(24, 103, 75), Primary = rgb(25, 72, 97),
+		}),
+	}
+	seasonal.Pride = {
+		Dark = variant(seasonal.Halloween.Dark, {
+			Canvas = rgb(25, 20, 37), Sidebar = rgb(19, 15, 29), Chrome = rgb(22, 17, 33),
+			Surface = rgb(34, 28, 49), Raised = rgb(46, 37, 65), Input = rgb(22, 17, 33),
+			Hover = rgb(59, 47, 80), Pressed = rgb(72, 57, 94), Track = rgb(53, 42, 75),
+			Border = rgb(95, 164, 177), Subtle = rgb(61, 46, 84), Edge = rgb(79, 85, 117),
+			Text = rgb(249, 242, 255), Secondary = rgb(221, 207, 240), Muted = rgb(180, 166, 206),
+			Accent = rgb(191, 164, 255), Primary = rgb(245, 146, 208),
+		}),
+		Light = variant(seasonal.Halloween.Light, {
+			Canvas = rgb(250, 245, 255), Sidebar = rgb(241, 232, 253), Chrome = rgb(246, 239, 255),
+			Surface = rgb(255, 251, 255), Raised = rgb(231, 222, 249), Input = rgb(249, 241, 255),
+			Hover = rgb(222, 211, 243), Pressed = rgb(208, 193, 235), Track = rgb(225, 216, 247),
+			Border = rgb(112, 165, 177), Subtle = rgb(226, 216, 245), Edge = rgb(169, 191, 210),
+			Text = rgb(47, 29, 70), Secondary = rgb(75, 53, 104), Muted = rgb(107, 82, 133),
+			Accent = rgb(107, 53, 168), Primary = rgb(142, 33, 110),
+		}),
+	}
+	seasonal.Peace = {
+		Dark = variant(seasonal.NewYear.Dark, {
+			Canvas = rgb(20, 29, 35), Sidebar = rgb(15, 23, 29), Chrome = rgb(17, 26, 32),
+			Surface = rgb(28, 39, 46), Raised = rgb(37, 51, 59), Input = rgb(17, 26, 32),
+			Hover = rgb(47, 64, 73), Pressed = rgb(59, 77, 88), Track = rgb(42, 58, 67),
+			Border = rgb(100, 141, 157), Subtle = rgb(45, 64, 73), Edge = rgb(71, 105, 120),
+			Text = rgb(239, 250, 252), Secondary = rgb(206, 227, 233), Muted = rgb(164, 191, 201),
+			Accent = rgb(136, 203, 221), Primary = rgb(156, 197, 245),
+		}),
+		Light = variant(seasonal.NewYear.Light, {
+			Canvas = rgb(245, 251, 253), Sidebar = rgb(232, 243, 247), Chrome = rgb(240, 248, 251),
+			Surface = rgb(252, 255, 255), Raised = rgb(224, 239, 245), Input = rgb(242, 249, 252),
+			Hover = rgb(211, 230, 239), Pressed = rgb(195, 218, 230), Track = rgb(215, 234, 243),
+			Border = rgb(127, 162, 180), Subtle = rgb(218, 237, 245), Edge = rgb(182, 210, 223),
+			Text = rgb(31, 50, 62), Secondary = rgb(58, 80, 94), Muted = rgb(83, 111, 130),
+			Accent = rgb(31, 99, 122), Primary = rgb(34, 75, 115),
+		}),
+	}
+	function M.isSeasonal(name) return seasonal[name] ~= nil end
 	function M.valid(name)
-		return name == "Neutral" or accents[name] ~= nil
+		return name == "Neutral" or accents[name] ~= nil or seasonal[name] ~= nil
 	end
 	function M.resolve(mode, name)
 		if mode == nil then mode = "Dark" end
@@ -3170,6 +3328,7 @@ return function(env)
 				result[key] = result[key]:Lerp(result.Accent, mode == "Dark" and 0.025 or 0.015)
 			end
 		end
+		if seasonal[name] then for key, value in pairs(seasonal[name][mode]) do result[key] = value end end
 		result.OnAccent = env.require("contrast").foreground(result.Accent)
 		return result
 	end
@@ -3292,6 +3451,48 @@ return function(env)
 			return true
 		end)
 		return ok, result
+	end
+	return M
+end
+end)()
+
+-- seasons
+__UI_MODULES["seasons"] = (function()
+-- Read the player's calendar afresh so daylight-saving and clock changes remain
+-- local. Hosts without the local-date API retain their selected palette.
+return function(env)
+	local M = {}
+	function M.current()
+		local ok, date = pcall(function() return DateTime.now():ToLocalTime() end)
+		if ok and type(date) == "table" and type(date.Month) == "number" and type(date.Day) == "number" then return date end
+		return nil
+	end
+	function M.active(date)
+		if not date then return nil end
+		local month, day = date.Month, date.Day
+		if month == 2 and day == 14 then return "Valentine" end
+		if month == 4 and day == 22 then return "EarthDay" end
+		if month == 6 and day >= 1 and day <= 30 then return "Pride" end
+		if month == 9 and day == 21 then return "Peace" end
+		if month == 10 and day >= 30 and day <= 31 or month == 11 and day >= 1 and day <= 2 then return "Halloween" end
+		if month == 12 and day >= 20 and day <= 26 then return "Christmas" end
+		if month == 12 and day == 31 or month == 1 and day >= 1 and day <= 2 then return "NewYear" end
+		return nil
+	end
+	function M.manual(palette)
+		return env.require("palettes").isSeasonal(palette)
+	end
+	function M.palette(palette, enabled)
+		if not enabled or M.manual(palette) then return palette end
+		return M.active(M.current()) or palette
+	end
+	function M.nextCheck()
+		local date = M.current()
+		if date and type(date.Hour) == "number" and type(date.Minute) == "number" and type(date.Second) == "number" then
+			local remaining = 86400 - (date.Hour * 3600 + date.Minute * 60 + date.Second)
+			return math.max(1, math.min(60, remaining))
+		end
+		return 60
 	end
 	return M
 end
@@ -3486,7 +3687,7 @@ return function(env)
 	function M.defaults()
 		return { Theme = "Dark", Palette = "Neutral", Contrast = "Standard", Density = "Comfortable",
 			Shape = "Rounded", Typography = "Sans", TabHeader = "Simple", Colors = {},
-			CornerRadius = shape.radius("Rounded"), TextScale = 1, ReducedMotion = false }
+			CornerRadius = shape.radius("Rounded"), TextScale = 1, ReducedMotion = false, SeasonalTheme = true }
 	end
 	function M.normalizeAppearance(options, current)
 		assert(type(options) == "table", "Appearance must be a table")
@@ -3502,7 +3703,7 @@ return function(env)
 			elseif key == "TabHeader" then assert(value == "Simple" or value == "Detailed" or value == "Hidden", "Unknown TabHeader")
 			elseif key == "Accent" then if value ~= false then color(value, "Accent") end
 			elseif key == "Colors" then assert(type(value) == "table", "Colors must be a table")
-			elseif key == "ReducedMotion" then assert(type(value) == "boolean", "ReducedMotion must be a boolean")
+			elseif key == "ReducedMotion" or key == "SeasonalTheme" then assert(type(value) == "boolean", key .. " must be a boolean")
 			elseif key == "CornerRadius" or key == "TextScale" then
 				local low, high = key == "CornerRadius" and 0 or 0.85, key == "CornerRadius" and 16 or 1.5
 				assert(type(value) == "number" and value == value and value >= low and value <= high, key .. " is outside its supported range")
@@ -4234,8 +4435,9 @@ return function(env)
 		local appearance = T.normalizeAppearance({ Theme = options.Theme, Accent = options.Accent, Colors = options.Colors,
 			Palette = options.Palette, Contrast = options.Contrast, Density = options.Density, Shape = options.Shape,
 			Typography = options.Typography, TabHeader = options.TabHeader, CornerRadius = options.CornerRadius,
-			TextScale = options.TextScale, ReducedMotion = options.ReducedMotion })
-		local theme = T.resolve(appearance.Theme, appearance.Accent, appearance.Colors, appearance.Palette, appearance.Contrast)
+			TextScale = options.TextScale, ReducedMotion = options.ReducedMotion, SeasonalTheme = options.SeasonalTheme })
+		local activePalette = env.require("seasons").palette(appearance.Palette, appearance.SeasonalTheme)
+		local theme = T.resolve(appearance.Theme, appearance.Accent, appearance.Colors, activePalette, appearance.Contrast)
 		if options.Parent ~= nil then assert(typeof(options.Parent) == "Instance", "Parent must be a Roblox instance") end
 		if options.ToggleKey ~= nil and options.ToggleKey ~= false then
 			assert(typeof(options.ToggleKey) == "EnumItem" and tostring(options.ToggleKey):find("Enum.KeyCode.", 1, true) == 1, "ToggleKey must be an Enum.KeyCode or false")
@@ -4251,6 +4453,7 @@ return function(env)
 			Theme = theme, TextScale = appearance.TextScale, CornerRadius = appearance.CornerRadius,
 			Palette = appearance.Palette, Contrast = appearance.Contrast, Density = appearance.Density, Shape = appearance.Shape,
 			Typography = appearance.Typography, TabHeader = appearance.TabHeader,
+			SeasonalTheme = appearance.SeasonalTheme, _activePalette = activePalette,
 			_themeName = appearance.Theme, _accent = appearance.Accent, _colors = appearance.Colors,
 			_scope = C.scope(), _paint = {}, _paintNodes = {}, _reflow = {}, _keys = {}, _motions = {}, _presses = {}, Controls = {}, Tabs = {}, _toasts = {},
 			ReducedMotion = options.ReducedMotion == true, _motionOverride = options.ReducedMotion,

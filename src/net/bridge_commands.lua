@@ -38,6 +38,10 @@ return function(env)
 			if type(command.value) == "string" and #command.value > 16000 then error("Setting is too long", 0) end
 			local choices = {
 				["ui.density"] = { comfortable = true, compact = true },
+				["ui.theme"] = {
+					default = true, halloween = true, christmas = true, newyear = true,
+					valentine = true, earthday = true, pride = true, peace = true,
+				},
 				["ui.accent"] = { claude = true, aurora = true, indigo = true, amber = true, rose = true },
 				["ui.layout"] = { auto = true, sheet = true, panel = true, window = true, tv = true },
 				["ui.codeTheme"] = { dark = true, light = true },

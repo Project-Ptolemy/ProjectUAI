@@ -5,6 +5,7 @@ return function(env)
 	local T = env.require("theme")
 	local M = {}
 	local prefix = "__uai_appearance_"
+	local paletteLabels = { NewYear = "New Year", Valentine = "Valentine's Day", EarthDay = "Earth Day", Pride = "Pride", Peace = "Peace Day" }
 	function M.mount(window)
 		local tab = window:Tab({ Id = prefix .. "tab", Title = "Appearance" })
 		window._appearanceTab = tab
@@ -27,10 +28,15 @@ return function(env)
 				window:SetAppearance(patch)
 			end)
 			choice.Description, choice.Options = description, C.copy(choices[key])
+			if key == "Palette" then
+				for index, name in ipairs(choice.Options) do
+					if paletteLabels[name] then choice.Options[index] = { Label = paletteLabels[name], Value = name } end
+				end
+			end
 			if key == "Shape" then choice.Options[#choice.Options + 1] = { Label = "Custom radius", Value = "Custom", Disabled = true } end
 			controls[key] = section:Dropdown(choice)
 		end
-		preference(personalize, "Palette", "palette", "Palette", "Coordinated neutral, warm, blue, green, or rose surfaces.")
+		preference(personalize, "Palette", "palette", "Palette", "Coordinated everyday colors or a seasonal palette to keep year-round.")
 		preference(personalize, "Contrast", "contrast", "Contrast", "High contrast strengthens text, borders, and status colors.")
 		controls.Accent = personalize:ColorPicker(options("accent", "Accent color", window.Theme.Accent, function(value)
 			local overrides = window:GetAppearance().Colors

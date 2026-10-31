@@ -20,6 +20,9 @@ return function(env)
 	local util = env.require("runtime/util")
 	local config = env.require("runtime/config")
 	local signal = env.require("runtime/signal")
+	local seasonal = env.require("runtime/seasonal_theme")
+	local clock = env.require("runtime/clock")
+	local dispose = env.require("runtime/dispose")
 
 	local M = { changed = signal.new("theme") }
 
@@ -61,6 +64,68 @@ return function(env)
 	}
 
 	M.ACCENTS = ACCENTS
+
+	-- Seasonal ramps retain the same surface hierarchy and readable text roles.
+	-- The saved standard accent remains separate from the effective holiday accent.
+	local SEASONAL = {
+		valentine = {
+			accent = { base = rgb(246, 144, 168), hot = rgb(255, 178, 194) },
+			neutral = {
+				[0] = rgb(28, 18, 24), rgb(35, 24, 30), rgb(42, 29, 36), rgb(49, 35, 43),
+				rgb(57, 42, 51), rgb(70, 53, 63), rgb(83, 66, 77), rgb(102, 84, 96),
+				rgb(120, 103, 115), rgb(185, 163, 175), rgb(221, 197, 207), rgb(253, 239, 235),
+			},
+		},
+		earthday = {
+			accent = { base = rgb(147, 205, 118), hot = rgb(180, 228, 155) },
+			neutral = {
+				[0] = rgb(16, 25, 27), rgb(22, 32, 34), rgb(28, 38, 40), rgb(34, 45, 47),
+				rgb(41, 53, 55), rgb(52, 66, 68), rgb(64, 79, 81), rgb(81, 97, 99),
+				rgb(99, 116, 117), rgb(163, 184, 179), rgb(195, 216, 205), rgb(243, 247, 230),
+			},
+		},
+		pride = {
+			accent = { base = rgb(231, 142, 216), hot = rgb(248, 182, 237) },
+			activityBlue = rgb(83, 204, 232), activityBlueLight = rgb(133, 231, 250), activityBlueDark = rgb(59, 155, 178),
+			neutral = {
+				[0] = rgb(23, 18, 33), rgb(30, 24, 42), rgb(37, 29, 50), rgb(44, 35, 58),
+				rgb(52, 43, 67), rgb(65, 54, 80), rgb(77, 66, 93), rgb(96, 83, 112),
+				rgb(114, 102, 129), rgb(183, 166, 199), rgb(218, 201, 232), rgb(250, 240, 254),
+			},
+		},
+		peace = {
+			accent = { base = rgb(129, 196, 232), hot = rgb(169, 223, 250) },
+			neutral = {
+				[0] = rgb(19, 26, 29), rgb(26, 33, 37), rgb(32, 40, 44), rgb(39, 47, 52),
+				rgb(46, 55, 60), rgb(58, 68, 74), rgb(70, 82, 88), rgb(88, 100, 106),
+				rgb(105, 118, 124), rgb(170, 187, 195), rgb(203, 222, 226), rgb(239, 247, 246),
+			},
+		},
+		halloween = {
+			accent = { base = rgb(242, 153, 74), hot = rgb(255, 184, 112) },
+			neutral = {
+				[0] = rgb(23, 17, 28), rgb(30, 22, 35), rgb(35, 27, 40), rgb(43, 32, 47),
+				rgb(50, 39, 55), rgb(64, 50, 68), rgb(77, 63, 82), rgb(96, 81, 99),
+				rgb(115, 100, 115), rgb(181, 161, 178), rgb(217, 196, 210), rgb(250, 241, 226),
+			},
+		},
+		christmas = {
+			accent = { base = rgb(242, 124, 134), hot = rgb(255, 156, 158) },
+			neutral = {
+				[0] = rgb(17, 25, 23), rgb(24, 32, 28), rgb(29, 38, 33), rgb(36, 45, 39),
+				rgb(43, 53, 46), rgb(55, 66, 57), rgb(67, 78, 69), rgb(85, 95, 84),
+				rgb(102, 113, 102), rgb(163, 181, 165), rgb(196, 212, 194), rgb(246, 244, 226),
+			},
+		},
+		newyear = {
+			accent = { base = rgb(235, 191, 87), hot = rgb(250, 212, 124) },
+			neutral = {
+				[0] = rgb(18, 22, 32), rgb(25, 29, 41), rgb(31, 35, 48), rgb(38, 42, 56),
+				rgb(46, 50, 64), rgb(58, 62, 76), rgb(70, 75, 90), rgb(88, 92, 109),
+				rgb(105, 110, 128), rgb(170, 178, 199), rgb(204, 211, 227), rgb(245, 243, 230),
+			},
+		},
+	}
 
 	-- Type resolution, in two layers.
 	--
@@ -445,6 +510,10 @@ return function(env)
 	function M.rebuild()
 		local accentName = config.get("ui.accent", "claude")
 		local accent = ACCENTS[accentName] or ACCENTS.claude
+		M.themeName = seasonal.resolve(config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
+		local holiday = SEASONAL[M.themeName]
+		local neutral = holiday and holiday.neutral or NEUTRAL
+		if holiday then accent = holiday.accent end
 		local density = config.get("ui.density", "comfortable")
 		local compact = density == "compact"
 		local textScale = util.clamp(tonumber(config.get("ui.fontScale", 1)) or 1, 0.85, 1.4)
@@ -505,6 +574,13 @@ return function(env)
 		local codeThemeName = config.get("ui.codeTheme", "dark")
 		local code = CODE_THEMES[codeThemeName] or CODE_THEMES.dark
 		M.codeThemeName = CODE_THEMES[codeThemeName] and codeThemeName or "dark"
+		if holiday and M.codeThemeName == "dark" then
+			local copy = {}
+			for key, value in pairs(code) do copy[key] = value end
+			copy.surface, copy.border, copy.bar = neutral[0], neutral[4], neutral[2]
+			copy.text, copy.gutter, copy.comment = neutral[11], neutral[9], neutral[9]
+			code = copy
+		end
 		M.code = code
 
 		M.color = {
@@ -512,79 +588,79 @@ return function(env)
 			-- deepest tone rather than on it, so a code block can go *below* the page
 			-- it is on -- which is how the interface this follows separates verbatim
 			-- text from prose, and it needs a step in hand to do it.
-			canvas = NEUTRAL[1],
-			sidebar = NEUTRAL[0],
-			sidebarActive = NEUTRAL[2],
-			surface = NEUTRAL[2],
-			surfaceRaised = NEUTRAL[3],
-			surfaceOverlay = NEUTRAL[4],
-			surfaceHover = NEUTRAL[4],
-			surfaceActive = NEUTRAL[5],
+			canvas = neutral[1],
+			sidebar = neutral[0],
+			sidebarActive = neutral[2],
+			surface = neutral[2],
+			surfaceRaised = neutral[3],
+			surfaceOverlay = neutral[4],
+			surfaceHover = neutral[4],
+			surfaceActive = neutral[5],
 			-- Selected list rows. A few percent toward the accent rather than a plain
 			-- grey step, so a selection reads as chosen rather than merely hovered -- the
 			-- one place a list earns a touch of colour.
-			surfaceSelected = M.mix(NEUTRAL[4], accent.base, 0.20),
-			scrim = NEUTRAL[0],
+			surfaceSelected = M.mix(neutral[4], accent.base, 0.20),
+			scrim = neutral[0],
 
-			activityBlue = rgb(59, 130, 246),
-			activityBlueLight = rgb(96, 165, 250),
-			activityBlueDark = rgb(37, 99, 235),
-			activityCell = NEUTRAL[2],
+			activityBlue = holiday and holiday.activityBlue or rgb(59, 130, 246),
+			activityBlueLight = holiday and holiday.activityBlueLight or rgb(96, 165, 250),
+			activityBlueDark = holiday and holiday.activityBlueDark or rgb(37, 99, 235),
+			activityCell = neutral[2],
 
 			-- Lines.
 			-- Outlines sit three to five steps above the surface they are drawn on.
-			-- borderSubtle used to be NEUTRAL[3], one step above surfaceRaised, which
+			-- borderSubtle used to be neutral[3], one step above surfaceRaised, which
 			-- is a contrast ratio of about 1.05 to 1 -- every card edge, every
 			-- segmented outline and the header rule were all invisible, and the
 			-- interface read as untitled blocks of near-black rather than as panels.
-			borderSubtle = NEUTRAL[5],
-			border = NEUTRAL[6],
-			borderStrong = NEUTRAL[7],
+			borderSubtle = neutral[5],
+			border = neutral[6],
+			borderStrong = neutral[7],
 
 			-- Type. Secondary and tertiary each moved a step brighter: on a warm dark
 			-- ramp the old pair sat at 3.1 and 2.4 to 1 against the canvas, and a
 			-- caption nobody can read is a caption that may as well not be there.
-			text = NEUTRAL[11],
-			textSecondary = NEUTRAL[10],
-			textTertiary = NEUTRAL[9],
-			textDisabled = NEUTRAL[8],
-			textOnAccent = NEUTRAL[0],
+			text = neutral[11],
+			textSecondary = neutral[10],
+			textTertiary = neutral[9],
+			textDisabled = neutral[8],
+			textOnAccent = neutral[0],
 
 			-- The one loud action. A cream fill with dark text, which is what the
 			-- interface this follows uses for its single primary control per view --
 			-- and it is deliberately not the accent: reserving colour for meaning
 			-- (inline code, a running turn, a risk) is what keeps the accent readable
 			-- as meaning rather than as decoration.
-			solid = NEUTRAL[11],
-			solidHover = M.mix(NEUTRAL[11], rgb(255, 255, 255), 0.5),
-			solidPress = NEUTRAL[10],
-			onSolid = NEUTRAL[0],
+			solid = neutral[11],
+			solidHover = M.mix(neutral[11], rgb(255, 255, 255), 0.5),
+			solidPress = neutral[10],
+			onSolid = neutral[0],
 
 			-- Accent and its quiet variants.
 			accent = accent.base,
 			accentHot = accent.hot,
-			accentMuted = M.mix(NEUTRAL[2], accent.base, 0.4),
-			accentSurface = M.mix(NEUTRAL[3], accent.base, 0.14),
-			accentBorder = M.mix(NEUTRAL[5], accent.base, 0.5),
+			accentMuted = M.mix(neutral[2], accent.base, 0.4),
+			accentSurface = M.mix(neutral[3], accent.base, 0.14),
+			accentBorder = M.mix(neutral[5], accent.base, 0.5),
 
 			-- Status. Saturated enough to read at caption size against a warm dark
 			-- ramp, and pulled away from the coral in hue so a danger row and an
 			-- accented row are not the same colour with a different label on it.
 			success = rgb(94, 200, 124),
-			successSurface = M.mix(NEUTRAL[3], rgb(94, 200, 124), 0.13),
+			successSurface = M.mix(neutral[3], rgb(94, 200, 124), 0.13),
 			warn = rgb(226, 170, 78),
-			warnSurface = M.mix(NEUTRAL[3], rgb(226, 170, 78), 0.13),
+			warnSurface = M.mix(neutral[3], rgb(226, 170, 78), 0.13),
 			danger = rgb(240, 132, 124),
-			dangerSurface = M.mix(NEUTRAL[3], rgb(240, 132, 124), 0.13),
-			dangerBorder = M.mix(NEUTRAL[5], rgb(240, 132, 124), 0.45),
+			dangerSurface = M.mix(neutral[3], rgb(240, 132, 124), 0.13),
+			dangerBorder = M.mix(neutral[5], rgb(240, 132, 124), 0.45),
 			info = rgb(120, 162, 226),
-			infoSurface = M.mix(NEUTRAL[3], rgb(120, 162, 226), 0.13),
+			infoSurface = M.mix(neutral[3], rgb(120, 162, 226), 0.13),
 
 			-- Context categories keep their colors independently of pressure/status.
 			contextSystem = rgb(180, 157, 232),
 			contextMessages = rgb(120, 162, 226),
 			contextSummary = rgb(226, 170, 78),
-			contextUnused = NEUTRAL[6],
+			contextUnused = neutral[6],
 
 			-- The one message surface. The agent's turn is the canvas itself -- a reply
 			-- is the page, not an object on it -- and tool rows, subagent cards and
@@ -596,8 +672,8 @@ return function(env)
 			-- and the composer below it were the same colour with the same corner radius
 			-- -- which is why a sent question read as an input box someone had typed into
 			-- and not submitted.
-			bubbleUser = M.mix(NEUTRAL[3], accent.base, 0.045),
-			bubbleUserBorder = M.mix(NEUTRAL[5], accent.base, 0.18),
+			bubbleUser = M.mix(neutral[3], accent.base, 0.045),
+			bubbleUserBorder = M.mix(neutral[5], accent.base, 0.18),
 			-- The code palette, which is a setting: a fenced block in the transcript,
 			-- the diff preview in the appearance pane and the identity readout all draw
 			-- from these, so switching the code theme changes what code looks like
@@ -753,6 +829,8 @@ return function(env)
 	-- token, and so has no business rebuilding anything.
 	local TOKEN_KEYS = {
 		["ui.accent"] = true,
+		["ui.theme"] = true,
+		["ui.seasonalThemes"] = true,
 		["ui.density"] = true,
 		["ui.fontScale"] = true,
 		["ui.interfaceFont"] = true,
@@ -761,13 +839,24 @@ return function(env)
 		["ui.transcriptWidth"] = true,
 	}
 
-	config.changed:connect(function(path)
+	dispose.add(config.changed:connect(function(path)
 		-- nil is a whole-file load; "ui" is a namespace reset, which startsWith("ui.")
 		-- does not match and which used to leave the interface on the old tokens.
 		if path == nil or path == "ui" or TOKEN_KEYS[tostring(path)] then
 			M.rebuild()
 		end
-	end)
+	end), "theme.configChanged")
+
+	-- Mounted applications own this watcher. A calendar check only rebuilds when
+	-- the effective palette changes, leaving ordinary minutes and manual themes idle.
+	function M.watchSeasonal(screen)
+		local stop = clock.interval(60, function()
+			local name = seasonal.resolve(config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
+			if name ~= M.themeName then M.rebuild() end
+		end)
+		screen.Destroying:Connect(stop)
+		return stop
+	end
 
 	return M
 end

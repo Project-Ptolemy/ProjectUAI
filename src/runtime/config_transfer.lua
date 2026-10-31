@@ -242,6 +242,10 @@ return function(env)
 			["relay.mode"] = { auto = true, always = true, off = true },
 			["permissions.mode"] = { readonly = true, ask = true, auto = true, full = true },
 			["ui.density"] = { comfortable = true, compact = true },
+			["ui.theme"] = {
+				default = true, halloween = true, christmas = true, newyear = true,
+				valentine = true, earthday = true, pride = true, peace = true,
+			},
 			["ui.layout"] = { auto = true, sheet = true, panel = true, window = true, tv = true },
 			["ui.codeTheme"] = { dark = true, light = true },
 			["ui.transcriptWidth"] = { narrow = true, medium = true, wide = true },

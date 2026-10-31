@@ -105,7 +105,27 @@ return function(env)
 		local appearance = build.section("Appearance",
 			"Layout follows the viewport by default. Pin it if you would rather it did not.")
 
+		R.select(appearance, {
+			name = "Theme", label = "Theme", path = "ui.theme",
+			hint = "Seasonal selections stay active year-round. Standard follows the automatic schedule when enabled.",
+			options = {
+				{ value = "default", label = "Standard" },
+				{ value = "newyear", label = "New Year", detail = "Automatic December 31–January 2." },
+				{ value = "valentine", label = "Valentine's Day", detail = "Automatic February 14." },
+				{ value = "earthday", label = "Earth Day", detail = "Automatic April 22." },
+				{ value = "pride", label = "Pride", detail = "Automatic June 1–30." },
+				{ value = "peace", label = "Peace Day", detail = "International Peace Day, September 21." },
+				{ value = "halloween", label = "Halloween", detail = "Automatic October 30–November 2." },
+				{ value = "christmas", label = "Christmas", detail = "Automatic December 20–26." },
+			},
+		})
+		R.toggle(appearance, {
+			label = "Automatic seasonal themes", path = "ui.seasonalThemes",
+			hint = "With Standard selected, use coordinated holiday and celebration colors each year, based on your local date.",
+		})
+
 		P.text(appearance, { text = "Accent", role = "small" })
+		R.paragraph(appearance, "Saved for Standard; seasonal themes use their own coordinated accent.")
 		C.segmented(appearance, {
 			options = accentOptions(),
 			value = config.get("ui.accent", "claude"),

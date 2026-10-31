@@ -205,6 +205,7 @@ return function(env)
 
 		responsive.init(screen)
 		theme.rebuild()
+		theme.watchSeasonal(screen)
 		overlay.mount(screen)
 
 		-- Quick chat lives on the overlay layer and outlives every rebuild: it holds no
