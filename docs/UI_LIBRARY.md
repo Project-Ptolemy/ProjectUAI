@@ -436,23 +436,15 @@ and [searchable lists and actions](UI_LIBRARY_COLLECTIONS.md).
 
 The automatic seasonal schedule repeats every year, with both endpoints included:
 
-| Palette | Local dates | Appearance | Artwork |
-| --- | --- | --- | --- |
-| Valentine | February 14 | Berry surfaces and rose | Hearts |
-| EarthDay | April 22 | Blue-green surfaces and leaf green | Globe and leaves |
-| Pride | June 1–30 | Violet surfaces, magenta and cyan | Rainbow ribbon |
-| Peace | September 21 | Slate teal surfaces and sky blue | Dove and olive branches |
-| Halloween | October 30–November 2 | Plum surfaces and pumpkin orange | Pumpkins and ghosts |
-| Christmas | December 20–26 | Evergreen surfaces and cranberry red | Fir trees and snowflakes |
-| NewYear | December 31–January 2 | Midnight blue surfaces and gold | Stars and confetti |
-
-Seasonal themes include a decorative scene below the ordinary window header.
-The library draws this artwork with native Frames; scripts do not supply assets
-or construct decorations. It reserves space for the scene, keeping titles,
-window actions, controls, the local profile, and attribution readable. Compact
-windows use a shorter scene, and constrained keyboard layouts prioritize useful
-control space. The artwork is static, noninteractive, and released with its
-window; it follows the effective palette on automatic or manual changes.
+| Palette | Local dates | Appearance |
+| --- | --- | --- |
+| Valentine | February 14 | Berry surfaces and rose |
+| EarthDay | April 22 | Blue-green surfaces and leaf green |
+| Pride | June 1–30 | Violet surfaces, magenta and cyan |
+| Peace | September 21 | Slate teal surfaces and sky blue |
+| Halloween | October 30–November 2 | Plum surfaces and pumpkin orange |
+| Christmas | December 20–26 | Evergreen surfaces and cranberry red |
+| NewYear | December 31–January 2 | Midnight blue surfaces and gold |
 
 Automatic changes keep the chosen Dark/Light mode and saved `Palette`, `Accent`,
 and `Colors`. `GetAppearance().Palette` reports the saved choice;
@@ -1159,7 +1151,6 @@ API; new reusable controls and lifecycle capabilities belong in `ui-lib/src`.
 | `core.lua` | Resource scopes, instance helpers, layout/measurement, callbacks |
 | `theme.lua` | Shared visual tokens and theme values |
 | `seasons.lua` | Local-date seasonal schedule and palette selection |
-| `seasonal_art.lua` | Shared native frame artwork for seasonal window scenes |
 | `motion.lua` | Owned reversible transitions and reduced-motion handling |
 | `overlays.lua` | Dialogs, notifications, and overlay ownership |
 | `profile.lua` | Local player profile and experience information |
@@ -1233,7 +1224,6 @@ luajit test/ui_library_navigation.lua
 luajit test/ui_library_examples.lua
 luajit test/ui_library_theme.lua
 luajit test/ui_library_seasons.lua
-luajit test/ui_library_art.lua
 luajit test/ui_library_mobile.lua
 luajit test/ui_library_appearance.lua
 luajit test/ui_library_semantics.lua
@@ -1260,9 +1250,6 @@ The UI build emits `dist/uai-ui.lua`, a SHA-256 manifest, and
 backs the offline `ui_library_docs` tool, so agents can read the exact API without
 network access. Never hand-edit generated artifacts. Rebuild the main client
 after changing the guide or agent instructions.
-The same build generates `src/ui/seasonal_art.lua` from
-`ui-lib/src/seasonal_art.lua`, so the client and library use identical artwork
-without separate authored copies. Edit the library source only.
 
 The behavioral tests execute the actual distributed library with the repository's
 Roblox mock, including mouse/touch ownership, value validation, config round-trips,

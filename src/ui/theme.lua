@@ -69,7 +69,6 @@ return function(env)
 	-- The saved standard accent remains separate from the effective holiday accent.
 	local SEASONAL = {
 		valentine = {
-			art = "Valentine",
 			accent = { base = rgb(246, 144, 168), hot = rgb(255, 178, 194) },
 			neutral = {
 				[0] = rgb(28, 18, 24), rgb(35, 24, 30), rgb(42, 29, 36), rgb(49, 35, 43),
@@ -78,7 +77,6 @@ return function(env)
 			},
 		},
 		earthday = {
-			art = "EarthDay",
 			accent = { base = rgb(147, 205, 118), hot = rgb(180, 228, 155) },
 			neutral = {
 				[0] = rgb(16, 25, 27), rgb(22, 32, 34), rgb(28, 38, 40), rgb(34, 45, 47),
@@ -87,7 +85,6 @@ return function(env)
 			},
 		},
 		pride = {
-			art = "Pride",
 			accent = { base = rgb(231, 142, 216), hot = rgb(248, 182, 237) },
 			activityBlue = rgb(83, 204, 232), activityBlueLight = rgb(133, 231, 250), activityBlueDark = rgb(59, 155, 178),
 			neutral = {
@@ -97,7 +94,6 @@ return function(env)
 			},
 		},
 		peace = {
-			art = "Peace",
 			accent = { base = rgb(129, 196, 232), hot = rgb(169, 223, 250) },
 			neutral = {
 				[0] = rgb(19, 26, 29), rgb(26, 33, 37), rgb(32, 40, 44), rgb(39, 47, 52),
@@ -106,7 +102,6 @@ return function(env)
 			},
 		},
 		halloween = {
-			art = "Halloween",
 			accent = { base = rgb(242, 153, 74), hot = rgb(255, 184, 112) },
 			neutral = {
 				[0] = rgb(23, 17, 28), rgb(30, 22, 35), rgb(35, 27, 40), rgb(43, 32, 47),
@@ -115,7 +110,6 @@ return function(env)
 			},
 		},
 		christmas = {
-			art = "Christmas",
 			accent = { base = rgb(242, 124, 134), hot = rgb(255, 156, 158) },
 			neutral = {
 				[0] = rgb(17, 25, 23), rgb(24, 32, 28), rgb(29, 38, 33), rgb(36, 45, 39),
@@ -124,7 +118,6 @@ return function(env)
 			},
 		},
 		newyear = {
-			art = "NewYear",
 			accent = { base = rgb(235, 191, 87), hot = rgb(250, 212, 124) },
 			neutral = {
 				[0] = rgb(18, 22, 32), rgb(25, 29, 41), rgb(31, 35, 48), rgb(38, 42, 56),
@@ -378,8 +371,6 @@ return function(env)
 		-- and subtitle -- 40px of type between them at the reading measure -- had a
 		-- single pixel above and below, so the title touched the window's top edge.
 		header = 56,
-		seasonalArt = 72,
-		seasonalArtMinContent = 160,
 		rail = 52,
 		tab = 30,
 		launcher = 44,
@@ -521,7 +512,6 @@ return function(env)
 		local accent = ACCENTS[accentName] or ACCENTS.claude
 		M.themeName = seasonal.resolve(config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
 		local holiday = SEASONAL[M.themeName]
-		M.seasonalArtName = holiday and holiday.art or nil
 		local neutral = holiday and holiday.neutral or NEUTRAL
 		if holiday then accent = holiday.accent end
 		local density = config.get("ui.density", "comfortable")
@@ -752,7 +742,6 @@ return function(env)
 			-- The existing icon artwork has a one-pixel stroke at twelve pixels.
 			M.size.icon = math.max(12, M.size.icon)
 			M.size.iconLarge = math.max(12, M.size.iconLarge)
-			M.size.seasonalArt = math.max(36, M.size.seasonalArt)
 		end
 
 		-- The transcript column is the one size a setting names directly. Resolved after

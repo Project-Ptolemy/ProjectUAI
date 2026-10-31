@@ -14,12 +14,6 @@ return function(env)
 			Typography = self.Typography, TabHeader = self.TabHeader, SeasonalTheme = self.SeasonalTheme }
 	end
 	function methods.GetActivePalette(self) return self._activePalette end
-	function methods._UpdateSeasonalArt(self)
-		if not self._seasonalArt then return end
-		local name = seasons.manual(self._activePalette) and self._activePalette or nil
-		self._seasonalArt:Update(name, { Mode = self._themeName, Canvas = self.Theme.Canvas,
-			Accent = self.Theme.Accent, Text = self.Theme.Text, Secondary = self.Theme.Secondary })
-	end
 	function methods._ScheduleSeasonal(self)
 		if self._seasonalCancel then self._seasonalCancel(); self._seasonalCancel = nil end
 		if not self.Alive or not self.SeasonalTheme or seasons.manual(self.Palette) or not seasons.current() then return end
@@ -42,7 +36,6 @@ return function(env)
 		if options.ReducedMotion ~= nil then self._motionOverride = value.ReducedMotion end
 		self.ReducedMotion = value.ReducedMotion
 		if self._themeIcon then self._themeIcon(value.Theme == "Light") end
-		self:_UpdateSeasonalArt()
 		self:_Refresh()
 		self:_Layout()
 		self:_Filter()
@@ -88,13 +81,6 @@ return function(env)
 		window._mountingAppearance = true
 		appearance.mount(window)
 		window._mountingAppearance = nil
-		window._seasonalBand = C.node(window, "Frame", window.Frame, { Name = "SeasonalBand", Active = false, Selectable = false,
-			BackgroundTransparency = 1, ClipsDescendants = true })
-		window._seasonalArt = env.require("seasonal_art").new(window._seasonalBand)
-		window:Give(window._seasonalArt)
-		window:OnDestroy(function() window._seasonalArt, window._seasonalBand = nil, nil end)
-		window:_UpdateSeasonalArt()
-		window:_Layout()
 		window:OnDestroy(function() window._seasonalCancel = nil end)
 		window:_ScheduleSeasonal()
 		return window

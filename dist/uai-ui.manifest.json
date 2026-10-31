@@ -1,8 +1,8 @@
 {
   "format": "project-uai-ui",
   "version": "1.6.0",
-  "sha256": "e37ea3c10031ebb910e23897a545e9806d2a33760a358292f0f119ee0d638867",
-  "bytes": 264688,
+  "sha256": "cfa2d24c9e1e8bf66b27023350dd74f43b3a056a61047375b27c6e4364fddae5",
+  "bytes": 250522,
   "loaderSha256": "9b442518b403da2e3ab09d4f9c841fbb8c8700b1b84bd1d5aaca4456671a1f99",
   "modules": [
     {
@@ -77,8 +77,8 @@
     },
     {
       "id": "library",
-      "bytes": 5525,
-      "sha256": "15505ac682d28267e63bd5994362472622305823c0ece9702de0e2a44172d34a"
+      "bytes": 4714,
+      "sha256": "a890fc68268b0da4ed1234e752217f1158cabfdc0fcaa2e2f97f2f2d7c053b6a"
     },
     {
       "id": "motion",
@@ -111,11 +111,6 @@
       "sha256": "448a5ffa4cd8a7b51ab06f11f1e04460fc332b4ad5364bab0ea6f2ed85f0ae13"
     },
     {
-      "id": "seasonal_art",
-      "bytes": 12549,
-      "sha256": "e502afed19eab517ca61f5822f30b0f21686c7e6de53cf0eec544857f9cf7dc5"
-    },
-    {
       "id": "seasons",
       "bytes": 1628,
       "sha256": "9f590e17e2773faedd01671f4ce611b7b358a6b37a0159babdf2912035d2f59c"
@@ -142,8 +137,8 @@
     },
     {
       "id": "theme",
-      "bytes": 5002,
-      "sha256": "f323527b0b72a3d02b1f851edd147d1dda535369dfa01a6fce6529d706955e30"
+      "bytes": 4932,
+      "sha256": "009913f9af2dfcf0f0abb345476d5a8621b0cdb803e4f422b481fe55d59e7bae"
     },
     {
       "id": "typography",
@@ -162,8 +157,8 @@
     },
     {
       "id": "window",
-      "bytes": 46593,
-      "sha256": "aa604d3f86a6a76935970ac7c1ec9c56053b24b0c8de8fda43e68785eb0ca86f"
+      "bytes": 45925,
+      "sha256": "e4edc7957f075ca909dfb9457cc2bd873a0e1b6f27cd123130d9e4e479405f2e"
     }
   ]
 }

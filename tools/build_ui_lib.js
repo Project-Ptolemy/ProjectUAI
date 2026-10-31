@@ -84,10 +84,6 @@ const artifacts = {
   'dist/uai-ui.manifest.json': JSON.stringify(manifest, null, 2) + '\n',
   'src/runtime/ui_library_docs.lua': reference,
 };
-const seasonalArt = modules.find(module => module.id === 'seasonal_art');
-if (!seasonalArt) throw new Error('Shared seasonal artwork requires ui-lib/src/seasonal_art.lua');
-artifacts['src/ui/seasonal_art.lua'] =
-  '-- Generated from ui-lib/src/seasonal_art.lua by tools/build_ui_lib.js; edit that source.\n' + seasonalArt.source + '\n';
 for (const [file, source] of Object.entries(artifacts)) {
   if (check) {
     if (!fs.existsSync(path.join(root, file)) || read(file) !== source) throw new Error(file + ' is stale; run node tools/build_ui_lib.js');
