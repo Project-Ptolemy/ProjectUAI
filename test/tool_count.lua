@@ -51,6 +51,7 @@ end)
 case("both protocols describe and execute overflow tools through the real agent loop", function()
 	for _, protocol in ipairs({ "openai", "responses" }) do
 		local f, record = setup(); f.tools({})
+		f.env.require("runtime/config").set("agent.toolProfile", "all")
 		local writes, requests, events = 0, 0, {}
 		for index = 1, 163 do
 			f.registry.register({ name = "fixture_" .. index, group = "fs", risk = "write", description = "Change the fixture target",

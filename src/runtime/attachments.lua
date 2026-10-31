@@ -19,13 +19,17 @@ return function(env)
 			filename(entry.name or entry.label), entry.bytes, entry.lines, entry.path)
 	end
 
-	function M.describe(path, content, name)
+	function M.describe(path, content, name, aborted)
+		if type(content) ~= "string" or #content > M.MAX_BYTES then return nil, "attachments support up to 10 MiB; split this input into smaller files" end
+		local digest, why = env.require("runtime/attachment_identity").digest(content, aborted)
+		if why then return nil, why end
 		local _, breaks = content:gsub("\n", "")
 		return { file = true, path = path, name = filename(name or path), label = filename(name or path),
-			bytes = #content, lines = #content == 0 and 0 or breaks + 1 }
+			bytes = #content, lines = #content == 0 and 0 or breaks + 1,
+			sha256 = digest }
 	end
 
-	function M.save(content, name)
+	function M.save(content, name, aborted)
 		if type(content) ~= "string" or #content == 0 then return nil, "the attachment is empty" end
 		if #content > M.MAX_BYTES then return nil, "attachments support up to 10 MiB; split this input into smaller files" end
 		if content:find("\0", 1, true) then return nil, "attach a text or code file; binary files are not supported" end
@@ -38,11 +42,15 @@ return function(env)
 			if not fsx.exists(candidate, SCOPE) then path = candidate; break end
 		end
 		if not path then return nil, "could not allocate a new attachment file" end
+		local entry, problem = M.describe("pastes/" .. path, content, name, aborted)
+		if not entry then return nil, problem end
+		if aborted and aborted() then return nil, "Attachment preparation was cancelled" end
 		local ok, err = fsx.write(path, content, SCOPE)
 		if not ok then return nil, "could not save attachment: " .. tostring(err) end
 		local saved, readErr = fsx.read(path, SCOPE)
 		if saved ~= content then return nil, "could not verify the saved attachment: " .. tostring(readErr or "file contents differ") end
-		return M.describe("pastes/" .. path, content, name)
+		if aborted and aborted() then return nil, "Attachment preparation was cancelled" end
+		return entry
 	end
 
 	-- Identify one inserted block without swallowing the question on either side.
@@ -73,6 +81,7 @@ return function(env)
 		if type(offset) ~= "number" or offset < 0 or offset % 1 ~= 0 then return nil, "invalid upload offset" end
 		local item = pending[id]
 		if item and item.owner ~= owner then return nil, "upload belongs to another conversation" end
+		if item and item.saving then return nil, "upload is being finalized; retry after it completes" end
 		if item and item.lastOffset == offset and item.lastContent == content and item.final == (args.final == true) then
 			return item.result or { received = item.bytes }
 		end
@@ -88,8 +97,10 @@ return function(env)
 		item.parts[#item.parts + 1], item.bytes, item.at = content, item.bytes + #content, now
 		item.lastOffset, item.lastContent, item.final = offset, content, args.final == true
 		if args.final ~= true then return { received = item.bytes } end
-		local entry, err = M.save(table.concat(item.parts), item.name)
-		if not entry then pending[id] = nil; return nil, err end
+		item.saving = true
+		local entry, err = M.save(table.concat(item.parts), item.name, function() return pending[id] ~= item end)
+		item.saving = nil
+		if not entry then if pending[id] == item then pending[id] = nil end; return nil, err end
 		entry.reference = M.reference(entry)
 		item.result, item.parts = entry, nil
 		return entry
@@ -98,6 +109,7 @@ return function(env)
 	function M.clearUploads(owner)
 		for id, item in pairs(pending) do if owner == nil or item.owner == owner then pending[id] = nil end end
 	end
+	env.require("runtime/dispose").add(function() pending = {} end, "Attachment uploads")
 
 	return M
 end

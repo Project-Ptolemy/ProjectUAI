@@ -58,6 +58,8 @@ return function(env)
 		},
 		{
 			name = "check_luau",
+			examples = { { title = "Compile saved source", arguments = { path = "files/MyProject/main.lua" },
+				note = "Use the exact saved path. A successful compile does not execute or verify the requested behavior." } },
 			risk = "read",
 			needs = { "exec" },
 			description = "Check Luau syntax without executing code or changing the game. Provide inline 'code' or a saved file 'path', not both. Prefer path for scripts you wrote or edited so their source need not be sent again. Returns compile errors for correction before run_luau.",

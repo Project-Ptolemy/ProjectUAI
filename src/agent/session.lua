@@ -19,11 +19,27 @@ return function(env)
 	local state = env.require("agent/state")
 	local folderStore = env.require("runtime/conversation_folders")
 	local accounting = env.require("agent/stats")
+	local metadata = env.require("runtime/conversation_metadata")
+	local draftStore = env.require("runtime/draft_store")
+	local transcriptSearch = env.require("runtime/transcript_search")
+	local workflow = env.require("runtime/script_workflow")
 
 	local THREAD_DIR = "sessions"
 	-- Disk history survives eviction. Unsaved/ephemeral threads stay in memory.
 	local THREAD_LIMIT = 64
 	local running, alive = 0, true
+	local historyBusy = {}
+	local function historyIO(id, operation, ...)
+		historyBusy[id] = (historyBusy[id] or 0) + 1
+		local ok, result, detail = pcall(operation, ...)
+		local pending = historyBusy[id] - 1
+		historyBusy[id] = pending > 0 and pending or nil
+		if not ok then return false, tostring(result) end
+		return result, detail
+	end
+	local function deleteHistory(id)
+		return historyIO(id, fsx.delete, THREAD_DIR .. "/" .. id .. ".json")
+	end
 
 	-- How long a pasted message may be before it stops being a message. A long script
 	-- pasted into the composer is reference material, not a request: sent whole it
@@ -192,6 +208,8 @@ return function(env)
 			createdAt = clock.ms(),
 			updatedAt = clock.ms(),
 			turns = 0,
+			metadata = metadata.restore(),
+			viewReaders = {},
 			toolEpoch = {},
 			abortFlag = false,
 			log = {},
@@ -206,7 +224,7 @@ return function(env)
 		local unloaded = false
 		local callbacks, runPrepared, startReady
 		local function preparing() session.preparing = queue.preparing() and true or nil end
-		local function validateFiles(files, needTools)
+		local function validateFiles(files, needTools, aborted)
 			if #files == 0 and not needTools then return true end
 			local readable = false
 			for _, tool in ipairs(env.require("agent/registry").definitions({ only = session.toolFilter,
@@ -216,7 +234,7 @@ return function(env)
 			if not readable then return nil, "Enable the Files tools and file storage to send long inputs as files." end
 			for _, file in ipairs(files) do
 				local content, err = fsx.readUser(file.path)
-				if not content or #content ~= file.bytes then return nil, "attachment is missing or changed: " .. file.path .. ". " .. tostring(err or "Attach it again.") end
+				if not content or not env.require("runtime/attachment_identity").matches(file, content, aborted) then return nil, "attachment is missing or changed: " .. file.path .. ". " .. tostring(err or "Attach it again.") end
 			end
 			return true
 		end
@@ -228,7 +246,7 @@ return function(env)
 			if head.needsValidation then
 				local ok, valid, why = pcall(function()
 					if #head.images > 0 and not env.require("net/bridge_connection").enabled() then return nil, "Connect the web bridge to resume these images" end
-					return validateFiles(head.files)
+					return validateFiles(head.files, false, function() return not head.active or session.aborted() or deadline and clock.ms() >= deadline end)
 				end)
 				if not head.active or queue.peek() ~= head then return nil end
 				if not ok or not valid then queue.hold(ok and why or "Unable to verify queued attachments"); return nil end
@@ -268,9 +286,11 @@ return function(env)
 				local retained = session.appendLog(payload)
 				payload.transcriptId = retained and retained.transcriptId or nil
 			end
+			local changedMetadata = metadata.observe(session.metadata, payload, next(session.viewReaders) ~= nil)
 			hooks.run("onEvent", { session = session, event = payload })
 			session.events:fire(payload)
 			M.anyEvent:fire(session, payload)
+			if changedMetadata then M.listChanged:fire() end
 		end
 
 		function session.aborted()
@@ -399,7 +419,8 @@ return function(env)
 				if type(file) ~= "table" or type(file.path) ~= "string" or #file.path == 0 or #file.path > 1000
 					or type(file.bytes) ~= "number" or file.bytes ~= file.bytes or file.bytes < 0 or file.bytes % 1 ~= 0
 					or file.bytes > attachments.MAX_BYTES then return false, "invalid attachment reference" end
-				references[#references + 1] = { path = file.path, bytes = file.bytes }
+				if file.sha256 ~= nil and not env.require("runtime/attachment_identity").valid(file.sha256) then return false, "invalid attachment digest" end
+				references[#references + 1] = { path = file.path, bytes = file.bytes, sha256 = file.sha256 }
 			end
 			files = references
 
@@ -408,18 +429,19 @@ return function(env)
 			local entry, reserveError = queue.reserve(clean, files, images, onDone, id, session.busy or queue.pending() > 0, #text)
 			if not entry then return false, reserveError end
 			files = entry.files
+			local function preparationAborted() return not alive or session.removed or not entry.active end
 			preparing()
 			-- This boundary also covers Quick Chat, bridge clients and host scripts.
 			-- Never turn a failed upload into an enormous inference request.
 			if #text > PASTE_CAP or #files > 0 then
 				local ok, prepared, why = pcall(function()
-					local valid, validationError = validateFiles(files, #text > PASTE_CAP)
+					local valid, validationError = validateFiles(files, #text > PASTE_CAP, preparationAborted)
 					if not valid then return nil, validationError end
 					if #text <= PASTE_CAP then return clean end
-					local saved, err = attachments.save(text)
+					local saved, err = attachments.save(text, nil, preparationAborted)
 					if not saved then return nil, err end
 					if #entry.files >= 32 then return nil, "A message supports up to 32 file attachments" end
-					entry.files[#entry.files + 1] = { path = saved.path, bytes = saved.bytes }
+					entry.files[#entry.files + 1] = { path = saved.path, bytes = saved.bytes, sha256 = saved.sha256 }
 					return attachments.reference(saved) .. "\n\nRead this file for the user's complete input, including any request at the end."
 				end)
 				if not entry.active then preparing(); return false, "message preparation was cancelled; your draft was kept" end
@@ -609,6 +631,7 @@ return function(env)
 			session.toolEpoch = {}
 			session.abortFlag = false
 			session.title = "New chat"
+			session.workflow = nil
 			-- The plan goes with the conversation it belonged to.
 			state.clearTodos(session)
 			session.emit("cleared", {})
@@ -627,6 +650,53 @@ return function(env)
 			session.named = true
 			M.listChanged:fire()
 			M.persist(session)
+			return true
+		end
+
+		function session.setPinned(value)
+			if session.removed then return false end
+			session.metadata.pinned = value == true
+			markDirty(session); M.listChanged:fire(); session.persist()
+			return true
+		end
+		function session.markRead()
+			if not metadata.read(session.metadata) then return false end
+			markDirty(session); M.listChanged:fire()
+			return true
+		end
+		function session.setViewed(owner, value)
+			if owner == nil then return end
+			session.viewReaders[owner] = value == true and true or nil
+			if value then session.markRead() end
+		end
+		local saveDraftLater, cancelDraftSave = clock.debounce(function()
+			if alive and not session.removed then session.persist() end
+		end, 1.5)
+		session.cancelDraftSave = cancelDraftSave
+		local saveWorkflowLater, cancelWorkflowSave = clock.debounce(function()
+			if alive and not session.removed then session.persist() end
+		end, 0.5)
+		session.cancelWorkflowSave = cancelWorkflowSave
+		function session.setDraft(value)
+			if session.removed or not alive then return false, "Conversation is unavailable" end
+			local saved, why = draftStore.snapshot(value)
+			if why then session.draftError = why; return false, why end
+			local changedPresence = (session.draft ~= nil) ~= (saved ~= nil)
+			session.draft, session.draftError = saved, nil
+			markDirty(session); saveDraftLater()
+			if changedPresence then M.listChanged:fire() end
+			return true
+		end
+		function session.searchTranscript(query, options) return transcriptSearch.page(session.log, query, options) end
+		function session.setWorkflow(value, options)
+			if session.removed or not alive then return false, "Conversation is unavailable" end
+			local validated, why = workflow.restore(value)
+			if value ~= nil and not validated then return false, why or "Invalid script workflow" end
+			session.workflow = validated
+			session.emit("workflow:changed", { version = 1 })
+			M.listChanged:fire()
+			if options and options.deferSave == true then saveWorkflowLater()
+			else cancelWorkflowSave(); session.persist() end
 			return true
 		end
 
@@ -651,9 +721,10 @@ return function(env)
 		-- toggle is what turns it on, for the same reason a worktree exists: somewhere
 		-- to try something without it becoming part of the history.
 		function session.setEphemeral(value)
+			if session.removed or not alive then return false end
 			session.ephemeral = value == true
 			if session.ephemeral and fsx.enabled then
-				fsx.delete(THREAD_DIR .. "/" .. session.id .. ".json")
+				deleteHistory(session.id)
 			else
 				M.persist(session)
 			end
@@ -696,6 +767,7 @@ return function(env)
 		local session, why = M.create(opts)
 		if not session then return nil, why end
 		if M.threads[session.id] then return nil, "session id already exists" end
+		if historyBusy[session.id] then return nil, "session history is still being saved or removed; try again shortly" end
 		if fsx.enabled and fsx.exists(THREAD_DIR .. "/" .. session.id .. ".json") then
 			return nil, "session id already exists on disk but is not loaded; choose a different id"
 		end
@@ -735,6 +807,7 @@ return function(env)
 	function M.switch(id)
 		if not M.threads[id] then return false end
 		M.activeId = id
+		M.threads[id].markRead()
 		M.listChanged:fire()
 		return true
 	end
@@ -743,6 +816,8 @@ return function(env)
 		local out = {}
 		for _, session in pairs(M.threads) do out[#out + 1] = session end
 		table.sort(out, function(a, b)
+			local ap, bp = a.metadata and a.metadata.pinned == true, b.metadata and b.metadata.pinned == true
+			if ap ~= bp then return ap end
 			if a.updatedAt ~= b.updatedAt then return (a.updatedAt or 0) > (b.updatedAt or 0) end
 			return a.id < b.id
 		end)
@@ -853,42 +928,11 @@ return function(env)
 	-- Title, then the transcript. A search that only matched titles would miss the
 	-- conversation you remember by something that was said in it.
 	function M.search(query)
-		local needle = util.trim(tostring(query or "")):lower()
-		if needle == "" then return {} end
+		if util.trim(tostring(query or "")) == "" then return {} end
 		local out = {}
 		for _, session in ipairs(M.list()) do
-			local where, snippet = nil, nil
-			if tostring(session.title):lower():find(needle, 1, true) then
-				where = "title"
-			end
-			if not where and M.folderLabel(session):lower():find(needle, 1, true) then where = "folder" end
-			if not where then
-				for _, event in ipairs(session.log) do
-					if event.kind == "user" or event.kind == "assistant:text" then
-						local body = tostring(event.text or "")
-						local at = body:lower():find(needle, 1, true)
-						if at then
-							where = event.kind == "user" and "message" or "reply"
-							snippet = util.ellipsis(body:sub(math.max(at - 40, 1)), 120)
-							break
-						end
-					end
-				end
-			end
-			if not where then
-				for _, message in ipairs(session.ctx.messages or {}) do
-					local body = tostring(message.content or "")
-					local at = body:lower():find(needle, 1, true)
-					if at then
-						where = message.role == "user" and "message" or "reply"
-						snippet = util.ellipsis(body:sub(math.max(at - 40, 1)), 120)
-						break
-					end
-				end
-			end
-			if where then
-				out[#out + 1] = { session = session, where = where, snippet = snippet }
-			end
+			local hit = env.require("runtime/conversation_search").find(session, M.folderLabel(session), query)
+			if hit then hit.session = session; out[#out + 1] = hit end
 		end
 		return out
 	end
@@ -897,12 +941,14 @@ return function(env)
 		local session = M.threads[id]
 		if not session then return false end
 		session.preparing, session.removed = nil, true
+		session.cancelDraftSave()
+		session.cancelWorkflowSave()
 		attachments.clearUploads(id)
 		session.abort(); session.events:clear()
 		local subagents = env.loadedModules and env.loadedModules["agent/subagent"]
 		if subagents then subagents.stopAll(session) end
 		M.threads[id] = nil
-		if fsx.enabled then fsx.delete(THREAD_DIR .. "/" .. id .. ".json") end
+		if fsx.enabled then deleteHistory(id) end
 		local evidence = env.loadedModules and env.loadedModules["runtime/evidence"]
 		if evidence then pcall(evidence.clear, session) end
 		if M.activeId == id then
@@ -921,7 +967,8 @@ return function(env)
 			if excess <= 0 then break end
 			local victim = ordered[index]
 			if victim ~= protected and not victim.busy and not victim.preparing and victim.id ~= M.activeId and fsx.enabled and M.persist(victim) then
-				victim.removed = true; victim.abort(); victim.events:clear(); M.threads[victim.id] = nil
+				victim.removed = true; victim.cancelDraftSave(); victim.cancelWorkflowSave()
+				victim.abort(); victim.events:clear(); M.threads[victim.id] = nil
 				excess = excess - 1
 				attachments.clearUploads(victim.id)
 				local evidence = env.loadedModules and env.loadedModules["runtime/evidence"]
@@ -947,31 +994,48 @@ return function(env)
 		if session.depth and session.depth > 0 then return false end
 		if session.ephemeral then return false end
 		markDirty(session)
-		local revision = session.persistenceRevision
 		local savedPolicy = {}
 		for _, key in ipairs(POLICY_OPTIONS) do savedPolicy[key] = session[key] end
 		local policy, why = validateOptions(savedPolicy)
 		if not policy then return false, "invalid session policy: " .. tostring(why) end
 		policy.version = 1
-		local saved, err = fsx.writeJson(THREAD_DIR .. "/" .. session.id .. ".json", {
-			id = session.id,
-			title = session.title,
-			named = session.named == true,
-			placeId = session.placeId,
-			placeName = session.placeName,
-			folderId = session.folderId,
-			updatedAt = session.updatedAt,
-			createdAt = session.createdAt,
-			turns = session.turns, opencodeSession = session.opencodeSession,
-			policy = policy,
-			queue = session.serialiseQueue(),
-			context = session.ctx.serialise(),
-			transcript = session.transcript.snapshot(),
-			transcriptState = session.transcript.metadata(),
-		})
-		-- Executor file I/O can yield while another event changes the session.
-		if saved and session.persistenceRevision == revision then session.persistenceDirty = false end
-		return saved, err
+		return env.require("agent/checkpoint").write(session, function()
+			local snapshot = {
+				id = session.id,
+				title = session.title,
+				named = session.named == true,
+				placeId = session.placeId,
+				placeName = session.placeName,
+				folderId = session.folderId,
+				updatedAt = session.updatedAt,
+				createdAt = session.createdAt,
+				turns = session.turns, opencodeSession = session.opencodeSession,
+				policy = policy,
+				queue = session.serialiseQueue(),
+				metadata = metadata.snapshot(session.metadata),
+				draft = draftStore.snapshot(session.draft),
+				workflow = workflow.snapshot(session.workflow),
+				todos = env.require("runtime/todo_snapshot").snapshot(session.todos),
+				context = session.ctx.serialise(),
+				transcript = session.transcript.snapshot(),
+				transcriptState = session.transcript.metadata(),
+			}
+			return historyIO(session.id, function()
+				local path = THREAD_DIR .. "/" .. session.id .. ".json"
+				local ok, saved, reason = pcall(fsx.writeJson, path, snapshot)
+				-- A host write may yield across no-save or removal. Keep this id
+				-- reserved until the old snapshot has been removed again.
+				if session.ephemeral or session.removed then
+					local deleted, deleteWhy = deleteHistory(session.id)
+					if not deleted and fsx.exists(path) then log.warn("session", "could not remove conversation history", deleteWhy) end
+					return false, "Conversation history is no longer saved"
+				end
+				if not ok then return false, tostring(saved) end
+				return saved, reason
+			end)
+		end, function()
+			clock.delay(0, function() if alive and not session.removed then session.persist() end end)
+		end)
 	end
 
 	function M.restore()
@@ -1009,8 +1073,9 @@ return function(env)
 		for _, entry in ipairs(fsx.list(THREAD_DIR)) do
 			local data = readThread(entry)
 			if data and not M.threads[data.id] then
-				candidates[#candidates + 1] = { entry = entry, id = data.id, updatedAt = timestamp(data.updatedAt) }
+				candidates[#candidates + 1] = { entry = entry, id = data.id, updatedAt = timestamp(data.updatedAt), pinned = metadata.restore(data.metadata).pinned }
 				table.sort(candidates, function(a, b)
+					if a.pinned ~= b.pinned then return a.pinned end
 					if a.updatedAt ~= b.updatedAt then return a.updatedAt > b.updatedAt end
 					return a.id < b.id
 				end)
@@ -1032,6 +1097,10 @@ return function(env)
 					session.folderId = data.folderId
 				end
 				session.named = data.named == true
+				session.metadata = metadata.restore(data.metadata)
+				session.draft = draftStore.restore(data.draft)
+				session.workflow = workflow.restore(data.workflow)
+				session.todos = env.require("runtime/todo_snapshot").restore(data.todos)
 				session.createdAt = timestamp(data.createdAt)
 				session.updatedAt = timestamp(data.updatedAt)
 				session.turns = math.floor(timestamp(data.turns)); session.opencodeSession = data.opencodeSession
@@ -1060,7 +1129,7 @@ return function(env)
 		if not alive then return end
 		alive = false
 		-- Close admission and invalidate every turn before any save can yield.
-		for _, item in pairs(M.threads) do item.abortFlag = true; item.toolEpoch = {} end
+		for _, item in pairs(M.threads) do item.abortFlag = true; item.toolEpoch = {}; item.cancelDraftSave(); item.cancelWorkflowSave() end
 	end
 	env.require("runtime/dispose").add(function()
 		M.beginShutdown()

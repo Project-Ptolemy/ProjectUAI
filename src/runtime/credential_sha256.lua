@@ -2,7 +2,7 @@
 -- Internal binary primitives for the password vault. No host crypto or randomness.
 -- PBKDF2 caches keyed SHA states and keeps intermediate digests as 32-bit words.
 return function(env)
-	local M = { error = "Credential cryptography failed.", maxIterations = 2000000 }
+	local M = { error = "Credential cryptography failed.", maxIterations = 2000000, available = false }
 	if type(bit32) ~= "table" or type(bit32.band) ~= "function" or type(bit32.bxor) ~= "function"
 		or type(bit32.bnot) ~= "function" or type(bit32.rshift) ~= "function" or type(bit32.rrotate) ~= "function" then
 		function M.digest() return nil, M.error end
@@ -10,6 +10,7 @@ return function(env)
 		function M.derive64() return nil, M.error end
 		return M
 	end
+	M.available = true
 	local band, bxor, bnot = bit32.band, bit32.bxor, bit32.bnot
 	local rshift, rotate = bit32.rshift, bit32.rrotate
 	local byte, char, concat = string.byte, string.char, table.concat
@@ -67,19 +68,31 @@ return function(env)
 		for index = 1, 16 do words[index] = readWord(text, offset + (index - 1) * 4) end
 		compress(state, words)
 	end
-	local function finish(initial, text, preceding)
+	local function finish(initial, text, preceding, onProgress)
 		local state, words = copy(initial), {}
 		local complete = #text - #text % 64
-		for offset = 1, complete, 64 do block(state, text, offset, words) end
+		local function progress(completed)
+			if not onProgress then return true end
+			local ok, keepGoing = pcall(onProgress, completed, #text)
+			return ok and keepGoing ~= false
+		end
+		if not progress(0) then return nil end
+		for offset = 1, complete, 64 do
+			block(state, text, offset, words)
+			if onProgress and (offset + 63) % 16384 == 0 and not progress(offset + 63) then return nil end
+		end
 		local bits = ((preceding or 0) + #text) * 8
 		local tail = text:sub(complete + 1) .. "\128" .. string.rep("\0", (55 - #text) % 64)
 			.. word(math.floor(bits / MOD)) .. word(bits % MOD)
 		for offset = 1, #tail, 64 do block(state, tail, offset, words) end
+		if onProgress and #text % 16384 ~= 0 and not progress(#text) then return nil end
 		return state
 	end
-	function M.digest(text)
-		if type(text) ~= "string" then return nil, M.error end
-		return raw(finish(INITIAL, text, 0))
+	function M.digest(text, onProgress)
+		if type(text) ~= "string" or (onProgress ~= nil and type(onProgress) ~= "function") then return nil, M.error end
+		local state = finish(INITIAL, text, 0, onProgress)
+		if not state then return nil, M.error end
+		return raw(state)
 	end
 	local function keyed(key)
 		if #key > 64 then key = M.digest(key) end

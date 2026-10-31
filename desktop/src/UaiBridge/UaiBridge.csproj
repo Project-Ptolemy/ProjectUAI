@@ -8,7 +8,7 @@
     <AssemblyName>UAI Bridge</AssemblyName>
     <Product>UAI Bridge</Product>
     <Description>One-click Cowork launcher for Project UAI</Description>
-    <Version>3.7.0</Version>
+    <Version>3.8.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup Condition="'$(BridgePayload)' != ''">

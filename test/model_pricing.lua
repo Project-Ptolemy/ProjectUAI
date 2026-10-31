@@ -83,7 +83,7 @@ end)
 
 case("included Free access is zero but personal HCNSEC prices are unknown", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("hcnsec"); local pricing = f.env.require("agent/pricing")
+	local record = registry.blank("projectuai-free"); local pricing = f.env.require("agent/pricing")
 	check("included resolved model is free", pricing.priceFor("agnes-3.0-flash", record)[1] == 0)
 	check("included named paid model still costs the user zero", pricing.priceFor("gpt-6.1-sol", record)[2] == 0)
 	record.headers = { aUtHoRiZaTiOn = "Bearer personal-fixture-key" }

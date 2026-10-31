@@ -2,7 +2,7 @@
 return function(env)
 	local community = env.require("runtime/community")
 	local clock = env.require("runtime/clock")
-	local caps = env.require("runtime/caps")
+	local clipboard = env.require("runtime/clipboard")
 	local sessions = env.require("agent/session")
 	local theme = env.require("ui/theme")
 	local responsive = env.require("ui/responsive")
@@ -23,10 +23,9 @@ return function(env)
 			gap = theme.space.sm, bg = theme.color.surface, layoutOrder = 1 })
 		P.text(card, { name = "CommunityInviteLabel", text = "Discord invite", role = "label",
 			size = UDim2.new(1, 0, 0, 0), auto = "Y", layoutOrder = 1 })
-		local invite = P.field(card, { name = "CommunityInvite", text = community.invite,
+		local invite = P.field(card, { name = "CommunityInvite", text = community.invite, readOnly = true,
 			role = "small", multiline = true,
 			height = math.max(responsive.minTarget(), theme.text.small.height + theme.space.sm * 2), layoutOrder = 2 })
-		invite.instance.TextEditable = false
 		local measuredWidth
 		local function fitInvite()
 			local width = invite.shell.AbsoluteSize.X
@@ -50,13 +49,12 @@ return function(env)
 			onClick = function() modal.close() end })
 		P.button(modal.footer, { name = "CommunityCopy", text = "Copy invite", variant = "primary", layoutOrder = 2,
 			onClick = function()
-				local ok, value = false, nil
-				if caps.fn.clipboard then ok, value = pcall(caps.fn.clipboard, community.invite) end
-				if ok and value ~= false then
+				if clipboard.write(community.invite) then
 					community.disable()
 					modal.close()
 					overlay.toast("Discord invite copied. Reminders are off.", "good", 4)
 				else
+					invite.selectAll()
 					overlay.toast("Select and copy the invite above.", "info", 4)
 				end
 			end })

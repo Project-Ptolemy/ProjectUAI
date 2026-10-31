@@ -6,7 +6,9 @@ return function()
 			and (not text:byte(at) or text:byte(at) < 128 or text:byte(at) >= 192)
 	end
 	function M.clamp(text, at, forward)
-		at = math.max(1, math.min(#text + 1, math.floor(tonumber(at) or 1)))
+		at = tonumber(at) or 1
+		if at ~= at or math.abs(at) == math.huge then at = 1 end
+		at = math.max(1, math.min(#text + 1, math.floor(at)))
 		while not M.boundary(text, at) do at = at + (forward and 1 or -1) end
 		return at
 	end
@@ -37,6 +39,15 @@ return function()
 		local low, high = 1, #starts
 		while low < high do local mid = math.ceil((low + high) / 2); if starts[mid] <= offset then low = mid else high = mid - 1 end end
 		return low
+	end
+	function M.position(text, line, column)
+		line, column = tonumber(line), tonumber(column or 1)
+		if not line or not column or line ~= line or column ~= column or line < 1 or column < 1
+			or line == math.huge or column == math.huge or line ~= math.floor(line) or column ~= math.floor(column) then return nil, "Use positive whole line and column numbers" end
+		local first, after = M.lineRange(text, line, 1)
+		if not first then return nil, after end
+		local content = text:sub(first, after - 1):gsub("\r?\n$", "")
+		return first + M.byteAt(content, column) - 1
 	end
 	-- Locate a requested source page without allocating every line of a document.
 	function M.lineRange(text, firstLine, count)

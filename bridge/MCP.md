@@ -6,6 +6,12 @@ that launch local commands, including Claude Desktop, can use the stdio adapter.
 The harness supplies its own model; tool calls go directly to Roblox's validated
 dispatcher and return its actual execution receipt.
 
+Connected Obsidian vaults are available through the `obsidian` tool group, subject
+to the same session and tool permissions. Connect folders in **Settings → Obsidian**
+first. Read-only vault policy also applies to MCP calls; a harness cannot add
+arbitrary vault roots or enable editing through those tools. Notes read by a
+harness enter that harness's context. See [Obsidian setup](../docs/OBSIDIAN.md).
+
 Start the desktop bridge, load the updated UAI client in Roblox, and open
 **Settings → MCP** in the bridge for connection details and configuration examples.
 Use **Copy setup prompt** to give your local coding agent the exact connection

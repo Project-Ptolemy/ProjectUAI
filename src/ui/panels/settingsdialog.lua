@@ -11,6 +11,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local panes = env.require("ui/settingspanes")
 	local config = env.require("runtime/config")
+	local searchUI = env.require("ui/settings_search")
 
 	local M = {}
 
@@ -76,9 +77,11 @@ return function(env)
 			position = narrow and UDim2.new(0, 0, 0, stripHeight + theme.stroke.hair)
 				or UDim2.new(0, navWidth + theme.stroke.hair, 0, 0),
 		})
+		local searchHeight = math.max(theme.size.control, responsive.minTarget()) + theme.space.sm * 2
 		local body = P.scroll(bodyHolder, {
 			name = "PaneScroll",
-			size = UDim2.fromScale(1, 1),
+			size = UDim2.new(1, 0, 1, -searchHeight),
+			position = UDim2.fromOffset(0, searchHeight),
 			gap = theme.space.md,
 			padding = {
 				left = theme.space.lg,
@@ -93,6 +96,7 @@ return function(env)
 		local rows = {}
 		local active = nil
 		local cached = {}
+		local search, searching, searchPosition = nil, false, nil
 		local function revealCategory()
 			local selected = rows[active]
 			if dialog.closed or not selected or not selected.instance.Parent then return end
@@ -144,6 +148,7 @@ return function(env)
 		dialog.card.Destroying:Connect(unsubscribe)
 
 		local function select(id)
+			if search and searching then search.setQuery("") end
 			if dialog.closed or not panes.pane(id) or active == id then return end
 			if active and cached[active] then
 				cached[active].position = body.instance.CanvasPosition
@@ -178,6 +183,27 @@ return function(env)
 				end
 			end)
 		end
+
+		local function reveal(category, path)
+			if not panes.pane(category) then return false end
+			select(category)
+			task.defer(function()
+				task.wait()
+				if dialog.closed or active ~= category or not cached[category] then return end
+				searchUI.reveal(body.instance, cached[category].column, path)
+			end)
+			return true
+		end
+		search = searchUI.new(bodyHolder, body.instance, {
+			onQuery = function(value)
+				if value and not searching then searchPosition = body.instance.CanvasPosition end
+				local changed = searching ~= value
+				searching = value
+				if active and cached[active] then cached[active].column.Visible = not value end
+				if changed or value then body.instance.CanvasPosition = value and Vector2.new(0, 0) or (searchPosition or Vector2.new(0, 0)) end
+			end,
+			onChoose = function(item) reveal(item.category, item.path) end,
+		})
 
 		local function renderNav()
 			nav.clear()
@@ -256,6 +282,7 @@ return function(env)
 			bodyHolder.Position = narrow and UDim2.new(0, 0, 0, stripHeight + theme.stroke.hair)
 				or UDim2.new(0, navWidth + theme.stroke.hair, 0, 0)
 			body.instance:FindFirstChildOfClass("UIPadding").PaddingRight = UDim.new(0, narrow and theme.space.lg or closeInset)
+			search.toolbar:FindFirstChildOfClass("UIPadding").PaddingRight = UDim.new(0, narrow and theme.space.sm or closeInset)
 			if changed then
 				nav.instance.CanvasPosition = Vector2.new(0, 0)
 				renderNav()
@@ -269,6 +296,8 @@ return function(env)
 		select(panes.pane(initial) and initial or panes.PANES[1].id)
 
 		dialog.select = select
+		dialog.reveal = reveal
+		dialog.search = search
 		dialog.activeCategory = function() return active end
 		return dialog
 	end

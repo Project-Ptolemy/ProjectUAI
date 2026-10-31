@@ -341,6 +341,7 @@ return function(env)
 			gap = theme.space.sm,
 			layoutOrder = 1,
 		})
+		env.require("ui/conversation_resume").build(holder, 4)
 		local brandSlot = P.frame(greeting, {
 			name = "HomeBrand",
 			size = UDim2.fromOffset(theme.size.controlLarge, theme.size.controlLarge),
@@ -424,7 +425,7 @@ return function(env)
 			P.text(intro, { name = "FreeIntroductionTitle", text = "Project UAI Free hours", role = "label",
 				size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 1 })
 			P.text(intro, { name = "FreeIntroductionText",
-				text = "Thank you for your continued use and support of Project UAI. Free access powered by HCNSEC is included daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday, with no account or personal key needed. Outside these hours, choose another provider or return at 20:00 UTC+8. Speed and availability vary with shared capacity. More free providers may be available soon.",
+				text = "You selected Project UAI Free from the Providers library. Shared access opens daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Speed and availability vary. For a personal HCNSEC account, add the separate HCNSEC provider with your own key.",
 				role = "caption", color = theme.color.textSecondary, size = UDim2.new(1, 0, 0, 0),
 				auto = "Y", wrap = true, layoutOrder = 2 })
 			-- The countdown is the one line that has to move: a person deciding whether
@@ -444,6 +445,17 @@ return function(env)
 				role = "caption", color = theme.color.accent, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 4 })
 			P.button(intro, { name = "FreeCommunity", text = "Join our Discord", variant = "ghost", size = "sm", layoutOrder = 5,
 				onClick = function() env.require("ui/community").open() end })
+		elseif not freeRecord then
+			local setup = P.column(holder, { name = "ProviderIntroduction", size = UDim2.new(1, 0, 0, 0),
+				maxSize = Vector2.new(theme.size.statCard, math.huge), auto = "Y", gap = theme.space.sm,
+				padding = theme.space.md, bg = theme.color.surface, radius = theme.radius.lg, layoutOrder = 3 })
+			P.text(setup, { text = "Choose a provider to start", role = "label", auto = "Y", wrap = true,
+				size = UDim2.new(1, 0, 0, 0), layoutOrder = 1 })
+			P.text(setup, { text = "Browse free routes, paid services and local servers. Project UAI Free is optional; HCNSEC is a separate personal-key provider.",
+				role = "caption", color = theme.color.textSecondary, auto = "Y", wrap = true,
+				size = UDim2.new(1, 0, 0, 0), layoutOrder = 2 })
+			P.button(setup, { name = "ChooseProvider", text = "Open Providers", variant = "primary", size = "sm", layoutOrder = 3,
+				onClick = function() env.require("ui/app").show("providers") end })
 		end
 
 		if config.get("ui.showActivity", true) ~= true then return holder end

@@ -27,13 +27,7 @@ return function(env)
 		return { allowed = true, source = supported == true and "documented" or "default", override = "auto", supported = supported }
 	end
 	function M.set(model, value)
-		if type(model) ~= "string" or #model > 300 or util.trim(model) == "" or model:find("[%c]") then return nil, "Invalid model ID" end
-		if value ~= "auto" and value ~= "send" and value ~= "omit" then return nil, "Unknown temperature policy" end
-		local map = util.copy(config.get("agent.forceSampling", {}) or {})
-		if value == "auto" then map[util.trim(model):lower()] = nil
-		else map[util.trim(model):lower()] = value == "send" end
-		config.set("agent.forceSampling", map)
-		return true
+		return env.require("provider/model_overrides").sampling(model, value)
 	end
 	function M.apply(record, request, body, options)
 		request, options = request or {}, options or {}

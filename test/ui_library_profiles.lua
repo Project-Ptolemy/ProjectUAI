@@ -1,0 +1,32 @@
+package.path = "test/?.lua;test/mock/?.lua;" .. package.path
+local h, UI, window, section, check, done = require("ui_library_support").new("profiles")
+local value = section:Toggle({ Id = "enabled", Default = false })
+local ok, names = window:ListConfigs()
+check("missing profile directories list as empty", ok and #names == 0)
+local saved, path = window:SaveConfig("beta")
+value:Set(true)
+local second = window:SaveConfig("alpha")
+ok, names = window:ListConfigs()
+check("saved profiles are listed once in sorted order", saved and second and ok and #names == 2 and names[1] == "alpha" and names[2] == "beta")
+check("loading a named profile restores its values", window:LoadConfig("beta") and not value:Get())
+check("invalid import options do not apply values", not window:ImportConfig(h.files[path], "invalid") and not value:Get())
+local folder = path:match("^(.*)/[^/]+$")
+h.sandbox.listfiles = function() return { "alpha.json", "alpha.json", path:gsub("/", "\\"), "C:/workspace/" .. folder .. "/gamma.json",
+	folder .. "/nested/hidden.json", "../escape.json", "ProjectUAI/UI/another/delta.json", 42 } end
+ok, names = window:ListConfigs()
+check("host path spellings work without admitting foreign or nested profiles", ok and table.concat(names, ",") == "alpha,beta,gamma")
+local deleted, existed = window:DeleteConfig("beta")
+check("delete removes only the named current-window profile", deleted and existed and h.files[path] == nil)
+deleted, existed = window:DeleteConfig("beta")
+check("deleting an absent profile is idempotent", deleted and existed == false)
+check("profile traversal is rejected", not window:DeleteConfig("../alpha") and not window:SaveConfig("../alpha") and not window:LoadConfig("../alpha"))
+h.sandbox.delfile = function() end
+check("delete verifies the host actually removed the file", not window:DeleteConfig("alpha"))
+h.sandbox.listfiles = function() return "not an array" end
+check("malformed host listings return failure", not window:ListConfigs())
+local nofs = require("env").new({ executor = false })
+local otherUI = assert(nofs.boot("dist/uai-ui.lua"))
+local other = otherUI:CreateWindow({ Id = "no-files" })
+check("hosts without storage retain explicit error paths", not other:ListConfigs() and not other:DeleteConfig("default") and not other:SaveConfig("default"))
+other:Destroy()
+done()

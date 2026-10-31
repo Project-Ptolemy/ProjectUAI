@@ -30,7 +30,7 @@ return function(env)
 			body = "Ask questions, explore this place, or build a script. UAI connects "
 				.. "a model to tools inside Roblox.",
 			items = {
-				"Project UAI Free is included daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Outside these hours, choose another provider. Shared capacity and speed can vary.",
+				"Choose a provider in the Providers library before your first message. Project UAI Free is an optional preset; HCNSEC uses your own API key.",
 				"Try: Explain what is in this place before making any changes.",
 				"Your messages and relevant tool results are sent to your selected provider.",
 			},
@@ -43,16 +43,15 @@ return function(env)
 			items = {
 				"Chat holds your conversations. Code is your script workspace.",
 				"Cowork connects the browser workspace through a local bridge.",
-				"More reveals other panels. Your profile menu includes Tutorial and support.",
+				"Find a command in the app menu searches panels, settings and conversation titles. Ctrl+K opens it when you are not typing.",
 			},
 		},
 		{
 			icon = "sliders",
 			title = "Connect a model",
-			body = "Keep the included free access, or connect your own provider for "
-				.. "a different model or more capacity.",
+			body = "Open the Providers library and choose a service, local server or custom endpoint.",
 			items = {
-				"In Providers, choose a preset or enter the base URL and authentication details.",
+				"Project UAI Free offers scheduled shared access. The separate HCNSEC preset always requires your personal key.",
 				"Fetch the model list from that provider, or enter its exact model ID, then Save.",
 				"Choose the provider and model above your message before sending.",
 			},

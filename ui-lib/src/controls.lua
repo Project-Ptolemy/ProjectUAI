@@ -14,12 +14,21 @@ return function(env)
 		if changed and not silent then self:_Emit() end
 		return self
 	end
-	function Control:Reset(silent) return self:Set(self._default, silent) end
+	function Control:Reset(silent)
+		if self._reset then return self:_reset(silent) end
+		return self:Set(self._default, silent)
+	end
+	function Control:GetDefault() return C.copy(self._default) end
+	function Control:IsDefault() return C.equal(self._value, self._default) end
 	function Control:_Emit()
 		C.call(self._window, self._callback, self:Get())
 		if not self.Alive then return end
-		for callback in pairs(self._listeners) do
-			C.call(self._window, callback, self:Get())
+		local listeners = {}
+		for callback in pairs(self._listeners) do listeners[#listeners + 1] = callback end
+		for _, callback in ipairs(listeners) do
+			if self._listeners[callback] then
+				C.call(self._window, callback, self:Get())
+			end
 			if not self.Alive then break end
 		end
 	end
@@ -41,6 +50,7 @@ return function(env)
 		if window._overlay and window._overlay.Control == self then window:_CloseOverlay() end
 	end
 	function Control:SetDisabled(disabled)
+		assert(self.Alive, "Control is destroyed")
 		self.Disabled = disabled == true
 		if self.Disabled then self:_CancelInteraction() end
 		for _, input in ipairs(self._inputs) do
@@ -52,19 +62,22 @@ return function(env)
 		return self
 	end
 	function Control:SetVisible(visible)
+		assert(self.Alive, "Control is destroyed")
 		self.Visible = visible == true
 		if not self.Visible then self:_CancelInteraction() end
 		self._window:_Filter()
 		return self
 	end
 	function Control:SetText(text)
+		assert(self.Alive, "Control is destroyed")
 		self.Text = tostring(text)
-		self._label.Text = self.Text
+		self._label.Text = self.Kind == "Divider" and string.upper(self.Text) or self.Text
 		self._layout()
 		self._window:_Filter()
 		return self
 	end
 	function Control:SetDescription(text)
+		assert(self.Alive, "Control is destroyed")
 		self.Description = tostring(text)
 		self._description.Text = self.Description
 		self._layout()
@@ -105,7 +118,7 @@ return function(env)
 		})
 		self._scope:Connect(self.Frame.Destroying, function() self:Destroy() end)
 		if #section.Controls > 0 then
-			C.node(self, "Frame", self.Frame, { Name = "RowRule", BackgroundTransparency = 0.35, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
+			self._rule = C.node(self, "Frame", self.Frame, { Name = "RowRule", BackgroundTransparency = 0.35, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -32, 0, 1) }, { BackgroundColor3 = "Subtle" })
 		end
 		self._label = C.text(self, self.Frame, self.Text, "Body", "Text", { Name = "Label", TextYAlignment = Enum.TextYAlignment.Top })
 		C.bind(self, self._label, { TextColor3 = function(theme) return self.Disabled and theme.Muted or theme.Text end })
@@ -113,28 +126,31 @@ return function(env)
 		self._slot = C.node(self, "Frame", self.Frame, { Name = "Value", BackgroundTransparency = 1 })
 		self._layout = function()
 			if not self.Alive then return end
-			local width = math.max(1, window._contentWidth - window._contentPad * 2 - 32)
+			local metrics = window._metrics or env.require("density").resolve(window.Density, window.Touch, window.TextScale)
+			local rowX, rowY = metrics.RowX, metrics.RowY
+			local width = math.max(1, window._contentWidth - window._contentPad * 2 - rowX * 2)
+			if self._rule then self._rule.Position, self._rule.Size = UDim2.fromOffset(rowX, 0), UDim2.new(1, -rowX * 2, 0, 1) end
 			local stacked = self._mode == "stack" or (self._mode == "inline" and self._slotWidth > 64 and width < 280 * window.TextScale)
 			self._stacked = stacked
 			local content = self._mode == "content"
 			local slot = math.min(self._slotWidth, width * 0.48)
 			local labelWidth = (stacked or content) and width or math.max(1, width - slot - 16)
 			if self._labelReserve then labelWidth = math.max(1, labelWidth - self._labelReserve) end
-			local titleHeight = self.Text ~= "" and C.measure(self.Text, 14 * window.TextScale, labelWidth) or 0
-			local descriptionHeight = self.Description ~= "" and C.measure(self.Description, 12 * window.TextScale, labelWidth) or 0
+			local titleHeight = self.Text ~= "" and C.measure(self.Text, 14 * window.TextScale, labelWidth, self._label.Font) or 0
+			local descriptionHeight = self.Description ~= "" and C.measure(self.Description, 12 * window.TextScale, labelWidth, self._description.Font) or 0
 			local captionHeight = titleHeight + (descriptionHeight > 0 and descriptionHeight + 5 or 0)
-			local slotHeight = self._slotHeight and self._slotHeight() or window.Target
-			local height = 28 + ((stacked and captionHeight + 10 + slotHeight) or (content and captionHeight) or math.max(captionHeight, slotHeight))
+			local slotHeight = self._slotHeight and self._slotHeight(width) or window.Target
+			local height = rowY * 2 + ((stacked and captionHeight + 10 + slotHeight) or (content and captionHeight) or math.max(captionHeight, slotHeight))
 			self.Frame.Size = UDim2.new(1, 0, 0, math.ceil(height))
-			local textTop = 14 + math.max(0, (slotHeight - captionHeight) / 2)
-			if stacked or content then textTop = 14 end
-			self._label.Position = UDim2.fromOffset(16, textTop)
+			local textTop = rowY + math.max(0, (slotHeight - captionHeight) / 2)
+			if stacked or content then textTop = rowY end
+			self._label.Position = UDim2.fromOffset(rowX, textTop)
 			self._label.Size = UDim2.fromOffset(labelWidth, titleHeight)
-			self._description.Position = UDim2.fromOffset(16, textTop + titleHeight + 5)
+			self._description.Position = UDim2.fromOffset(rowX, textTop + titleHeight + 5)
 			self._description.Size = UDim2.fromOffset(labelWidth, descriptionHeight)
 			self._description.Visible = descriptionHeight > 0
 			self._slot.Visible = not content
-			self._slot.Position = stacked and UDim2.fromOffset(16, 14 + captionHeight + 10) or UDim2.new(1, -16 - slot, 0, 14 + math.max(0, (captionHeight - slotHeight) / 2))
+			self._slot.Position = stacked and UDim2.fromOffset(rowX, rowY + captionHeight + 10) or UDim2.new(1, -rowX - slot, 0, rowY + math.max(0, (captionHeight - slotHeight) / 2))
 			self._slot.Size = UDim2.fromOffset(stacked and width or slot, slotHeight)
 			if self._afterLayout then self._afterLayout(width, slotHeight) end
 		end
@@ -164,12 +180,20 @@ return function(env)
 	function M.Button(section, options)
 		local self = M.base(section, "Button", options, "inline", 116)
 		self.Loading = false
+		self.ActionText, self.LoadingText = tostring(options.ActionText or "Run"), tostring(options.LoadingText or "Working…")
 		local button, label, refresh = M.action(self, options.ActionText or "Run", options.Style)
 		self._render = function()
-			label.Text = self.Loading and (options.LoadingText or "Working…") or options.ActionText or "Run"
+			label.Text = self.Loading and self.LoadingText or self.ActionText
 			refresh()
 		end
-		function self:SetLoading(loading) self.Loading = loading == true; self._render(); return self end
+		function self:SetLoading(loading) assert(self.Alive, "Control is destroyed"); self.Loading = loading == true; self._render(); return self end
+		function self:SetActionText(text, loadingText)
+			assert(self.Alive, "Control is destroyed")
+			self.ActionText = tostring(text)
+			if loadingText ~= nil then self.LoadingText = tostring(loadingText) end
+			self._render()
+			return self
+		end
 		function self:Press()
 			if not self:_Interactive() or self.Loading then return false end
 			self:SetLoading(true)
@@ -249,7 +273,8 @@ return function(env)
 		local value = C.text(self, self.Frame, "", "Caption", "Text", { Name = "Readout", BackgroundTransparency = 0, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		C.bind(self, value, { BackgroundColor3 = "Input" }); C.corner(value, 6); C.pad(value, 6, 0)
 		self._afterLayout = function(width)
-			value.Position = UDim2.new(1, -112, 0, 14)
+			local metrics = self._window._metrics
+			value.Position = UDim2.new(1, -(metrics.RowX + 96), 0, metrics.RowY)
 			value.Size = UDim2.fromOffset(96, 20 * self._window.TextScale)
 		end
 		local hit = M.input(self, "TextButton", self._slot, { Name = "Slider", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
@@ -295,6 +320,7 @@ return function(env)
 		return self
 	end
 	function M.Input(section, options)
+		local validate = env.require("validation").input(options)
 		if options.Numeric then
 			assert(options.Min == nil or C.finite(options.Min), "Input Min must be finite")
 			assert(options.Max == nil or C.finite(options.Max), "Input Max must be finite")
@@ -302,7 +328,7 @@ return function(env)
 		end
 		local self = M.base(section, "Input", options, "stack")
 		local maxLength = math.floor(C.number(options.MaxLength, 4096, 1, 65536))
-		self._normalize = function(value)
+		local normalize = function(value)
 			if options.Numeric then
 				assert(C.finite(value), "Enter a valid number")
 				return C.clamp(value, options.Min or -math.huge, options.Max or math.huge)
@@ -310,7 +336,14 @@ return function(env)
 			assert(type(value) == "string", "Input value must be a string")
 			return C.truncate(value, maxLength)
 		end
-		self._value = self._normalize(options.Default == nil and (options.Numeric and 0 or "") or options.Default)
+		self._validateValue, self._normalizeDefault = validate, normalize
+		self._normalize = function(value)
+			value = normalize(value)
+			local valid, message = validate(value)
+			assert(valid, message)
+			return value
+		end
+		self._value = normalize(options.Default == nil and (options.Numeric and 0 or "") or options.Default)
 		local field = M.input(self, "TextBox", self._slot, {
 			Name = "Input", Text = tostring(self._value), PlaceholderText = tostring(options.Placeholder or ""),
 			Size = UDim2.fromScale(1, 1), ClearTextOnFocus = false, Font = C.Font, TextSize = 14,
@@ -323,10 +356,15 @@ return function(env)
 		local errorLabel = C.text(self, self._slot, "", "Caption", "Danger", { Name = "Validation", Visible = false })
 		local painting = false
 		self._error = nil
-		self._slotHeight = function() return self._window.Target * (options.MultiLine and C.number(options.Lines, 3, 2, 8) or 1) + (self._error and 24 or 0) end
+		self._slotHeight = function(width)
+			self._errorHeight = self._error and math.max(22, C.measure(self._error, 12 * self._window.TextScale, width, errorLabel.Font)) + 4 or 0
+			return self._window.Target * (options.MultiLine and C.number(options.Lines, 3, 2, 8) or 1) + self._errorHeight
+		end
 		self._afterLayout = function(_, height)
-			field.Size = UDim2.new(1, 0, 0, height - (self._error and 24 or 0))
-			errorLabel.Position = UDim2.new(0, 0, 1, -22); errorLabel.Size = UDim2.new(1, 0, 0, 22)
+			local errorHeight = self._errorHeight or 0
+			field.Size = UDim2.new(1, 0, 0, height - errorHeight)
+			errorLabel.Position = UDim2.new(0, 0, 1, -errorHeight + 4)
+			errorLabel.Size = UDim2.new(1, 0, 0, math.max(0, errorHeight - 4))
 		end
 		self._render = function(preserveDraft)
 			if not preserveDraft then painting = true; field.Text = tostring(self._value); painting = false end
@@ -334,16 +372,26 @@ return function(env)
 			refreshBorder()
 			self._layout()
 		end
-		local function commit(live)
-			if painting or not self:_Interactive() then return end
+		function self:_showValidation(message)
+			self._error = message
+			errorLabel.Text, errorLabel.Visible = message or "", message ~= nil
+			refreshBorder()
+			self._layout()
+		end
+		function self:_readDraft()
 			local raw = options.Numeric and tonumber(field.Text) or field.Text
-			local ok, value = pcall(self._normalize, raw)
+			local ok, value = pcall(normalize, raw)
+			if not ok then return false, options.Numeric and "Enter a valid number." or "Enter a valid value." end
+			local valid, message = validate(value)
+			if not valid then return false, message end
+			return true, value
+		end
+		local function commit(live)
+			if painting or not self:_Interactive() then return false end
+			local ok, value = self:_readDraft()
 			if not ok then
-				self._error = options.Numeric and "Enter a valid number." or tostring(value)
-				errorLabel.Text, errorLabel.Visible, border.Color = self._error, true, self._window.Theme.Danger
-				refreshBorder()
-				self._layout()
-				return
+				self:_showValidation(value)
+				return false
 			end
 			if live then
 				-- Keep the user's draft/caret (for example, "1." or "-0") while
@@ -354,10 +402,12 @@ return function(env)
 				if changed then self:_Emit() end
 			else self:Set(value) end
 			if self.Alive then C.call(self._window, options.OnCommit, self:Get()) end
+			return true
 		end
-		self._scope:Connect(field.FocusLost, function()
-			commit()
+		self._scope:Connect(field.FocusLost, function(enterPressed)
+			local committed = commit()
 			refreshBorder()
+			if enterPressed and committed and self.Alive then C.call(self._window, options.OnSubmit, self:Get()) end
 		end)
 		self._scope:Connect(field:GetPropertyChangedSignal("Text"), function()
 			if painting then return end
@@ -366,6 +416,32 @@ return function(env)
 			if options.Live then commit(true) end
 		end)
 		function self:Focus() if self:_Interactive() then field:CaptureFocus() end; return self end
+		function self:GetDraft() assert(self.Alive, "Control is destroyed"); return field.Text end
+		function self:GetError() return self._error end
+		function self:Validate()
+			assert(self.Alive, "Control is destroyed")
+			local ok, value = self:_readDraft()
+			if ok then self:_showValidation(nil); return true end
+			self:_showValidation(value)
+			return false, value
+		end
+		function self:Commit(silent)
+			assert(self.Alive, "Control is destroyed")
+			local ok, value = self:_readDraft()
+			if ok then self:_showValidation(nil) else self:_showValidation(value) end
+			if not ok then return false, value end
+			self:Set(value, silent)
+			if self.Alive and not silent then C.call(self._window, options.OnCommit, self:Get()) end
+			return true, value
+		end
+		function self:_reset(silent)
+			assert(self.Alive, "Control is destroyed")
+			local changed = not C.equal(self._value, self._default)
+			self._value = C.copy(self._default)
+			self._render()
+			if changed and not silent then self:_Emit() end
+			return self
+		end
 		self._layout()
 		return self
 	end
@@ -388,6 +464,7 @@ return function(env)
 		self._normalize = function(value) assert(type(value) == "string", "Badge value must be a string"); return value end
 		self._value = self._normalize(options.Default or options.Value or "Ready")
 		local tone = options.Kind or "Secondary"
+		self.StatusKind = tone
 		local badge = C.node(self, "Frame", self._slot, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.new(1, 0, 0, 28) }, { BackgroundColor3 = function(theme) return theme.Surface:Lerp(theme[tone], 0.12) end })
 		C.corner(badge, 14)
 		self._afterLayout = function(width)
@@ -395,7 +472,15 @@ return function(env)
 			badge.Position = UDim2.fromScale(self._stacked and 0 or 1, 0.5)
 			badge.Size = UDim2.fromOffset(math.min(120, width), 28)
 		end
-		local label = C.text(self, badge, self._value, "Caption", options.Kind or "Secondary", { Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local label = C.text(self, badge, self._value, "Caption", tone, { Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		C.bind(self, label, { TextColor3 = function(theme) return theme[tone] end })
+		function self:SetKind(kind)
+			assert(self.Alive, "Control is destroyed")
+			assert(({ Success = true, Warning = true, Danger = true, Secondary = true })[kind], "Unknown badge Kind")
+			tone, self.StatusKind = kind, kind
+			self._window:_Refresh()
+			return self
+		end
 		self._render = function() label.Text = self._value end
 		self._layout()
 		return self
@@ -413,6 +498,11 @@ return function(env)
 		C.corner(fill, 4)
 		local value = C.text(self, self.Frame, "", "Caption", "Secondary", { Position = UDim2.new(1, -96, 0, 14), Size = UDim2.fromOffset(80, 20), TextXAlignment = Enum.TextXAlignment.Right })
 		self._labelReserve = 96
+		self._afterLayout = function()
+			local metrics = self._window._metrics
+			value.Position = UDim2.new(1, -(metrics.RowX + 80), 0, metrics.RowY)
+			value.Size = UDim2.fromOffset(80, 20 * self._window.TextScale)
+		end
 		self._render = function()
 			local fraction = (self._value - minimum) / (maximum - minimum)
 			fill.Size = UDim2.fromScale(fraction, 1)
@@ -426,6 +516,9 @@ return function(env)
 		local factory = M[kind]
 		if kind == "Dropdown" or kind == "Segmented" or kind == "Keybind" then factory = env.require("choice")[kind]
 		elseif kind == "ColorPicker" then factory = env.require("color")[kind] end
+		local extensions = { NumberInput = "numberinput", TextView = "textview", ItemList = "itemlist",
+			ActionGroup = "actiongroup", Callout = "callout", KeyValue = "keyvalue" }
+		if extensions[kind] then factory = env.require(extensions[kind])[kind] end
 		assert(factory, "Unknown control " .. tostring(kind))
 		local before = #section.Controls
 		local ok, control = pcall(factory, section, options)

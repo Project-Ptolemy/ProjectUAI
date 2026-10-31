@@ -28,6 +28,7 @@ return function(env)
 
 	function M.parse(raw)
 		local text = util.trim(raw)
+		if not util.validUtf8(text) or text:find("[%z\1-\31\127]") then return nil, "URL contains invalid text or control characters; copy the endpoint again" end
 		local scheme, authority, rest = text:match("^([%a][%w+%.%-]*)://([^/%?#]+)(.*)$")
 		if not scheme or text:find("%s") then return nil, "URL needs a scheme and a host, with spaces encoded" end
 		scheme = scheme:lower()

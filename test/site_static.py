@@ -127,6 +127,12 @@ def validate_html(base):
 
     loader = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"))()'
     check(doc.ids["loadstringCode"].text.strip() == loader, "The copyable loader is incorrect")
+    check(doc.ids["toolSearch"].attrs.get("maxlength") == "256", "Catalog search needs a bounded input")
+    check(doc.ids["toolSearch"].attrs.get("aria-keyshortcuts") == "/", "Catalog shortcut must be discoverable")
+    check(doc.ids["catalogLink"].text.strip().endswith("#tools"), "Share link must target the catalog")
+    check("hidden" in doc.ids["catalogShare"].attrs, "Inactive share controls must stay hidden without JavaScript")
+    check("not added automatically" in source and "HCNSEC" in source, "Provider onboarding must describe opt-in separate routes")
+    check("docs/GETTING_STARTED.md" in source and "docs/OBSIDIAN.md" in source, "Task-focused setup links are missing")
     tools = [node.attrs["data-tool-name"] for node in doc.elements if "data-tool-name" in node.attrs]
     groups = [node.attrs["data-group"] for node in doc.elements if node.has_class("tool-group")]
     check(len(tools) == len(set(tools)) and len(tools) > 0, "Tool names are empty or duplicated")

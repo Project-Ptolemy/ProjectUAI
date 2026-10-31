@@ -5,11 +5,13 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local scopes = env.require("embedding/scope")
 	local log = env.require("runtime/log")
+	local util = env.require("runtime/util")
 	local M = {}
 
 	function M.attach(handle)
-		local sdk = { version = "1.0.0", features = {
+		local sdk = { version = "1.1.0", features = {
 			uiFreeBoot = false, passwordGate = true, resourceScopes = true, requests = true, sessionLookup = true,
+			requestSnapshots = true, scheduledScopes = true,
 		} }
 		local pending = {}
 		function sdk.createScope(id) return scopes.create(handle, id) end
@@ -34,6 +36,7 @@ return function(env)
 				return nil, "request callbacks must be functions"
 			end
 			if pending[session] or session.busy or session.preparing or session.hasQueued and session.hasQueued() then return nil, "already working" end
+			local startedAt, finishedAt = clock.ms(), nil
 			local request = { status = "running", sessionId = session.id }
 			local completion = signal.new("sdk:completion")
 			local done, admitted, epoch, turn, cancelled, aborted, failure = false, false, nil, nil, false, false, nil
@@ -41,7 +44,7 @@ return function(env)
 			local delivered = false
 			eventCallback = options.onEvent
 			local function notify(fn, value)
-				local ok, why = pcall(fn, value)
+				local ok, why = pcall(fn, util.deepCopy(value))
 				if not ok then log.warn("embedding", "request callback failed", why) end
 			end
 			local function cleanup()
@@ -62,7 +65,8 @@ return function(env)
 				done = true
 				result = { ok = status == "succeeded", status = status, text = tostring(reply or ""),
 					error = why, sessionId = session.id }
-				request.status, request.result = status, result
+				finishedAt = clock.ms()
+				request.status, request.result = status, util.copy(result)
 				cleanup()
 				deliver()
 			end
@@ -70,6 +74,11 @@ return function(env)
 				if type(fn) ~= "function" then return nil, "callback must be a function" end
 				if done then notify(fn, result); return function() end end
 				return completion:connect(function(value) notify(fn, value) end)
+			end
+			function request.snapshot()
+				return { status = done and result.status or "running", sessionId = session.id,
+					startedAt = startedAt, finishedAt = finishedAt, elapsedMs = math.max(0, (finishedAt or clock.ms()) - startedAt),
+					result = result and util.copy(result) or nil }
 			end
 			function request.cancel()
 				if done or cancelled then return false end
@@ -89,7 +98,7 @@ return function(env)
 					if deadline and clock.ms() >= deadline then return nil, "timeout" end
 					clock.wait(0.03)
 				end
-				return result
+				return util.copy(result)
 			end
 			if options.onComplete then request.onComplete(options.onComplete) end
 			pending[session] = request

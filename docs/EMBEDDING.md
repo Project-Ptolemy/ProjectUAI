@@ -2,8 +2,8 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.0.0** in **Project UAI 3.7.2 (October 29, 2026)**,
-alongside **UI LIB 1.4.0**. SDK metadata is exposed through `uai.sdk`; UI LIB
+documents **embedding SDK 1.1.0** in the **Project UAI 3.8.0 release candidate**,
+alongside **UI LIB 1.6.0** in the October 31 working tree. SDK metadata is exposed through `uai.sdk`; UI LIB
 remains a separate bundle with its own version and lifetime.
 
 The 3.7.2 client initially requires password setup or the explicit **Continue
@@ -21,6 +21,11 @@ working code. Use [the UI library reference](UI_LIBRARY.md) for every control,
 window option, configuration method, and cleanup method. This document explains
 how those pieces fit into an application, including the runtime APIs that the
 standalone UI library does not provide.
+
+New clients do not provision a provider. Show `uai.show("providers")` to let the
+user choose one before submitting work. Project UAI Free is an optional preset;
+personal HCNSEC is separate. The SDK example offers `configureProvider()` and
+the workbench reflects setup/provider changes without discarding its draft.
 
 - [Choose an integration](#choose-an-integration)
 - [Hosts and prerequisites](#hosts-and-prerequisites)
@@ -527,11 +532,16 @@ end
 | `cancel()` | Requests cooperative Stop for this request; cannot stop a later turn |
 | `onComplete(callback)` | Returns an unsubscribe function or `nil, reason` for an invalid callback; settled requests deliver their result immediately |
 | `await(timeoutSeconds?)` | Waits for a result; returns `nil, reason` on timeout or invalid timeout input |
+| `snapshot()` | Returns detached status, session ID, start/end timestamps, elapsed milliseconds and a detached result when settled |
 
 Options are `onEvent`, `onComplete`, `files`, and `images`. Callbacks are protected
 so host exceptions cannot break runtime settlement. `onEvent` receives this
 request's session events while subscribed; use it for progress and presentation,
 and use `onComplete` for the final outcome.
+Events and completion results are copied for each callback. `await` and
+`snapshot` also return detached values; changing a host's copy cannot alter
+another observer or the request's retained outcome. Use `snapshot()` to poll
+progress without waiting or subscribing.
 Callbacks can run before `sdk.request` returns; use their arguments instead of
 assuming the variable receiving the returned handle has already been assigned.
 `files` and `images` use the same
@@ -1192,7 +1202,7 @@ protocol or supply an iframe/widget SDK.
 ### SDK scopes
 
 `uai.sdk.createScope(id)` returns `scope` or `nil, reason`. Supply a stable,
-nonblank integration name of at most 128 bytes. A duplicate live ID is
+nonblank UTF-8 integration name of at most 128 bytes without control characters. A duplicate live ID is
 rejected; it never destroys another integration. Destroy the old scope explicitly
 before reusing its ID. Scopes use dot calls and expose `id` and `alive`.
 
@@ -1202,6 +1212,8 @@ before reusing its ID. Scopes use dot calls and expose `id` and `alive`.
 | `connect(signal, callback)` | Owns a UAI/Roblox connection; returns unsubscribe or `nil, reason` |
 | `hook(kind, callback, options?)` | Registers and owns a hook; returns unsubscribe or `nil, reason` |
 | `registerTool(definition)` | Returns `true, unregister` or `false, reason`; owns the exact registered definition |
+| `delay(seconds, callback, ...)` | Schedules one callback with its arguments and returns an idempotent cancellation function, or `nil, reason` |
+| `resourceCount()` | Counts pending timers, subscriptions, tools, hooks and cleanup functions still owned by the scope |
 | `destroy()` | Releases owned resources once and returns the number released |
 
 `give` accepts cleanup functions; it is not UI LIB's broader `window:Give`
@@ -1214,6 +1226,12 @@ Giving a cleanup function to a closed scope executes it immediately and returns
 `nil, reason`, preventing a resource from leaking during teardown. Other
 registrations on a closed scope fail without installing anything.
 
+`delay` accepts a finite nonnegative duration. Firing or cancelling removes the
+timer from the scope. Destroying the scope cancels pending callbacks; a callback
+that has already started remains cooperative. Timer exceptions are logged and
+contained. Host tool schemas are bounded to 256 KiB, 8,192 entries and depth 32;
+composed schemas and numeric ranges are validated before registration.
+
 The client destroys live scopes on unload. Scope destruction does not remove
 conversations or unload the shared client. To own an active request, register
 `scope.give(function() request.cancel() end)`. To own a view, connect its lifetime
@@ -1221,7 +1239,7 @@ as shown below. Keep domain policy/tool scopes separate from views that users ca
 close while the host keeps working.
 
 Feature discovery uses `uai.sdk.features`: `passwordGate`, `resourceScopes`,
-`requests`, and `sessionLookup` are true in this client; `uiFreeBoot` is false.
+`requests`, `sessionLookup`, `requestSnapshots`, and `scheduledScopes` are true in this client; `uiFreeBoot` is false.
 Unknown or missing keys should be treated as unavailable. These keys describe API support, not executor
 permissions, network reachability, or a provider's ability to call tools.
 

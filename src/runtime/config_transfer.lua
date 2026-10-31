@@ -197,6 +197,26 @@ return function(env)
 			seen[record.id] = true
 		end
 		if p.active ~= "" and not seen[p.active] then return nil, "The active provider is not in the provider list" end
+		local modelId = env.require("runtime/model_id")
+		for _, key in ipairs({ "modelFavorites", "recentModels" }) do
+			local buckets = merged.ui[key]
+			ok, err = object(buckets, "config.ui." .. key); if not ok then return nil, err end
+			if util.count(buckets) > 256 then return nil, "Too many provider model preference lists" end
+			for providerId, values in pairs(buckets) do
+				if not seen[providerId] then return nil, "Model preferences name a provider absent from the import" end
+				if key == "modelFavorites" then
+					ok, err = object(values, "config.ui.modelFavorites.provider"); if not ok then return nil, err end
+					if util.count(values) > 100 then return nil, "Use at most 100 favorite models per provider" end
+					for id, enabled in pairs(values) do
+						if modelId.parse(id) ~= id or enabled ~= true then return nil, "Favorite models require valid exact IDs mapped to true" end
+					end
+				else
+					if not util.isArray(values) or #values > 12 then return nil, "Recent models require a list of at most 12 model IDs" end
+					local unique = {}
+					for _, id in ipairs(values) do if modelId.parse(id) ~= id or unique[id] then return nil, "Recent models require unique valid IDs" end; unique[id] = true end
+				end
+			end
+		end
 
 		local maps = {
 			{ "agent.forceReasoning", { boolean = true } },
@@ -217,6 +237,7 @@ return function(env)
 			end
 		end
 		local enums = {
+			["agent.toolProfile"] = { focused = true, all = true, lean = true, inspect = true, build = true, ui = true, integrate = true, chat = true },
 			["bridge.runtime"] = { game = true, web = true },
 			["relay.mode"] = { auto = true, always = true, off = true },
 			["permissions.mode"] = { readonly = true, ask = true, auto = true, full = true },

@@ -48,7 +48,7 @@ return function(env)
 			local key = keep(data, text, group)
 			local reader = readers[group or "coding"]
 			local summary = { resultId = key, readTool = key and reader, expiresInSeconds = 300 }
-			for _, field in ipairs({ "status", "ok", "sessionId", "revision", "documentId", "batchId", "patchId", "snapshotId", "nextCursor", "nextOffset", "changedCount", "omittedOutcomes", "retained", "monitored", "ruleCount" }) do if data[field] ~= nil then summary[field] = data[field] end end
+			for _, field in ipairs({ "status", "ok", "sessionId", "revision", "documentId", "batchId", "patchId", "snapshotId", "nextCursor", "nextOffset", "changedCount", "omittedOutcomes", "retained", "monitored", "ruleCount", "compilerAvailable", "compiledModules", "errors", "warnings", "passed", "failed", "total", "complete", "cancelled", "assertions" }) do if data[field] ~= nil then summary[field] = data[field] end end
 			if not key then summary.detailsUnavailable = "Result exceeded retained-detail budget; inspect the affected object or batch directly" end
 			return { ok = data.ok ~= false, text = util.ellipsis(text, 1200) .. (key and "\nDetailed fields were retained." or "\nDetails exceeded retention; inspect the affected object or operation directly."), data = summary }
 		end

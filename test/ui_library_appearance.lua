@@ -20,7 +20,7 @@ local second = window:Tab("Tools")
 check("every window supplies Appearance and keeps consumer tabs first", appearanceTab.Id == "__uai_appearance_tab"
 	and appearanceTab.Title == "Appearance" and window.Tabs[1] == first and window.Tabs[2] == second
 	and window.Tabs[#window.Tabs] == appearanceTab and window._activeTab == first and #defaultWindow.Tabs == 1)
-check("default window corners are restrained", defaultWindow:GetAppearance().CornerRadius == 10)
+check("default window corners are restrained", defaultWindow:GetAppearance().CornerRadius == 8)
 local function builtin(id) return assert(window:Get("__uai_appearance_" .. id), "missing appearance control " .. id) end
 local function node(name, parent) return assert(h.byName(name, parent or window.ScreenGui), "missing " .. name) end
 check("personalization values are reflected at creation", builtin("theme"):Get() == "Dark" and sameColor(builtin("accent"):Get(), accent)
@@ -159,6 +159,12 @@ local remaining = defaultWindow:Tab("After settings")
 check("destroyed settings do not reappear when adding tabs", #defaultWindow.Tabs == 1 and defaultWindow.Tabs[1] == remaining and remaining.Alive)
 check("internal Ids remain reserved after settings are destroyed", not pcall(function() defaultWindow:Tab({ Id = "__uai_appearance_tab" }) end)
 	and not pcall(function() remaining:Section("Reserved"):Toggle({ Id = "__uai_appearance_custom" }) end))
+local beforeReset = window:GetAppearance()
+local values = window:GetValues()
+local containsAppearance = false
+for id in pairs(values) do if id:sub(1, 17) == "__uai_appearance_" then containsAppearance = true end end
+check("application snapshots omit automatic appearance controls", not containsAppearance and values.enabled ~= nil)
+check("resetting application values retains appearance preferences", window:ResetValues() and window:GetAppearance().CornerRadius == beforeReset.CornerRadius and window:GetTheme() == beforeReset.Theme)
 window:Destroy(); defaultWindow:Destroy(); h.settle(0.3)
 check("built-in personalization releases ownership and causes no host errors", window._appearanceTab == nil and window._appearanceSync == nil
 	and next(window._paint) == nil and #h.errors() == 0 and #h.instanceState.typeErrors == 0)

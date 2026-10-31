@@ -9,7 +9,7 @@ requests and teardown.
 
 Read [Embedding Project UAI](../../docs/EMBEDDING.md) for the runtime reference and
 [UI_LIBRARY.md](../../docs/UI_LIBRARY.md) for the UI API. The example targets
-Project UAI 3.7.2 with embedding SDK 1.0.0 and UI LIB 1.4.0.
+Project UAI 3.7.2 with embedding SDK 1.0.0 and UI LIB 1.5.0.
 
 ## SDK example
 
@@ -32,7 +32,10 @@ selection unchanged. A reused client preserves its boot context, UI mount state,
 providers, and permissions. An enabled vault asks for its password each time;
 the explicit **Continue without encryption** choice saves reversibly encoded,
 unprotected keys and skips future prompts. After access is granted,
-`integration.client.show("providers")` opens the native app for provider setup.
+`integration.configureProvider()` opens the native app for provider setup. New
+clients start with no provider; optional Project UAI Free and personal-key HCNSEC
+are distinct library choices. `ask` returns a setup reason before starting a request
+when no provider is configured.
 The SDK can also save user-supplied provider
 settings through the [provider API](../../docs/EMBEDDING.md#provider-api).
 
@@ -169,7 +172,7 @@ game code, modify the server, or write its settings to a file.
 | `model.update(patch)` | Returns `true, snapshot` or `false, reason`; validates before applying |
 | `model.subscribe(callback)` | Delivers applied snapshots; returns an unsubscribe function |
 
-Title must contain 1–80 bytes and non-whitespace text. `enabled` must be boolean.
+Title must contain 1–80 bytes of valid, single-line UTF-8 and non-whitespace text. `enabled` must be boolean.
 `batchSize` must be an integer from 1 to 20. Unknown fields are rejected. Omitted
 fields keep their previous values. Validation lives in the model so both manual
 UI actions and tool handlers use the same boundary.
@@ -180,8 +183,8 @@ UI actions and tool handlers use the same boundary.
 | `workbench_configure` | `workbench` / write | Applies a validated patch through the model |
 
 `workbench_configure` checks cancellation before applying. A model-generated
-write goes through UAI's normal dispatcher and permission system. In the default
-Ask first mode, the agent's write needs approval. Manual Apply is a user action
+write goes through UAI's normal dispatcher and permission system. New installs
+default to Allow everything; choose Ask first to review the agent's write. Manual Apply is a user action
 that calls the model directly; the domain validation still runs.
 
 The installer stores its model in `uai.env.context.workbenchExample`. This is an
@@ -195,19 +198,20 @@ dependent views before replacing the model so they can bind the replacement.
 
 ## Drafts, events, and rendering
 
-The prompt publishes valid edits live and is bounded to 8,000 bytes. Send reads
-the draft, checks session acceptance, and clears it only if accepted and still
+The prompt publishes valid edits live and is bounded to 8,000 bytes. Send validates
+and commits the current draft, checks session acceptance, and clears it only if accepted and still
 unchanged. A rejected send leaves the draft available. Provider failures after
 acceptance are reported in the latest-response view.
 
 The panel subscribes to its session before replaying retained state. It displays
 one latest response, bounded to 6,000 bytes with UTF-8-aware truncation, plus
-transient previews. It coalesces event-driven paints into at most one pending
-60 ms delayed task. It does not build a second full chat transcript or append
+transient previews. UI LIB's owned `Delay` keeps at most one pending 60 ms paint;
+continuous preview events cannot postpone it. It does not build a second full chat transcript or append
 one GUI row per token. **Open UAI** shows the retained native history.
 
 Ready/turn-end events may precede busy release. The panel also observes
-`sessions.listChanged`, and its completion callback refreshes admission state.
+`sessions.listChanged`, provider and configuration changes, and its completion callback refreshes admission state.
+Setup and a missing provider are visible states; Send remains disabled until ready.
 Stop is cooperative and does not immediately free a busy session.
 
 Workbench fields are drafts. A tool/model update refreshes **Applied state**
@@ -228,7 +232,7 @@ destroys only that view. The conversation remains in UAI, including any accepted
 turn. Unloading the supplied client closes the dependent window, clears the
 model's subscriptions, and makes model writes fail.
 The view uses a separate SDK scope for client-unload cleanup. Its subscriptions
-and paint task stay in `window:Give`, while the model's tools outlive that view.
+use `window:Give` and the library owns its paint task, while the model's tools outlive that view.
 
 ```lua
 integration.window:Destroy() -- Close this view.

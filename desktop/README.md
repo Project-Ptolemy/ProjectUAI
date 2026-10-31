@@ -6,12 +6,14 @@ The desktop project uses the existing server in `--desktop` mode on
 **127.0.0.1:28791**.
 Manual terminal startup keeps port 8790 and its existing token workflow.
 
-Download and open [UAI-Bridge-3.7.0-win-x64.exe](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v3.7.0/UAI-Bridge-3.7.0-win-x64.exe), then click
+Download [UAI Bridge 3.8.0 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v3.8.0/UAI-Bridge-3.8.0-win-x64.exe).
+Checksums and release notes are on the [3.8.0 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v3.8.0).
+Open the executable, then click
 **Start Cowork** on **Workspace**. It detects Node.js 18+ on your computer. If
 none is available, choose **Get Node.js** or **Manual setup** in the Workspace
 runtime card, then **Check again**.
 
-Desktop 3.7.0 uses native WPF with a redesigned, responsive interface, its own
+Desktop 3.8.0 uses native WPF with a responsive interface, its own
 title bar with custom window controls, keyboard navigation, and accessible controls. The sidebar
 becomes horizontal navigation on smaller windows, and page content scrolls so
 actions remain reachable. Five pages organize the app:
@@ -36,6 +38,14 @@ does not embed chat. A second launch brings the existing window forward,
 including requests made during startup. The first launch also recovers an
 unowned mutex left by a previous instance.
 
+Use **Ctrl+1** through **Ctrl+5** to switch desktop pages from Workspace through
+Tunnels. Page changes start at the heading; live refresh preserves your reading
+position. See [keyboard controls](KEYBOARD.md).
+
+OpenCode, Cline and Kilo status comes from the current bridge reply. Missing,
+unsupported or malformed capabilities clear a previous Ready badge. A temporary
+disconnect cannot retain an old OpenCode version or ready state.
+
 The app downloads the current Windows x64 LTS executable from nodejs.org, checks
 its official SHA-256, and installs it for your account without administrator
 access.
@@ -45,6 +55,10 @@ client and license notices. It verifies and prepares its embedded files in a
 private user cache automatically. There is no ZIP to extract or supporting
 folder to keep beside the executable. Node.js is installed separately through
 the app or detected on your computer. Roblox and the UAI script must remain running.
+
+Obsidian vault support is part of the embedded bridge and Cowork assets. Configure
+an explicit local vault in Cowork; note access uses that vault's configured root.
+See [Obsidian setup](../docs/OBSIDIAN.md) for read-only access and reviewed edits.
 
 ## Optional OpenCode native workaround
 
@@ -70,9 +84,10 @@ OpenCode Go subscriptions use `https://opencode.ai/inference/go/v1` and your Go 
 key directly. They do not use this native free-model route. That mobile relay
 requirement applies to OpenCode free models, not Go subscriptions.
 
-Project UAI Free is available by default when no provider is configured. Thank you
-for your continued use and support. Join [our Discord](https://discord.gg/9xYyyYuKap)
-for help, availability updates and news about more free providers.
+Add optional **Project UAI Free** from the Roblox client's Providers library and
+save to use community access. A fresh client starts without a provider. Personal
+HCNSEC keys use the separate HCNSEC preset. See the
+[provider guides](../docs/providers/README.md).
 
 The window reports bridge startup separately from Roblox connection. Minimize
 keeps Cowork in the taskbar. Closing the window stops the owned bridge and its
@@ -160,7 +175,8 @@ active work and retained receipts/pictures are idle. An automatic worker restart
 keeps the same pairing token. The browser reconnects to the updated bridge.
 Refresh an open browser page to load changed web assets. **Copy client script**
 on **Workspace** copies the client embedded in the desktop executable. Desktop
-3.7.0 aligns the embedded bridge, browser and client with the companion release.
+3.8.0 includes the reviewed client and bridge, including local Obsidian vault
+support. The Android companion remains on its separate existing release.
 
 **Tunnels > Kilo tunnel** enables anonymous Kilo quota recovery by default.
 After an explicit quota refusal, the bridge starts a private Tor helper and
@@ -192,7 +208,8 @@ across desktop updates. A candidate that failed to start is not retried by
 automatic checks; choose **Check for updates** manually to retry that candidate.
 Failed network or integrity checks leave the current app usable.
 
-Desktop 1.0 has no updater, so its users need one manual download of 3.7.0 first.
+Desktop 1.0 has no updater, so its users need one manual download of a current
+desktop executable first.
 For each future release, publish `desktop-release.json`,
 `UAI-Bridge-<version>-win-x64.exe`, and its adjacent `.sha256` on the same official
 `v<version>` or `desktop-v<version>` GitHub release. The manifest includes the

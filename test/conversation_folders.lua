@@ -70,7 +70,7 @@ for _, viewport in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 80
 	h = envMock.new()
 	h.services.UserInputService.TouchEnabled, h.services.UserInputService.MouseEnabled = mobile, not mobile
 	h.setViewport(viewport[1], viewport[2])
-	uai = assert(h.boot()); h.settle(0.5)
+	uai = assert(h.boot()); require("password_fixture")(h, uai); h.settle(0.5)
 	uai.app.show("chat")
 	local original = uai.sessions.current()
 	uai.app.chatPanel.composer.field.set("Keep my original draft")

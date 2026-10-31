@@ -18,6 +18,11 @@ return function(env)
 	local C = env.require("ui/controls")
 
 	local R = {}
+	local function identify(row, path, label)
+		if path then row:SetAttribute("UAISettingPath", path) end
+		if label then row:SetAttribute("UAISettingLabel", label) end
+		return row
+	end
 
 	-- A heading with an optional description, followed by the card its rows go in.
 	--
@@ -75,6 +80,7 @@ return function(env)
 		local text = P.column(row, {
 			size = UDim2.new(0, 0, 0, 0), auto = "Y", flex = "Fill", gap = theme.space.xxs, layoutOrder = 1,
 		})
+		identify(row, props.path, props.label)
 		P.text(text, { text = props.label, role = "label", wrap = true, auto = "Y" })
 		if props.hint then
 			P.text(text, {
@@ -123,6 +129,7 @@ return function(env)
 			return (step and step < 1) and string.format("%.2f", number) or formatCount(number)
 		end
 		local column = P.column(parent, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xxs })
+		identify(column, path, label)
 		local head = P.row(column, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs })
 		P.text(head, {
 			text = label,
@@ -183,6 +190,7 @@ return function(env)
 		for position = 1, #values do stops[position] = position end
 
 		local column = P.column(parent, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xxs })
+		identify(column, path, label)
 		local head = P.row(column, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs })
 		P.text(head, {
 			text = label,
@@ -260,6 +268,7 @@ return function(env)
 			gap = theme.space.hair,
 			layoutOrder = 1,
 		})
+		identify(row, props.path, props.label)
 		P.text(left, {
 			text = props.label,
 			role = "bodyStrong",
@@ -307,6 +316,7 @@ return function(env)
 		local width = C.segmentedWidth(props.options)
 		local slot = R.setting(parent, {
 			name = props.name,
+			path = props.path,
 			label = props.label,
 			hint = props.hint,
 			width = width,
@@ -345,6 +355,7 @@ return function(env)
 
 		local slot = R.setting(parent, {
 			name = props.name,
+			path = props.path,
 			label = props.label,
 			hint = props.hint,
 			width = props.width or theme.size.menu,
@@ -408,6 +419,7 @@ return function(env)
 		if props.label then
 			P.text(group, { text = props.label, role = "small", wrap = true, auto = "Y", layoutOrder = 1 })
 		end
+		identify(group, props.path, props.label)
 		return group
 	end
 

@@ -23,6 +23,8 @@ return function(env)
 		},
 		{
 			name = "chat_history", risk = "read", description = "Read recent in-game chat in chronological pages. Continue backward with nextBeforeSequence and identical filters. History retains 100 messages; older evicted messages are unavailable.",
+			examples = { { title = "Read the latest chat", arguments = { limit = 10 },
+				note = "Continue older pages with the returned nextBeforeSequence; do not guess a cursor." } },
 			parameters = { type = "object", properties = {
 				limit = { type = "integer", minimum = 1, maximum = 50 },
 				sender = { type = "string", description = "Case-insensitive sender substring." },

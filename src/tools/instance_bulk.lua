@@ -124,6 +124,8 @@ return function(env)
 	return {
 		{
 			name = "instance_query", risk = "read",
+			examples = { { title = "Read matching parts together", arguments = { root = "Workspace", class = "BasePart", name = "Door", properties = { "Position", "CanCollide" }, limit = 10 },
+				note = "Replace the name/root with the target from the request; returned identities are reused for edits." } },
 			description = "Find instances and read selected properties/attributes in one call. Name is a case-insensitive substring; class uses IsA. Stops as soon as a page fills, without collecting the entire subtree. Search is capped at 20,000 nodes.",
 			parameters = { type = "object", properties = {
 				root = { type = "string", description = "Default Workspace." },

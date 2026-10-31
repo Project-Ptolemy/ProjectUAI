@@ -18,6 +18,13 @@
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>
+    <Window.InputBindings>
+        <KeyBinding Key="D1" Modifiers="Control" Command="{Binding NavigateCommand}" CommandParameter="0" />
+        <KeyBinding Key="D2" Modifiers="Control" Command="{Binding NavigateCommand}" CommandParameter="1" />
+        <KeyBinding Key="D3" Modifiers="Control" Command="{Binding NavigateCommand}" CommandParameter="2" />
+        <KeyBinding Key="D4" Modifiers="Control" Command="{Binding NavigateCommand}" CommandParameter="3" />
+        <KeyBinding Key="D5" Modifiers="Control" Command="{Binding NavigateCommand}" CommandParameter="4" />
+    </Window.InputBindings>
     <Grid Background="{DynamicResource CanvasBrush}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />

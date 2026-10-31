@@ -745,6 +745,7 @@ return function(env)
 				if tool.risk == "read" then readTools[tool.name] = true end
 			end
 		end
+		readTools = env.require("agent/delegation_scope").intersect(readTools, parent, opts.requestToolNames)
 		local child = session.create({
 			title = "subagent",
 			depth = depth,
@@ -839,6 +840,7 @@ return function(env)
 			record.depth, record.session.depth = depth, depth
 		end
 		record.parent = parent
+		record.session.toolFilter = env.require("agent/delegation_scope").intersect(record.session.toolFilter, parent, opts.requestToolNames)
 		record.parentId, record.parentTitle = parent and parent.id or nil, parent and parent.title or nil
 		record.callId = opts.callId
 		prepareRun(record, text, background)

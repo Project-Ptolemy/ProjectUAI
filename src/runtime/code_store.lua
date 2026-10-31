@@ -11,7 +11,7 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local M = { changed = signal.new("code"), storageChanged = signal.new("code-storage"),
 		storage = { state = "unloaded" }, workspace = { destination = "Editor" }, initialized = false }
-	local state, views, undo, redo, typing = nil, {}, {}, {}, {}
+	local state, views, undo, redo, typing, closedViews = nil, {}, {}, {}, {}, {}
 	local dirty, saving, scheduled, disposed, blocked = false, false, false, false, nil
 	local serial, mutation = 0, 0
 	local slots = { "code/workspace.json", "code/workspace.backup.json" }
@@ -215,9 +215,39 @@ return function(env)
 	function M.close(ref)
 		local doc, why = M.resolve(ref); if not doc then return nil, why end
 		env.require("runtime/script_sources").release(doc)
-		for i = #state.openIds, 1, -1 do if state.openIds[i] == doc.id then table.remove(state.openIds, i) end end
+		local wasOpen = false
+		for i = #state.openIds, 1, -1 do if state.openIds[i] == doc.id then table.remove(state.openIds, i); wasOpen = true end end
+		if wasOpen then
+			for i = #closedViews, 1, -1 do if closedViews[i] == doc.id then table.remove(closedViews, i) end end
+			closedViews[#closedViews + 1] = doc.id
+			while #closedViews > limits.closedViews do table.remove(closedViews, 1) end
+		end
 		if state.activeId == doc.id then state.activeId = state.openIds[#state.openIds] end
 		typing[doc.id] = nil; changed("close", doc, "user"); return true
+	end
+	function M.reopen()
+		M.init()
+		while #closedViews > 0 do
+			local key = table.remove(closedViews)
+			local doc = M.resolve(key)
+			if doc then
+				local previousSource = M.workspace.sourceId; M.workspace.sourceId = nil
+				local opened, why = M.select(key)
+				if not opened then
+					closedViews[#closedViews + 1] = key
+					if M.workspace.sourceId == nil then M.workspace.sourceId = previousSource end
+					return nil, why
+				end
+				return opened
+			end
+		end
+		return nil, "No recently closed script to reopen"
+	end
+	function M.cycle(direction)
+		M.init(); if #state.openIds == 0 then return nil, "Open a script first" end
+		local index = 1; for i, key in ipairs(state.openIds) do if key == state.activeId then index = i; break end end
+		M.workspace.sourceId = nil
+		return M.select(state.openIds[(index - 1 + (direction == -1 and -1 or 1)) % #state.openIds + 1])
 	end
 	function M.create(name, source, options)
 		M.init(); options = options or {}; source = source or ""

@@ -32,6 +32,9 @@ return function(uai)
 		if type(title) ~= "string" or #title < 1 or #title > 80 or not title:find("%S") then
 			return false, "Title must contain 1-80 bytes and some non-whitespace text"
 		end
+		if title:find("[%z\1-\31\127]") or not uai.env.require("runtime/util").validUtf8(title) then
+			return false, "Title must be one line of valid UTF-8 text"
+		end
 		if type(enabled) ~= "boolean" then return false, "Enabled must be a boolean" end
 		if type(batch) ~= "number" or batch ~= batch or batch < 1 or batch > 20 or batch % 1 ~= 0 then
 			return false, "Batch size must be an integer from 1 to 20"

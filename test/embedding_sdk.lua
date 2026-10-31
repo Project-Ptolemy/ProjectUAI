@@ -30,7 +30,8 @@ record.label, record.baseUrl, record.apiKey = "SDK fixture", "https://sdk.test/v
 record.model, record.models, record.stream = "fixture-model", { "fixture-model" }, false
 assert(uai.providers.save(record))
 assert(uai.providers.setActive(record.id))
-check("SDK identifies supported public capabilities", sdk.version == "1.0.0" and sdk.features.requests and sdk.features.resourceScopes
+check("SDK identifies supported public capabilities", sdk.version == "1.1.0" and sdk.features.requests and sdk.features.resourceScopes
+	and sdk.features.requestSnapshots and sdk.features.scheduledScopes
 	and sdk.features.uiFreeBoot == false and sdk.features.passwordGate == true)
 local selected = sessions.current()
 local session, created = sessions.open("sdk-conversation", { title = "SDK", ephemeral = true })
@@ -50,7 +51,7 @@ local initialListeners, initialDisposals = session.events:count(), uai.env.requi
 local completions, firstEvent = 0, nil
 local request = assert(sdk.request(session, "hello", {
 	onEvent = function(event) firstEvent = firstEvent or event.kind end,
-	onComplete = function(result) completions = completions + 1; assert(result.ok) end,
+	onComplete = function(result) completions = completions + 1; assert(result.ok); result.text = "host-local mutation" end,
 }))
 local result = assert(request.await(5))
 check("request returns final text and a successful terminal result: " .. tostring(result.error or result.text),
@@ -58,8 +59,10 @@ check("request returns final text and a successful terminal result: " .. tostrin
 check("observation includes the first event and completion releases busy", firstEvent == "user" and completions == 1 and not session.busy)
 check("ephemeral constructor prevents conversation persistence", h.files["UAI/sessions/" .. session.id .. ".json"] == nil)
 check("completed requests release event and lifetime subscriptions", session.events:count() == initialListeners and uai.env.require("runtime/dispose").count() == initialDisposals)
-request.onComplete(function(value) if value == result then completions = completions + 1 end end)
+request.onComplete(function(value) if value ~= result and value.text == result.text then completions = completions + 1 end end)
 check("late completion subscription receives retained outcome once", completions == 2 and request.cancel() == false)
+request.result.text, result.text = "changed public field", "changed awaited copy"
+check("host mutation cannot corrupt the retained outcome", request.snapshot().result.text == "Fixture answer" and request.await(0).text == "Fixture answer")
 local rejectedCallbacks = 0
 check("empty send returns rejection without calling completion", sdk.request(session, " ", { onComplete = function() rejectedCallbacks = rejectedCallbacks + 1 end }) == nil and rejectedCallbacks == 0)
 check("invalid callbacks and unknown options fail before dispatch", sdk.request(session, "x", { onComplete = true }) == nil and sdk.request(session, "x", { typo = true }) == nil)
@@ -78,6 +81,8 @@ delay = 1
 local slow = assert(sdk.request(session, "slow", { onEvent = function() error("host callback fixture") end }))
 local waited, timeout = slow.await(0.05)
 check("wait timeout keeps the request running", waited == nil and timeout == "timeout" and slow.status == "running" and session.busy)
+local progress = slow.snapshot()
+check("running snapshots expose elapsed time without inventing a result", progress.status == "running" and progress.elapsedMs >= 0 and progress.result == nil and progress.finishedAt == nil)
 check("busy SDK request cannot steal another turn", sdk.request(session, "conflict") == nil)
 local removedListener = false
 local detach = assert(slow.onComplete(function() removedListener = true end)); detach()
@@ -96,8 +101,7 @@ local crash = assert(sdk.request(session, "crash"))
 check("internal loop failure is not mistaken for cancellation", crash.await(5).status == "failed")
 uai.env.require("agent/loop").run = originalRun
 local previousRecords = uai.env.require("runtime/util").deepCopy(uai.config.get("providers"))
--- Replacing the whole provider section intentionally provisions Free. Explicit
--- list removal exercises a real empty chain without triggering that reset path.
+-- Explicit list removal exercises the no-provider admission path.
 uai.config.set("providers.list", {})
 local unavailable = assert(sdk.request(session, "no provider"))
 check("provider failure differs from successful acceptance", unavailable.await(5).status == "failed" and unavailable.result.error ~= nil)

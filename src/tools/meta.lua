@@ -31,6 +31,8 @@ return function(env)
 	return {
 		{
 			name = "game_info",
+			examples = { { title = "Identify the current place", arguments = {},
+				note = "Use the current place identity when choosing an authoring folder or interpreting saved notes." } },
 			risk = "read",
 			description = "Identify the current place: name, IDs, creator, live player counts and uptime. Product metadata is cached for 60 seconds; refresh=true bypasses it.",
 			parameters = { type = "object", properties = { refresh = { type = "boolean" } }, required = {} },

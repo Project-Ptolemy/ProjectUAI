@@ -121,5 +121,6 @@ return function(env)
 	end)
 	actionRun.needs, actionRun.timeout = { "exec" }, function(args) return execution.timeout(args) + 5 end
 	for _, tool in ipairs(env.require("tools/project")) do tools[#tools + 1] = tool end
+	for _, tool in ipairs(env.require("tools/script_workflow")) do tools[#tools + 1] = tool end
 	return tools
 end

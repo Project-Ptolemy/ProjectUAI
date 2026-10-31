@@ -5,7 +5,7 @@ local window = UI:CreateWindow({
 	Title = "Session tools",
 	Subtitle = "A focused workspace for this session",
 })
-local main = window:Tab({ Title = "Main" })
+local main = window:Tab({ Id = "main", Title = "Main" })
 local actions = main:Section({ Title = "Selection" })
 local enabled = actions:Toggle({ Id = "enabled", Text = "Enable processing", Default = true })
 local amount = actions:Slider({ Id = "amount", Text = "Amount", Description = "How many items to include.", Min = 1, Max = 20, Step = 1, Default = 5 })
@@ -18,7 +18,7 @@ local function process()
 	print("Process", amount:Get(), "items")
 	window:Notify({ Title = "Finished", Content = tostring(amount:Get()) .. " items processed.", Kind = "Success" })
 end
-actions:Button({ Text = "Process selection", ActionText = "Run", Style = "Primary", Callback = process })
+actions:Button({ Id = "process", Text = "Process selection", ActionText = "Run", Style = "Primary", Callback = process })
 actions:Keybind({ Id = "process-key", Text = "Process shortcut", Default = Enum.KeyCode.K, Callback = process })
 window:OnDestroy(function()
 	-- Restore temporary application state or release domain resources here.

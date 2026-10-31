@@ -50,6 +50,9 @@ scope.give(function() if activeRequest then activeRequest.cancel() end end)
 local integration = { client = uai, scope = scope, session = session, created = created }
 function integration.ask(text)
 	if not scope.alive then return nil, "The example integration was destroyed" end
+	local accessProblem = uai.config.accessProblem()
+	if accessProblem then return nil, accessProblem end
+	if not uai.providers.active() then return nil, "Choose a provider with integration.configureProvider() before asking." end
 	local request, why = uai.sdk.request(session, text, {
 		onEvent = function(event)
 			if event.kind == "status" then print("SDK: " .. tostring(event.text)) end
@@ -60,6 +63,11 @@ function integration.ask(text)
 	})
 	if request then activeRequest = request end
 	return request, why
+end
+function integration.configureProvider()
+	if not scope.alive then return false end
+	uai.show("providers")
+	return true
 end
 function integration.destroy() return scope.destroy() end
 return integration

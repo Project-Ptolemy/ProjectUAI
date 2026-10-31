@@ -190,10 +190,11 @@ return function(env)
 		local function rebuild()
 			if M.root ~= root or not M.mounted then return end
 			local text, visible = M.field.get(), M.visible
+			local cursor, selection = M.field.instance.CursorPosition, M.field.instance.SelectionStart
 			root:Destroy()
 			M.mount(layer)
 			M.field.set(text)
-			if visible then M.show() end
+			if visible then M.show({ cursor = cursor, selection = selection }) end
 		end
 		local queueRebuild, cancelRebuild = clock.debounce(rebuild, theme.duration("fast"))
 		local stopTheme = dispose.add(theme.changed:connect(queueRebuild), "quick chat theme")
@@ -225,7 +226,7 @@ return function(env)
 			or "No provider configured yet -- open the window and add one."
 	end
 
-	function M.show()
+	function M.show(selection)
 		local vault = config.vaultStatus()
 		if vault.required == true and vault.ready ~= true then return end
 		if not M.mounted or M.visible then return end
@@ -247,7 +248,13 @@ return function(env)
 		local root = M.root
 		local generation = visibilityGeneration
 		clock.delay(theme.duration("fast"), function()
-			if M.visible and M.root == root and visibilityGeneration == generation then M.field.focus() end
+			if M.visible and M.root == root and visibilityGeneration == generation then
+				M.field.focus()
+				if selection then
+					M.field.instance.CursorPosition = selection.cursor
+					M.field.instance.SelectionStart = selection.selection
+				end
+			end
 		end)
 	end
 
@@ -283,7 +290,10 @@ return function(env)
 		if message == "" then return end
 		-- The same session the Chat panel is bound to, so the message and its reply
 		-- land in the transcript rather than in a parallel conversation.
-		local ok, reason = sessions.current().send(message)
+		local session = sessions.current()
+		local ok, reason
+		if session then ok, reason = session.send(message)
+		else reason = "Open the full window to create a conversation." end
 		if ok then
 			M.field.clear()
 			M.hide()

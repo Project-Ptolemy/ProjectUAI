@@ -10,6 +10,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local C = env.require("ui/controls")
 	local overlay = env.require("ui/overlay")
+	local search = env.require("runtime/search")
 	local M = {}
 
 	local function label(entry, index)
@@ -112,8 +113,25 @@ return function(env)
 		local count = P.text(listHeader, { name = "KeyCount", text = "", role = "label",
 			size = UDim2.fromOffset(0, theme.text.label.height), auto = "X", layoutOrder = 1 })
 		P.spacer(listHeader, { grow = true, size = UDim2.fromOffset(0, 1), layoutOrder = 2 })
+		local keyFilter, filterRows, cardRows = "", nil, {}
+		P.field(form, { name = "KeyFilter", placeholder = "Search key names or active / paused...", layoutOrder = 4,
+			onChange = function(text) keyFilter = text; if filterRows then filterRows() end end })
 		local entries = P.column(form, { name = "APIKeyEntries", size = UDim2.new(1, 0, 0, 0),
-			auto = "Y", gap = theme.space.sm, layoutOrder = 4 })
+			auto = "Y", gap = theme.space.sm, layoutOrder = 5 })
+		local noMatch = P.text(form, { name = "NoKeyMatch", text = "No matching key names. Clear the search to see all keys.", role = "small",
+			wrap = true, auto = "Y", color = theme.color.textTertiary, layoutOrder = 5 })
+		noMatch.Visible = false
+		filterRows = function()
+			local matches, visible = search.compile(keyFilter), 0
+			for _, entry in ipairs(cardRows) do
+				entry.card.Visible = matches(entry.name, entry.state) ~= nil
+				if entry.card.Visible then visible = visible + 1 end
+			end
+			local summary = keys.summary(draft)
+			count.Text = (visible < #cardRows and (visible .. " of ") or "") .. util.pluralise(summary.total, "key")
+				.. (summary.active < summary.total and (" / " .. summary.active .. " active") or "")
+			noMatch.Visible = #cardRows > 0 and visible == 0
+		end
 		local usageNodes = {}
 		local function refreshUsage()
 			if modal.closed then return end
@@ -149,9 +167,9 @@ return function(env)
 				end)
 			end })
 		P.text(form, { name = "KeyDraftHint", text = props.applyHint or "Apply changes returns these keys to provider setup. Save the provider to use them with the storage preference shown above.",
-			role = "caption", color = theme.color.textTertiary, wrap = true, auto = "Y", layoutOrder = 5 })
-		P.text(form, { name = "KeyUsageHint", text = "Usage is recorded on this device from this update. Requests include retries; estimated tokens are marked.",
 			role = "caption", color = theme.color.textTertiary, wrap = true, auto = "Y", layoutOrder = 6 })
+		P.text(form, { name = "KeyUsageHint", text = "Usage is recorded on this device from this update. Requests include retries; estimated tokens are marked.",
+			role = "caption", color = theme.color.textTertiary, wrap = true, auto = "Y", layoutOrder = 7 })
 		refresh = function()
 			if modal.closed then return end
 			local pool, mode, selected = keys.entries(draft), keys.mode(draft), keys.selected(draft)
@@ -168,7 +186,7 @@ return function(env)
 				modeHelp.Text = #pool > 0 and active == 0 and "All keys are paused. Resume a key to send requests."
 					or "New requests take turns using active keys. Paused keys stay in this pool until you resume or remove them."
 			end
-			usageNodes = {}
+			usageNodes, cardRows = {}, {}
 			for _, child in ipairs(entries:GetChildren()) do
 				if child:IsA("GuiObject") then child:Destroy() end
 			end
@@ -184,6 +202,7 @@ return function(env)
 				local card = P.card(entries, { name = "APIKey_" .. slot, padding = theme.space.md, gap = theme.space.sm,
 					bg = chosen and theme.color.accentSurface or theme.color.surfaceRaised,
 					strokeColor = chosen and theme.color.accent or theme.color.borderSubtle, layoutOrder = slot })
+				cardRows[#cardRows + 1] = { card = card, name = label(entry, slot), state = paused and "paused" or "active" }
 				local head = P.row(card, { size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.sm, layoutOrder = 1 })
 				local identity = P.column(head, { size = UDim2.new(0, 0, 0, 0), auto = "Y", flex = "Fill",
 					gap = theme.space.xxs, layoutOrder = 1 })
@@ -252,6 +271,7 @@ return function(env)
 					end })
 			end
 			refreshUsage()
+			filterRows()
 		end
 		P.button(modal.footer, { name = "CancelKeys", text = "Cancel", variant = "ghost", size = "sm", layoutOrder = 1,
 			onClick = function() modal.close() end })

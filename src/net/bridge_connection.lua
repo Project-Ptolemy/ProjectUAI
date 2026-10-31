@@ -75,8 +75,10 @@ return function(env)
 
 	function M.resume()
 		if config.accessProblem() then return end
-		paused, nextProbe = false, 0
+		local changed = paused
+		paused, nextProbe, epoch = false, 0, epoch + 1
 		M.startDiscovery()
+		if changed then M.changed:fire() end
 	end
 
 	dispose.add(config.changed:connect(function(path)

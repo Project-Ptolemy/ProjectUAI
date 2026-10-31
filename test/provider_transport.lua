@@ -174,16 +174,30 @@ case("unavailable and failed setup sockets fall back before dispatch", function(
 	end
 end)
 
-case("connection deadline falls back and a late connection is closed without sending", function()
+case("an exhausted connection deadline prevents fallback and closes a late socket", function()
 	local f = fixture(); local caps = f.env.require("runtime/caps")
 	caps.fn.websocket = function() f.h.sched.wait(2); return f.socket() end
-	local result = f.complete(nil, { messages = { { role = "user", content = "hi" } }, stream = true, timeout = 1 }, 1.3)
-	check("deadline before send permits one fallback", result and result.content == "HTTP fallback" and f.h.http.requestCount == 1)
+	local result, why = f.complete(nil, { messages = { { role = "user", content = "hi" } }, stream = true, timeout = 1 }, 1.3)
+	check("exhausted setup cannot grant HTTP a fresh budget", not result and has(why, "deadline") and f.h.http.requestCount == 0)
 	check("pending connector is still counted", f.env.require("net/ws").state().workers == 1)
 	f.h.sched.advance(1)
 	check("late socket never dispatches", #f.sockets == 1 and f.sockets[1].sends == 0)
 	check("late worker releases slot", f.env.require("net/ws").state().workers == 0)
 	f.cleaned(); f.close()
+end)
+
+case("an early socket setup failure leaves only the original HTTP remainder", function()
+	for _, responseDelay in ipairs({ 0.1, 0.6 }) do
+		local f = fixture(); local caps = f.env.require("runtime/caps")
+		caps.fn.websocket = function() f.h.sched.wait(0.6); error("fixture connection refused") end
+		local response = f.h.http.handler
+		f.h.http.handler = function(request) f.h.sched.wait(responseDelay); return response(request) end
+		local result, why = f.complete(nil, { messages = { { role = "user", content = "hi" } }, stream = true, timeout = 1 }, 1.3)
+		check("pre-dispatch failure allows one bounded HTTP attempt", f.h.http.requestCount == 1 and #f.sockets == 0)
+		if responseDelay == 0.1 then check("a response within the remainder succeeds", result and result.content == "HTTP fallback")
+		else check("a response beyond the original deadline is not accepted", not result and has(why, "deadline")) end
+		f.cleaned(); f.close()
+	end
 end)
 
 case("post-send exceptions and malformed streams never fall back", function()

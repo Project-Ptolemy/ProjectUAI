@@ -177,6 +177,12 @@ replacement by a script that remains active.
 
 ## Included community access
 
+Community access is an explicit **Project UAI Free** choice in the Providers
+library. It is not installed on an empty startup, import or reset. **HCNSEC** is
+the separate personal-key provider. Switching a Free setup draft to another
+preset removes community keys even if its endpoint was edited first; personal
+keys retain their labels, pauses and accounting identities.
+
 **Project UAI Free opens daily from 8 PM to 12 PM noon, GMT+8 / Beijing / Singapore.**
 That is 20:00 inclusive through 12:00 exclusive the following midday, using a fixed
 UTC+8 offset. New requests, discovery and background probes observe this window.

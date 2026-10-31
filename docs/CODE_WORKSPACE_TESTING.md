@@ -1,6 +1,7 @@
 # Code workspace: native testing guide
 
-Current testing guide for release 2.8.0, October 12, 2026. Use synthetic workspaces
+Native testing scenarios, including the October 31, 2026 workflow additions.
+Historical release-specific checks below retain their original context. Use synthetic workspaces
 and an isolated fixture place; do not touch a user's live Roblox session or private
 usage/accounting files. Current features and limits are in
 [NATIVE_CLIENT.md](NATIVE_CLIENT.md), with internal contracts in [SPEC.md](../SPEC.md).
@@ -9,6 +10,29 @@ For the 2.8.0 execution, agent, provider, runtime and interface changes, use the
 [focused release checklist](TESTING_2.8.0.md). It covers the changed behavior and
 required build checks without running the full native suite or image previews.
 The comprehensive commands below remain for broader changes.
+
+## Command and conversation workflow checks
+
+On a desktop keyboard, test Ctrl+K, Ctrl+Shift+P, Ctrl+, and Ctrl+L with the
+window visible, minimized, behind an overlay, and while editing a draft. Only the
+idle visible window should take global shortcuts. Command Up/Down and Enter must
+open the highlighted destination; an empty result must do nothing. Repeat menu
+navigation on touch/gamepad and verify that existing drafts remain intact.
+
+Create more than 12 matching conversations and use Show more to reach the final
+one. Search multilingual dialogue and verify readable excerpts. Close search
+immediately after opening; delayed focus must not return to a destroyed field.
+
+Open Export conversation, let a reply arrive, then copy/save. The export should
+match the snapshot opened in the dialog, exclude reasoning/tool internals, and
+report a failed clipboard or mismatched file readback accurately. Repeated Save
+after success must not produce another file. Check short layouts and large text
+with the preview visible. These actions never submit inference.
+
+Focused offline suites: `command_catalog.lua`, `command_ui.lua`,
+`native_shortcuts.lua`, `conversation_search.lua`, `transcript_export.lua`,
+`conversation_export_ui.lua`, and `clipboard.lua`. Use the existing main suite
+for app mounting and theme/layout regressions after the reviewed build.
 
 ## Capability contract
 

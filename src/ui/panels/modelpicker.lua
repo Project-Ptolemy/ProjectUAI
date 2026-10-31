@@ -12,6 +12,9 @@ return function(env)
 	local freeRoute = env.require("provider/free_route")
 	local community = env.require("provider/community_key")
 	local sampling = env.require("provider/sampling")
+	local preferences = env.require("provider/model_preferences")
+	local overrides = env.require("provider/model_overrides")
+	local searchQuery = env.require("runtime/search")
 	local providerPicker = env.require("ui/panels/providerpicker")
 	local M = {}
 	local opened
@@ -30,6 +33,7 @@ return function(env)
 		local root = P.frame(modal.content, { name = "ModelPicker", size = UDim2.fromScale(1, 1) })
 		local control = providerPicker.target()
 		local filter, freeOnly, fetching = "", false, false
+		local favoritesOnly, toolsOnly = false, false
 		local rows, render, filterRows, renderEffort, fit = {}, nil, nil, nil, nil
 		local signature, effortSignature, fitting = nil, nil, false
 		local autoRow, autoClosed = nil, false
@@ -125,15 +129,21 @@ return function(env)
 
 		filterRows = function()
 			local visible = 0
-			local needle = util.trim(filter):lower()
+			local matchQuery = searchQuery.compile(filter)
+			local record = providers.active()
 			for _, entry in ipairs(rows) do
-				local match = (needle == "" or entry.id:lower():find(needle, 1, true) ~= nil) and (not freeOnly or entry.free)
+				local match = matchQuery(entry.id) ~= nil and (not freeOnly or entry.free)
+					and (not favoritesOnly or preferences.favorite(record, entry.id))
+					and (not toolsOnly or traits.of(entry.id, record).tools == true)
 				entry.button.instance.Visible = match
 				if match then visible = visible + 1 end
 			end
 			count.Text = visible == #rows and util.pluralise(#rows, "model") or string.format("%d of %s", visible, util.pluralise(#rows, "model"))
 			empty.Visible = visible == 0
-			empty.Text = #rows == 0 and "No models yet. Use Refresh or add a model ID." or "No matching models. Try another search."
+			empty.Text = #rows == 0 and "No models yet. Use Refresh or add a model ID."
+				or favoritesOnly and "No favorites match. Add the selected model to favorites in Options, or clear filters."
+				or toolsOnly and "No matching models have documented tool support. Clear filters to see all IDs."
+				or "No matching models. Try another search or clear filters in Options."
 			if fit then fit() end
 		end
 
@@ -225,9 +235,13 @@ return function(env)
 			local providerInfo = providerPicker.describe(record)
 			providerStatus.Text, providerStatus.TextColor3 = providerInfo.detail, providerInfo.tone
 			selectionLabel.Text = record and util.trim(record.model) ~= "" and record.model or "Choose a model below"
-			local known = record and models.list(record) or {}
-			local labels = {}
-			for _, id in ipairs(known) do labels[#labels + 1] = id .. tostring(models.isFree(record, id)) end
+			local catalog = record and models.list(record) or {}
+			local known = preferences.ordered(record, catalog)
+			local labels, order = {}, {}
+			-- Preference changes reorder existing rows without destroying the clicked
+			-- control or resetting the user's catalog scroll position.
+			for _, id in ipairs(catalog) do labels[#labels + 1] = id .. tostring(models.isFree(record, id)) end
+			for index, id in ipairs(known) do order[id] = index end
 			local nextSignature = (record and record.id or "") .. "\0" .. table.concat(labels, "\0")
 			if signature ~= nextSignature then
 				for _, entry in ipairs(rows) do entry.button.instance:Destroy() end
@@ -241,7 +255,11 @@ return function(env)
 						stroke = free, strokeColor = free and P.freeModelOutline(theme.color.surface) or nil,
 						strokeWidth = free and 1 or nil,
 						padding = { x = theme.space.sm }, gap = theme.space.sm, layoutOrder = index,
-						onClick = function() providers.setModel(record.id, id); notify() end })
+						onClick = function()
+							local ok, why = providers.setModel(record.id, id)
+							if not ok then overlay.toast(tostring(why or "Unable to select this model"), "warn", 3); return end
+							notify()
+						end })
 					local copy = P.column(button.row, { name = "ModelDetails", size = UDim2.new(0, 0, 0, 0),
 						auto = "Y", flex = "Fill", gap = theme.space.hair, layoutOrder = 1 })
 					local label = P.text(copy, { name = "ModelName", text = id, role = "small",
@@ -258,6 +276,7 @@ return function(env)
 			end
 			for _, entry in ipairs(rows) do
 				local selected = record and entry.id == record.model
+				entry.button.instance.LayoutOrder = order[entry.id]
 				entry.button.setSelected(selected)
 				entry.label.TextColor3 = selected and theme.color.text or theme.color.textSecondary
 				entry.mark.Visible = selected == true
@@ -268,9 +287,12 @@ return function(env)
 				entry.meta.Visible = entry.meta.Text ~= ""
 				if entry.id == "auto" then
 					local route = freeRoute.status(record)
-					if route.supported and route.available == false then
+					if route.supported and route.scheduleOpen == false then
 						entry.label.Text, entry.meta.Text = "Auto (outside free hours)", freeHoursMeta(record)
 						autoRow, autoClosed = entry, true
+					elseif route.supported and route.available == false then
+						entry.label.Text, entry.meta.Text = "Auto (unavailable)", "Free | " .. tostring(route.availability or "Check provider setup")
+						autoRow, autoClosed = entry, false
 					elseif route.supported and route.enabled == false then
 						entry.label.Text, entry.meta.Text = "Auto (provider routing)", "Free | Automatic routing off"
 						autoRow, autoClosed = entry, false
@@ -282,6 +304,10 @@ return function(env)
 					else
 						autoRow, autoClosed = nil, false
 					end
+				end
+				if preferences.favorite(record, entry.id) then
+					entry.meta.Text = "Favorite" .. (entry.meta.Text ~= "" and " | " .. entry.meta.Text or "")
+					entry.meta.Visible = true
 				end
 			end
 			filterRows()
@@ -324,6 +350,10 @@ return function(env)
 				local policy = record and sampling.state(record)
 				local mode = policy and (({ auto = "Automatic", send = "Send", omit = "Omit" })[policy.override] or "Automatic")
 				local options = {
+					{ label = record and preferences.favorite(record, record.model) and "Remove favorite" or "Add favorite", value = "favorite", detail = "Selected model on this provider" },
+					{ label = "Favorites only", value = "favorites", selected = favoritesOnly },
+					{ label = "Known tool support only", value = "tools", selected = toolsOnly },
+					{ label = "Clear model filters", value = "clear", disabled = filter == "" and not freeOnly and not favoritesOnly and not toolsOnly },
 					{ label = "Temperature", value = "temperature", detail = policy and (mode .. (policy.allowed and (" · " .. tostring(config.get("agent.temperature", 0.4))) or " · omitted")) or "Choose a provider first" },
 					{ label = "Add model ID", value = "add", icon = "plus" },
 					{ label = "Reasoning support", value = "reasoning", selected = forced, detail = "Override for the selected model" },
@@ -342,29 +372,33 @@ return function(env)
 					if value == "free" then
 						freeOnly = not freeOnly; freeButton.setVariant(freeOnly and "secondary" or "ghost"); filterRows(); return
 					end
+					if value == "favorites" then favoritesOnly = not favoritesOnly; filterRows(); return end
+					if value == "tools" then toolsOnly = not toolsOnly; filterRows(); return end
+					if value == "clear" then
+						filter, freeOnly, favoritesOnly, toolsOnly = "", false, false, false
+						search.set(""); freeButton.setVariant("ghost"); filterRows(); return
+					end
 					if not record then overlay.toast("Add a provider first", "info", 2); return end
-					if value == "temperature" then temperatureMenu(button.instance, record)
+					if value == "favorite" then
+						local ok, why = preferences.setFavorite(record, record.model)
+						if not ok then overlay.toast(tostring(why), "warn", 3) end
+					elseif value == "temperature" then temperatureMenu(button.instance, record)
 					elseif value == "effort" then effortMenu(button.instance)
 					elseif value == "add" then
 						overlay.prompt({ title = "Add a model ID", placeholder = "Exact model ID", confirmText = "Add", onConfirm = function(text)
-							local ok, note = models.add(record, text)
-							if ok then providers.setModel(record.id, util.trim(text)) end
+							local ok, note = models.add(record, text, { select = true })
 							overlay.toast(tostring(note), ok and "good" or "warn", 3); notify()
 						end })
 					elseif id ~= "" and value == "reasoning" then
-						local claims = config.get("agent.forceReasoning", {}) or {}
-						claims[id] = not forced; config.set("agent.forceReasoning", claims); notify()
+						local ok, why = overrides.reasoning(id, not forced)
+						if not ok then overlay.toast(tostring(why), "warn", 3) else notify() end
 					elseif id ~= "" and value == "context" then
 						local claims = config.get("agent.forceContext", {}) or {}
 						overlay.prompt({ title = "Context window", description = "Token limit. Leave empty to use the documented value.",
 							placeholder = "1000000", value = claims[id] and tostring(claims[id]) or "", confirmText = "Save",
 							onConfirm = function(text)
-								local number = tonumber(text)
-								if util.trim(text) ~= "" and (not number or number <= 0 or number == math.huge) then
-									overlay.toast("Enter a positive token count", "warn", 2); return
-								end
-								claims[id] = number and math.floor(number) or nil
-								config.set("agent.forceContext", claims); notify()
+								local ok, why = overrides.context(id, text)
+								if not ok then overlay.toast(tostring(why), "warn", 3) else notify() end
 							end })
 					end
 				end })
@@ -393,7 +427,8 @@ return function(env)
 		local unsubscribeBridge = env.require("net/bridge").changed:connect(render)
 		local unsubscribeConfig = config.changed:connect(function(path)
 			if path == nil or path == "agent" or path == "agent.effort" or path == "agent.forceReasoning"
-				or path == "agent.forceContext" or path == "agent.forceSampling" or path == "agent.temperature" or path == "agent.autoFreeRouting" then render() end
+				or path == "agent.forceContext" or path == "agent.forceSampling" or path == "agent.temperature" or path == "agent.autoFreeRouting"
+				or path == "ui.modelFavorites" or path == "ui.recentModels" then render() end
 		end)
 		local unsubscribeResponsive = responsive.changed:connect(function()
 			if modal.closed then return end
@@ -419,6 +454,7 @@ return function(env)
 			if closed ~= autoClosed then render(); return end
 			if not closed then return end
 			local text = freeHoursMeta(record)
+			if preferences.favorite(record, autoRow.id) then text = "Favorite | " .. text end
 			if autoRow.meta.Text ~= text then autoRow.meta.Text = text end
 		end)
 		modal.scrim.Destroying:Connect(function() unsubscribe(); unsubscribeRoute(); unsubscribeModels(); unsubscribeBridge(); unsubscribeConfig(); unsubscribeResponsive(); tickFreeHours() end)

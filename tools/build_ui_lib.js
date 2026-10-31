@@ -12,6 +12,11 @@ for (const option of process.argv.slice(2)) {
 }
 const read = file => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
 const metadata = JSON.parse(read('ui-lib/library.json'));
+for (const key of ['name', 'version', 'repository', 'url', 'footer']) {
+  if (typeof metadata[key] !== 'string' || !metadata[key].trim()) throw new Error('UI metadata requires ' + key);
+}
+if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) throw new Error('UI metadata version must be major.minor.patch');
+if (metadata.footer !== 'Project UAI | UI LIB.') throw new Error('UI attribution must remain fixed');
 const sha256 = source => crypto.createHash('sha256').update(source).digest('hex');
 const luaString = value => JSON.stringify(value).replace(/\\u([0-9a-f]{4})/gi, (_, digits) => String.fromCharCode(parseInt(digits, 16)));
 const luaLong = source => {
@@ -56,6 +61,7 @@ const headings = [...guide.matchAll(/^## ([^\n]+)\n/gm)];
 for (let index = 0; index < headings.length; index++) {
   const match = headings[index];
   const key = match[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (!key || Object.hasOwn(sections, key)) throw new Error('Duplicate or empty UI guide section: ' + match[1]);
   sections[key] = guide.slice(match.index, headings[index + 1]?.index ?? guide.length).trimEnd() + '\n';
 }
 if (!sections.quickstart || !sections.controls || !sections.lifecycle) throw new Error('UI guide requires Quickstart, Controls, and Lifecycle sections');

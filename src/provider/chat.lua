@@ -35,6 +35,18 @@ return function(env)
 		return env.require("provider/openai")
 	end
 
+	-- Display the effective wire API rather than the compatibility adapter used
+	-- internally to reach Responses routes.
+	function M.protocolOf(record)
+		local style = M.styleOf(record)
+		local responses = env.require("provider/responses")
+		if style == "openai" and responses.eligible(record) and (responses.wantsResponses(record) or responses.remembered(record)) then return "responses" end
+		return style
+	end
+	function M.supportsSocket(record)
+		return M.protocolOf(record) == "openai" and not env.require("provider/registry").isCline(record)
+	end
+
 	function M.complete(record, request)
 		local support = env.require("runtime/support")
 		local problem = env.require("provider/registry").protocolProblem(record)

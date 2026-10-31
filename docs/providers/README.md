@@ -1,8 +1,20 @@
 # Provider setup guides
 
-Open **Providers > Add a provider**, choose the named preset, enter your key,
-fetch models, choose an exact ID and save. The preset fills in the URL, protocol
-and authentication style. It does not buy credits or confirm account access.
+Open **Providers > Add a provider**, choose the named preset, provide its required
+access, choose a model and save. The preset fills in the URL, protocol and
+authentication style. New setups start without a provider; library browsing does
+not install one or send inference. A preset does not buy credits or confirm access.
+
+| Task | Guide |
+| --- | --- |
+| Add optional community access | [Project UAI Free](projectuai-free.md) |
+| Use a personal HCNSEC key | [HCNSEC](hcnsec.md) |
+| Find a model or use an exact ID | [Model discovery](model-discovery.md) |
+| Rotate, name or pause keys | [Key management](key-management.md) |
+| Run your own models | [Local servers](local-servers.md) |
+| Connect another compatible API | [Custom endpoints](custom-endpoints.md) |
+| Fix a setup or request error | [Troubleshooting](troubleshooting.md) |
+| Understand an older saved setup | [Provider migration](migration.md) |
 
 | Preset | Access and setup |
 | --- | --- |
@@ -18,8 +30,8 @@ For other connections, see [AgentRouter](../AGENTROUTER.md),
 [Kilo quota recovery](../KILO_TUNNEL.md), [Cline desktop setup](../CLINE_TUNNEL.md)
 and the [provider compatibility contract](../PROVIDER_COMPATIBILITY.md).
 
-The public documentation and unauthenticated model catalogs used for these
-guides were checked on October 25, 2026. Paid inference was not exercised.
+The external documentation and unauthenticated model catalogs for the seven
+vendor guides above were checked on October 25, 2026. Paid inference was not exercised.
 Successful model discovery proves only that the catalog could be read; it does
 not prove a key is valid, funded, authorized for every model or below its limit.
 

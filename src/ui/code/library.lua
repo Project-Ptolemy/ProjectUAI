@@ -130,10 +130,10 @@ return function(env)
 		end
 		render = function()
 			if not alive or not list then return end
-			local items, present, needle = {}, {}, query:lower()
+			local items, present, match = {}, {}, env.require("runtime/search").compile(query)
 			local function add(kind, item, detail)
 				local id = kind .. ":" .. item.id; present[id] = true
-				if item.name:lower():find(needle, 1, true) then items[#items + 1] = { kind = kind, id = item.id, label = item.name, detail = detail, selected = selecting and selected[id] == true } end
+				if match(item.name, detail, item.description) then items[#items + 1] = { kind = kind, id = item.id, label = item.name, detail = detail, selected = selecting and selected[id] == true } end
 			end
 			for _, doc in ipairs(store.list()) do add("document", doc, "Script · revision " .. doc.revision .. " · " .. #doc.source .. " bytes") end
 			for _, action in ipairs(store.actions()) do add("action", action, "Action · " .. #action.inputs .. " inputs · revision " .. action.revision) end

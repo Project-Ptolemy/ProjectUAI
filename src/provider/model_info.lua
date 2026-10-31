@@ -14,6 +14,14 @@ return function(env)
 	local PRESETS = {
 		["anthropic-messages"] = "anthropic", zen = "opencode", ["fireworks-ai"] = "fireworks",
 	}
+	local ROUTES = {
+		openai = { ["/v1"] = true }, anthropic = { ["/v1"] = true },
+		google = { ["/v1"] = true, ["/v1beta"] = true, ["/v1beta/openai"] = true },
+		deepseek = { ["/v1"] = true, ["/beta"] = true }, openrouter = { ["/api/v1"] = true },
+		groq = { ["/openai/v1"] = true }, together = { ["/v1"] = true },
+		mistral = { ["/v1"] = true }, xai = { ["/v1"] = true },
+		fireworks = { ["/inference/v1"] = true }, cerebras = { ["/v1"] = true },
+	}
 	local DIRECT = { "openai", "anthropic", "google", "deepseek", "mistral", "xai" }
 	local DEFAULTS = {}
 	for _, provider in ipairs(DIRECT) do
@@ -36,6 +44,7 @@ return function(env)
 		if raw ~= "" then
 			local parsed = urls.parse(urls.normaliseBase(raw))
 			if not parsed then return nil end
+			if parsed.scheme ~= "https" or parsed.authority:lower() ~= parsed.host and parsed.authority:lower() ~= parsed.host .. ":443" then return nil end
 			if parsed.scheme == "https" and (parsed.host == "api.kilo.ai" or parsed.host == "ai-gateway.kilo.ai") then
 				local authority = parsed.authority:lower()
 				if authority ~= parsed.host and authority ~= parsed.host .. ":443" then return nil end
@@ -56,7 +65,12 @@ return function(env)
 				end
 				return nil
 			end
-			return HOSTS[parsed.host]
+			local provider = HOSTS[parsed.host]
+			local route = parsed.path:gsub("/+$", "")
+			route = route:match("^(.*)/models/[^/]+:generateContent$") or route:match("^(.*)/models/[^/]+:streamGenerateContent$")
+				or route:match("^(.*)/chat/completions$") or route:match("^(.*)/messages$")
+				or route:match("^(.*)/responses$") or route:match("^(.*)/models$") or route
+			return provider and ROUTES[provider] and ROUTES[provider][route] and provider or nil
 		end
 		local preset = tostring(record.preset or "")
 		return PRESETS[preset] or (data.providers[preset] and preset or nil)

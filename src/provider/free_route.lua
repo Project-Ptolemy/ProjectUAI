@@ -226,8 +226,14 @@ return function(env)
 		local best = state and winner(record)
 		local availability = community.availability(record)
 		local access = config.accessProblem()
-		return { enabled = config.get("agent.autoFreeRouting", true) ~= false, supported = eligibleRecord(record),
-			available = not access and availability.open, availability = access or availability.message,
+		local supported = eligibleRecord(record)
+		local locked = config.vaultStatus().locked
+		local hasKey = #registry.requestKeys(record) > 0
+		local problem = access or (locked and "Unlock credential storage")
+			or (not availability.open and availability.message) or (not hasKey and "Resume an API key to use automatic routing")
+		return { enabled = config.get("agent.autoFreeRouting", true) ~= false, supported = supported,
+			available = supported and not problem, scheduleOpen = availability.open,
+			availability = problem or availability.message,
 			running = state and state.running or false, model = best and best.model,
 			ms = best and best.ms, ready = state ~= nil }
 	end

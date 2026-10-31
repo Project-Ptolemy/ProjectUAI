@@ -6,6 +6,7 @@ return function(env)
 	local responsive = env.require("ui/responsive")
 	local overlay = env.require("ui/overlay")
 	local P = env.require("ui/primitives")
+	local dispose = env.require("runtime/dispose")
 	local M = {}
 	local opened
 
@@ -20,6 +21,12 @@ return function(env)
 			size = UDim2.fromOffset(0, theme.text.small.height), layoutOrder = 1 })
 		local field = P.field(column, { name = name, placeholder = "", layoutOrder = 2, onSubmit = submit })
 		local box, shown = field.instance, false
+		local cursor, selection = 1, -1
+		local function rememberSelection()
+			if box.CursorPosition >= 1 then cursor, selection = box.CursorPosition, box.SelectionStart end
+		end
+		box:GetPropertyChangedSignal("CursorPosition"):Connect(rememberSelection)
+		box:GetPropertyChangedSignal("SelectionStart"):Connect(rememberSelection)
 		box.TextTransparency = 1
 		box.TextStrokeTransparency = 1
 		local mask = P.text(field.shell, { name = name .. "Mask", text = "Enter your password", role = "body",
@@ -36,17 +43,24 @@ return function(env)
 		local show = P.button(heading, { name = name .. "Show", text = "Show", variant = "ghost", size = "sm", layoutOrder = 2,
 			onClick = function(button)
 				shown = not shown; button.setText(shown and "Hide" or "Show"); updateMask()
+				local savedCursor, savedSelection = cursor, selection
+				field.focus()
+				box.CursorPosition = math.min(savedCursor, #box.Text + 1)
+				box.SelectionStart = math.min(savedSelection, #box.Text + 1)
 			end })
+		local stopFocus = dispose.connection(env.uis.WindowFocusReleased:Connect(function()
+			shown = false; show.setText("Show"); updateMask()
+		end), "password reveal focus")
 		box:GetPropertyChangedSignal("Text"):Connect(updateMask)
 		local handle = { instance = box, focus = field.focus, get = field.get }
 		function handle.clear()
-			shown = false; field.clear(); show.setText("Show"); updateMask()
+			shown, cursor, selection = false, 1, -1; field.clear(); show.setText("Show"); updateMask()
 		end
 		function handle.setEnabled(value)
-			box.TextEditable, box.Active, box.Selectable = value, value, value
+			field.setEnabled(value)
 			show.setEnabled(value)
 		end
-		column.Destroying:Connect(function() box.Text = ""; mask.Text = "" end)
+		column.Destroying:Connect(function() stopFocus(); box.Text = ""; mask.Text = "" end)
 		return handle
 	end
 
@@ -296,7 +310,8 @@ return function(env)
 			if currentMode ~= "manage" then
 				local form = P.column(modal.content, { name = "VaultPasswordForm", auto = "Y", size = UDim2.new(1, 0, 0, 0),
 					gap = theme.space.md, layoutOrder = 3 })
-				fields[1] = passwordField(form, "VaultPassword", currentMode == "change" and "New master password" or "Master password", 1, submit)
+				fields[1] = passwordField(form, "VaultPassword", currentMode == "change" and "New master password" or "Master password", 1,
+					function() if fields[2] then fields[2].focus() else submit() end end)
 				if currentMode ~= "unlock" and currentMode ~= "import" then
 					fields[2] = passwordField(form, "VaultConfirmPassword", "Confirm master password", 2, submit)
 					P.text(form, { name = "VaultPasswordHint", text = "Use at least 12 characters. Several unrelated words make a strong passphrase.",

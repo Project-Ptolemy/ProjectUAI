@@ -187,6 +187,8 @@ return HttpService:JSONEncode(data)
 	return {
 		{
 			name = "template_list",
+			examples = { { title = "Explore starter templates", arguments = {},
+				note = "Read the selected template's detail before adapting or running it." } },
 			risk = "read",
 			description = "List the ready-made script templates this client ships with. A template is a pre-written tool invocation for a common job -- player distances, ESP, FPS statistics, remote automation. Call with no arguments for the index; pass an id for one template's full detail.",
 			parameters = {

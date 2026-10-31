@@ -1,4 +1,4 @@
--- Offline provisioning for the public free provider. The provider-supported
+-- Explicit installation for the public free provider. The provider-supported
 -- `auto` router was verified against live /models and a successful tool call.
 -- Startup does not discover models or dispatch inference on the user's behalf.
 return function(env)
@@ -16,13 +16,20 @@ return function(env)
 		if vault.locked or vault.busy then return nil, "Unlock the credential vault before changing providers." end
 		for _, record in ipairs(registry.list()) do
 			if communityKey.isApplied(record) then
+				local wasEnabled = record.enabled
 				record.enabled = true
-				if not record.model or record.model == "" then registry.setModel(record.id, "auto") end
-				registry.setActive(record.id)
+				local saved, why = registry.save(record, { force = true })
+				if not saved then record.enabled = wasEnabled; return nil, table.concat(why or {}, "; ") end
+				if not record.model or record.model == "" then
+					local selected, problem = registry.setModel(record.id, "auto")
+					if not selected then return nil, problem end
+				end
+				local selected, problem = registry.setActive(record.id)
+				if not selected then return nil, problem end
 				return record
 			end
 		end
-		local record = registry.blank("hcnsec")
+		local record = registry.blank("projectuai-free")
 		local saved, problems = registry.save(record)
 		if not saved then return nil, table.concat(problems or {}, "; ") end
 		local selected, problem = registry.setActive(record.id)
@@ -35,7 +42,7 @@ return function(env)
 		if access then return registry.active(), access end
 		if config.vaultStatus().locked then return registry.active() end
 		local list = registry.list()
-		if #list == 0 then return M.use() end
+		if #list == 0 then return nil end
 		local selected = config.get("providers.active", "")
 		if not registry.get(selected) then
 			for _, record in ipairs(list) do
@@ -49,9 +56,8 @@ return function(env)
 		if unsubscribe then return end
 		M.ensure()
 		unsubscribe = config.changed:connect(function(path)
-			-- Import and reset restore the default when they leave no providers.
-			-- Explicit removal stays removed for this session; the Free action can
-			-- add it again, and the next boot provisions an otherwise empty setup.
+			-- Selection repair considers installed providers only. Empty imports,
+			-- reset, removal and startup all keep an empty provider list empty.
 			if path == nil or path == "providers" then M.ensure() end
 		end)
 	end

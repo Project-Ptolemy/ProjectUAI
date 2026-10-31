@@ -16,7 +16,7 @@ end
 case("lean profiles cut schema bytes and keep the toolbox", function()
 	local f, registry = setup()
 	local util = f.env.require("runtime/util")
-	check("the default profile keeps the previous behavior", f.env.require("runtime/config").get("agent.toolProfile", "all") == "all")
+	check("new installations use compact families", f.env.require("runtime/config").get("agent.toolProfile", "all") == "focused")
 	local all, lean = registry.definitions({}), registry.definitions({ profile = "lean" })
 	local allBytes, leanBytes = #util.encode(all), #util.encode(lean)
 	check("the default catalogue is unchanged", #all > 100 and #registry.definitions({ profile = "all" }) == #all)

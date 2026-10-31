@@ -226,7 +226,7 @@ end)
 
 case("all native Code destinations build and preserve text through navigation", function()
 	local h = require("env").new(); h.setViewport(1280, 800)
-	local app = assert(h.boot()); h.settle(0.5); app.app.show("code"); h.settle(0.3)
+	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.5); app.app.show("code"); h.settle(0.3)
 	local panel = assert(app.app.panels and app.app.panels.code or app.app.codePanel or app.app.currentPanel, "Code panel handle")
 	-- Find the public native panel handle without reaching through GUI text.
 	if not panel.navigate then panel = app.app.views and app.app.views.code or panel end

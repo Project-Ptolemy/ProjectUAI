@@ -8,7 +8,7 @@ local ready, delay, requests = true, 0, 0
 h.http.handler = function(req)
 	if req.url:find("/api/hello", 1, true) then
 		return { StatusCode = 200, Body = json.encode({ protocol = 2, capabilities = {
-			opencode = { schema = 1, available = ready, state = ready and "ready" or "missing", version = "fixture-cli" },
+			opencode = { schema = 1, enabled = true, available = ready, state = ready and "ready" or "missing", version = "fixture-cli" },
 		} }) }
 	end
 	if req.url:find("/api/opencode/models", 1, true) then
@@ -19,7 +19,7 @@ h.http.handler = function(req)
 	if req.url:find("/api/agent/inbox", 1, true) then return { StatusCode = 200, Body = '{"commands":[]}' } end
 	return { StatusCode = 204, Body = "" }
 end
-local app = assert(h.boot()); h.settle(0.3)
+local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.3)
 app.config.set("bridge.token", "fixture-token")
 app.config.set("bridge.enabled", true); h.settle(0.5)
 check("authenticated hello advertises native CLI", app.bridge.opencodeStatus().available and app.bridge.opencodeStatus().version == "fixture-cli")

@@ -97,14 +97,16 @@ return function(env)
 		end
 		if not nextOffset and offset + #lines <= #items then nextOffset = offset + #lines end
 		return { text = title .. (#lines > 0 and ("\n" .. table.concat(lines, "\n")) or "\n(none)"),
-			data = { offset = offset, count = #lines, total = #items, nextOffset = nextOffset, eof = nextOffset == nil } }
+			data = { offset = offset, count = #lines, total = #items, remaining = math.max(0, #items - offset - #lines + 1), nextOffset = nextOffset, eof = nextOffset == nil } }
 	end
 
 	function H.readSlice(name, content, args, defaultLimit, budget)
 		args = args or {}
 		local cap = math.min(H.resultBudget(), budget or math.huge)
 		if cap < 256 then return H.fail("increase the tool result budget to at least 256 bytes before reading files") end
-		local offset = math.max(1, math.floor(tonumber(args.offset) or 1))
+		local requested = tonumber(args.offset) or 1
+		if requested ~= requested or math.abs(requested) == math.huge then return H.fail("offset must be a finite byte position") end
+		local offset = math.max(1, math.floor(requested))
 		if offset > #content + 1 then return H.fail("offset is past the end; this source has " .. #content .. " bytes") end
 		while offset > 1 do
 			local byte = content:byte(offset)

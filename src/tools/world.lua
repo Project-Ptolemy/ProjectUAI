@@ -72,6 +72,8 @@ return function(env)
 		},
 		{
 			name = "parts_near",
+			examples = { { title = "Inspect nearby geometry", arguments = { radius = 30, limit = 12 },
+				note = "Distances are local observations. Incomplete spatial queries do not prove that an object is absent." } },
 			risk = "read",
 			description = "Page nearby parts sorted by captured distance. Uses the spatial query with a 20,000-part cap, or a cooperative subtree scan on older hosts. Incomplete results do not prove absence; restart pagination if the scene moves.",
 			parameters = {

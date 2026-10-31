@@ -252,9 +252,10 @@ return function(env)
 					end
 				end
 			end
+			local matches = env.require("runtime/search").compile(query)
 			for _, item in ipairs(all) do
 				counts.all = counts.all + 1; counts[item.kind] = (counts[item.kind] or 0) + 1
-				if (filter == "all" or filter == item.kind) and (query == "" or (item.label .. " " .. item.description .. " " .. (item.searchText or "")):lower():find(query:lower(), 1, true)) then items[#items + 1] = item end
+				if (filter == "all" or filter == item.kind) and matches(item.label, item.description, item.searchText) then items[#items + 1] = item end
 			end
 			if gameChanges then
 				caption.Text = util.pluralise(counts.all, "edit") .. " · " .. counts.applied .. " can be undone · Local properties and attributes"

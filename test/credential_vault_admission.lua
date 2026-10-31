@@ -26,7 +26,7 @@ end
 
 case("free, anonymous and private providers cannot bypass password admission", function()
 	local f = fixture()
-	local free = f.providers.blank("hcnsec")
+	local free = f.providers.blank("projectuai-free")
 	local private = f.providers.blank("custom")
 	private.baseUrl, private.model, private.apiKey = "https://private.fixture/v1", "fixture-model", "synthetic-private-key"
 	f.denied = true

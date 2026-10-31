@@ -302,7 +302,9 @@ return function(env)
 		actions.Parent = history.instance
 		actions.LayoutOrder = 1
 		local historyList = P.column(history.instance, { name = "HistoryList",
-			size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 2 })
+			size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 3 })
+		P.button(history.instance, { name = "BrowseConversations", text = "Browse conversations", variant = "ghost", size = "sm", layoutOrder = 2,
+			onClick = function() env.require("ui/conversations").browse(host) end })
 
 		-- Which place groups are folded, by placeId.
 		--
@@ -331,13 +333,20 @@ return function(env)
 				options = {
 					{ isHeader = true, title = session.title, subtitle = sessions.folderLabel(session) },
 					{ label = "Open", value = "open", icon = "arrowRight" },
+					{ label = session.metadata.pinned and "Unpin conversation" or "Pin conversation", value = "pin" },
+					{ label = "Mark read", value = "read" },
+					{ label = "Conversation details", value = "details" },
 					{ label = "Rename", value = "rename", icon = "document" },
 					{ label = "Move to folder", value = "move" },
+					{ label = "Export Markdown", value = "export" },
 					{ label = "Delete", value = "delete", icon = "trash", tone = "bad" },
 				},
 				onSelect = function(value)
 					if value == "open" then
 						host.openSession(session.id)
+					elseif value == "pin" then session.setPinned(not session.metadata.pinned)
+					elseif value == "read" then session.markRead(); session.persist()
+					elseif value == "details" then env.require("ui/conversation_details").open(session)
 					elseif value == "rename" then
 						overlay.prompt({
 							title = "Rename this conversation",
@@ -352,6 +361,8 @@ return function(env)
 						})
 					elseif value == "move" then
 						host.moveConversation(session)
+					elseif value == "export" then
+						host.exportConversation(session)
 					elseif value == "delete" then
 						overlay.confirm({
 							title = "Delete this conversation?",
@@ -519,9 +530,11 @@ return function(env)
 						})
 					end
 					local titleText = session.title
+					local detail = env.require("runtime/conversation_metadata").label(session.metadata)
+					if detail ~= "" then titleText = titleText .. "  (" .. detail .. ")" end
 					if session.ephemeral then titleText = titleText .. "  (not saved)" end
 					row.label(titleText, 2,
-						selected and theme.color.text or theme.color.textSecondary,
+						selected and theme.color.text or (session.metadata.failures > 0 and theme.color.warn or theme.color.textSecondary),
 						selected and STRONG_ROLE or ROW_ROLE)
 					local menuButton = P.iconButton(row.row, {
 						name = "SessionMenu",
@@ -643,9 +656,9 @@ return function(env)
 					tostring(group.id), tostring(group.label),
 					isCollapsed(group) and "-" or "+")
 				for _, session in ipairs(group.sessions) do
-					parts[#parts + 1] = string.format("%s\1%s\1%s\1%s",
+					parts[#parts + 1] = string.format("%s\1%s\1%s\1%s\1%s",
 						tostring(session.id), tostring(session.title),
-						session.busy and "b" or "-", session.ephemeral and "e" or "-")
+						session.busy and "b" or "-", session.ephemeral and "e" or "-", env.require("runtime/conversation_metadata").label(session.metadata))
 				end
 			end
 			return table.concat(parts, "\2")
@@ -653,12 +666,21 @@ return function(env)
 
 		-- The list, only if it would look different. `force` is for the paths that know
 		-- it changed for a reason the signature cannot see -- a fold, a theme rebuild.
-		function handle.syncHistory(force)
+		local function refreshHistory(force)
+			if not sidebar.Parent then return false end
 			local signature = listSignature()
 			if not force and signature == handle.signature then return false end
 			handle.signature = signature
 			handle.renderHistory()
 			return true
+		end
+		-- Host scripts can create many background conversations in one turn. Keep
+		-- one pending layout instead of rebuilding the full list for each signal.
+		local updateHistory, cancelHistory = clock.debounce(function() refreshHistory(false) end, 0)
+		function handle.syncHistory(force)
+			if force then cancelHistory(); return refreshHistory(true) end
+			if not sidebar.Parent or listSignature() == handle.signature then return false end
+			updateHistory(); return true
 		end
 
 		function handle.refresh()
@@ -711,6 +733,7 @@ return function(env)
 			pcall(unsubscribePlace)
 			pcall(unsubscribeAgents)
 			cancelAgents()
+			cancelHistory()
 		end)
 
 		handle.instance = sidebar

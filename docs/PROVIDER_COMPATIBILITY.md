@@ -21,7 +21,9 @@ embedding. A saved unprotected-storage choice skips future password prompts and
 stores keys with reversible byte encoding. The gate preserves existing credentials
 for verified migration; see [API key security](API_KEY_SECURITY.md).
 
-The [individual setup guides](providers/README.md) cover Vercel AI Gateway,
+The [individual setup guides](providers/README.md) cover separate Project UAI Free
+and HCNSEC access, local/custom endpoints, key management and model discovery,
+along with Vercel AI Gateway,
 Perplexity Orchestrator, FriendliAI Model APIs, Venice, Nscale, Arcee AI and
 AI/ML API. Each guide names the exact preset, account/key requirements, catalog
 route and documented limits. Vercel's free-tier credits apply only to eligible
@@ -34,7 +36,11 @@ or establish access to every returned model. The provider editor and model menus
 support multiword search; refresh and manual entry stay available after an empty
 search. Query credentials are omitted from connection summaries and loading text.
 
-Generic model lists retain all IDs. On four exact documented routes UAI reads an
+Generic model lists retain valid IDs without guessing capabilities from their
+names. Manual entry, selection and discovery accept one UTF-8 ID of at most
+160 bytes without control characters. Catalogs are bounded to 10,000 rows and
+report invalid or truncated entries. A successful empty refresh clears stale
+discovery without replacing manually saved choices. On four exact documented routes UAI reads an
 explicit API kind: AI/ML API `type: openai/chat-completions`, Vercel
 `type: language`, FriendliAI `mode: chat`, and Venice `type: text`. Explicit other
 kinds are omitted and the discovery note reports how many were hidden. Untyped
@@ -226,7 +232,8 @@ service does not expose it or the key cannot list models, manual ids remain usab
 
 | Preset | Base path / host | Protocol | Default auth |
 | --- | --- | --- | --- |
-| Project UAI Free (HCNSEC) | `api.hcnsec.cn/v1` | Chat Completions | Bearer |
+| Project UAI Free | `api.hcnsec.cn/v1` | Chat Completions | Distributed community Bearer credential |
+| HCNSEC | `api.hcnsec.cn/v1` | Chat Completions | Personal Bearer key |
 | AgentRouter | `agentrouter.org/v1` | GPT: Responses; others: selected protocol | x-api-key |
 | Anthropic Messages | `api.anthropic.com/v1` | Messages | x-api-key |
 | Google Gemini | `generativelanguage.googleapis.com/v1beta` | Native generateContent / streamGenerateContent | x-goog-api-key |
@@ -261,11 +268,19 @@ is distributed with the client.
 
 ### Project UAI Free
 
-New users and configurations with no provider start with **Project UAI Free**,
-using included public HCNSEC access and its verified `auto` router. No personal API
-key or model entry is required. Existing providers and private credentials stay
-intact. Choose **Use Project UAI Free** to add it later. Thank you for your continued
-use and support of Project UAI; more free providers may become available soon.
+New users and configurations with no provider start with an empty provider list.
+Choose **Providers > Add a provider > Project UAI Free**, then save, to opt in to
+community access and its verified `auto` router. No personal key or model entry
+is required. Browsing the library does not install a provider. Empty imports,
+resets and later starts do not recreate a removed provider.
+
+**HCNSEC** is a separate personal-key preset, with no community credential or
+default model. Existing personal keys and custom names stay intact. Legacy
+community records on the official endpoint move to the separate
+`projectuai-free` preset while retaining selection, pauses and custom names.
+Changing a Free draft to a personal/custom preset removes its public keys;
+adding a personal key switches that draft to HCNSEC and retains only personal
+keys. See [provider migration](providers/migration.md).
 
 Included community access is scheduled **daily from 20:00 to 12:00 the following
 midday, fixed UTC+8 (Beijing/Singapore)**. The client's local timezone and daylight

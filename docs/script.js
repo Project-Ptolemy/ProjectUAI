@@ -132,6 +132,7 @@
   }
 
   function copyHint(id) {
+    if (id === 'catalogLink') return 'Open the link to restore these filters.';
     if (id === 'loadstringCode') return 'Paste it into your executor.';
     if (id === 'uiLibCode' || id === 'sdkCode') return 'Paste it into your script.';
     return 'Paste it into UAI.';
@@ -231,9 +232,37 @@
     });
     const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
     const chips = [...document.querySelectorAll('#riskFilters .chip')];
+    const share = document.getElementById('catalogShare');
+    const link = document.getElementById('catalogLink');
     let filter = 'all';
     let filtering = false;
     let timer;
+
+    function syncUrl() {
+      const url = new URL(window.location.href);
+      const shareUrl = new URL(window.location.href);
+      shareUrl.search = '';
+      const params = { toolQuery: search.value.trim(), toolGroup: category.value, toolRisk: filter === 'all' ? '' : filter };
+      for (const [key, value] of Object.entries(params)) {
+        if (value) { url.searchParams.set(key, value); shareUrl.searchParams.set(key, value); }
+        else url.searchParams.delete(key);
+      }
+      shareUrl.hash = 'tools';
+      if (link) link.textContent = shareUrl.href;
+      // Replace the current entry so typing does not flood the Back button.
+      if (url.href !== window.location.href) {
+        try { window.history.replaceState(window.history.state, '', url); } catch { /* file previews may forbid history */ }
+      }
+    }
+
+    function restoreUrl() {
+      const params = new URL(window.location.href).searchParams;
+      search.value = (params.get('toolQuery') || '').slice(0, 256);
+      const wanted = params.get('toolGroup');
+      category.value = groups.some(group => group.id === wanted) ? wanted : '';
+      const risk = params.get('toolRisk');
+      applyFilter(['read', 'write', 'danger'].includes(risk) ? risk : 'all');
+    }
 
     function applyFilters() {
       window.clearTimeout(timer);
@@ -266,6 +295,7 @@
       status.textContent = (active ? found + ' of ' + total : total) +
         (found === 1 && !active ? ' tool' : ' tools') + ' across ' + visibleGroups +
         (visibleGroups === 1 ? ' group' : ' groups');
+      syncUrl();
     }
 
     function applyFilter(next) {
@@ -297,7 +327,7 @@
       for (const group of groups) if (!group.element.hidden) group.element.open = false;
     });
     document.addEventListener('keydown', event => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
       event.preventDefault();
@@ -305,15 +335,18 @@
     });
     search.addEventListener('keydown', event => {
       if (event.key !== 'Escape' || !search.value) return;
+      event.preventDefault();
       event.stopPropagation();
       search.value = '';
       applyFilters();
     });
-    window.addEventListener('pageshow', applyFilters);
-    applyFilters();
+    window.addEventListener('pageshow', restoreUrl);
+    window.addEventListener('popstate', restoreUrl);
+    restoreUrl();
     toolbar.hidden = false;
     document.getElementById('riskFilters').hidden = false;
     document.getElementById('catalogActions').hidden = false;
+    if (share) share.hidden = false;
   }
 
 

@@ -41,7 +41,8 @@ function render(node, parentLayout = null, parentProps = {}) {
   if (auto(p, 'Y') && !size[2]) { style.height = 'max-content'; style.minHeight = `${size[3]}px`; }
   // Roblox AutomaticSize measures offset-sized descendants even when their
   // position is absolute. Let these intrinsic content wrappers contribute size.
-  if (!parentLayout && auto(parentProps, 'X') && !size[0] && !pos.some(Boolean) && !anchor.some(Boolean)) {
+  if (!parentLayout && ((auto(parentProps, 'X') && !size[0]) || (auto(parentProps, 'Y') && !size[2]))
+      && !pos.some(Boolean) && !anchor.some(Boolean)) {
     style.position = 'relative';
   }
   if (parentLayout && auto(parentProps, 'Y') && size[2] === 1 && size[3] === 0) style.height = 'auto';
@@ -145,11 +146,18 @@ function render(node, parentLayout = null, parentProps = {}) {
       fs.writeFileSync(output, html);
       const page = await browser.newPage({ viewport: { width: snapshot.width, height: snapshot.height + 26 }, deviceScaleFactor: 1 });
       await page.goto(pathToFileURL(output).href);
-      await page.evaluate(() => {
+      await page.evaluate(revealName => {
         for (const node of document.querySelectorAll('[data-scroll]')) {
           const [x, y] = JSON.parse(node.dataset.scroll); node.scrollLeft = x; node.scrollTop = y;
         }
-      });
+        // Snapshot mocks lack list/AutomaticSize geometry. Resolve an optional
+        // review target only after Chromium has laid out its approximate tree.
+        if (revealName) {
+          const target = document.querySelector(`[data-name="${CSS.escape(revealName)}"]`);
+          if (!target) throw new Error(`Missing preview reveal target: ${revealName}`);
+          target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      }, snapshot.revealName);
       await page.screenshot({ path: output.replace(/\.html$/, '.png'), animations: 'disabled' });
       await page.close();
     }

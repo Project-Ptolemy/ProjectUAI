@@ -1,0 +1,36 @@
+-- List selection uses stable ids and bounded pages through replacement/search.
+local h, UI, window, section, check, done = dofile("test/ui_library_support.lua").new("item-list")
+local items = {}
+for index = 1, 14 do items[index] = { Id = "item-" .. index, Text = "Task " .. index, Description = "Description " .. index, Disabled = index == 2 } end
+local calls = 0
+local list = section:ItemList({ Id = "tasks", Items = items, PageSize = 5, Default = "item-1", Callback = function() calls = calls + 1 end })
+items[1].Text = "outside mutation"
+check("item snapshots are copied", list:GetItems()[1].Text == "Task 1")
+local page, pages, matches = list:GetPage()
+check("list reports complete pagination", page == 1 and pages == 3 and matches == 14)
+check("only the current page mounts rows", h.byName("Item_item-5", list.Frame) ~= nil and h.byName("Item_item-6", list.Frame) == nil)
+h.click(h.byName("Item_item-2", list.Frame))
+check("disabled rows cannot change selection", list:Get() == "item-1" and calls == 0)
+list:SetPage(3)
+h.click(h.byName("Item_item-14", list.Frame))
+check("last-page selection emits its stable identity", list:Get() == "item-14" and calls == 1)
+list:SetQuery("Description 3")
+page, pages, matches = list:GetPage()
+check("search starts from a complete first page", page == 1 and pages == 1 and matches == 1 and h.byName("Item_item-3", list.Frame))
+list:SetQuery("nothing matches")
+check("empty matches retain the selected id", select(3, list:GetPage()) == 0 and list:Get() == "item-14")
+local before = list:GetItems()
+check("invalid replacement preserves items and selection", not pcall(function() list:SetItems({ { Id = "x", Text = "one" }, { Id = "x", Text = "two" } }) end) and #list:GetItems() == #before and list:Get() == "item-14")
+list:SetQuery("")
+list:SetItems({ { Id = "new", Text = "New item" } })
+check("replacement silently clears missing selection", list:Get() == "" and calls == 1 and list:GetDefault() == "")
+list:Set("new")
+local saved = window:ExportConfig()
+list:Set("")
+check("profiles restore selection by id", window:ImportConfig(saved) and list:Get() == "new")
+list:SetDisabled(true)
+h.click(h.byName("Item_new", list.Frame))
+check("disabled list keeps a stable selection", list:Get() == "new")
+for index = 1, 20 do list:SetItems({ { Id = "new", Text = "Revision " .. index } }) end
+check("replacement does not accumulate list rows", #h.byName("ListRows", list.Frame):GetChildren() == 1)
+done()

@@ -19,12 +19,14 @@ return function(env)
 			if not handle.alive or not handle.visible then return end
 			local run
 			for _, item in ipairs(runner.runs) do if item.id == selected then run = item end end
-			run = run or runner.runs[#runner.runs]; if not run then return end
+			run = run or runner.runs[#runner.runs]
+			if not run then selected, store.workspace.outputRun = nil, nil; rawOutput = "Run a document to see its output here."; label.Text = rawOutput; picker.setText("Run output"); return end
 			selected = run.id; store.workspace.outputRun = selected; local follow = scroll.atBottom()
 			local doc = run.documentId and store.resolve(run.documentId)
 			picker.setText(run.name .. " · r" .. run.revision .. " · " .. run.status)
 			rawOutput = "Run " .. run.id .. (doc and doc.revision ~= run.revision and ("\nRan revision " .. run.revision .. "; current revision " .. doc.revision) or "")
 				.. "\n" .. (run.result and run.result.text or table.concat(run.output, "\n")) .. (#run.output == 0 and run.status ~= "running" and "\nNo printed output." or "")
+			if (run.outputOmitted or 0) > 0 then rawOutput = rawOutput .. "\n" .. run.outputOmitted .. " printed lines omitted from retained output." end
 			label.Text = rawOutput
 			if follow then scroll.toBottom() end
 		end
@@ -32,8 +34,10 @@ return function(env)
 			local options = {}; for i = #runner.runs, 1, -1 do local run = runner.runs[i]; options[#options + 1] = { label = run.name .. " · r" .. run.revision .. " · " .. run.status, value = run.id } end
 			common.menu(picker, "Runs", options, function(key) selected = key; render() end)
 		end, { flex = true, name = "OutputRunPicker" })
-		header.add("More", function(button) common.menu(button, "Output actions", { { label = "Copy output", value = "copy" }, { label = "Expand output", value = "expand" }, { label = "Latest run", value = "latest" } }, function(action)
-			if action == "copy" then common.copy(rawOutput) elseif action == "expand" then overlay.code({ title = "Run output", code = rawOutput }) else selected = nil; render(); scroll.toBottom() end
+		header.add("More", function(button) common.menu(button, "Output actions", { { label = "Copy output", value = "copy" }, { label = "Expand output", value = "expand" }, { label = "Latest run", value = "latest" }, { label = "Clear completed run output", value = "clear" } }, function(action)
+			if action == "copy" then common.copy(rawOutput) elseif action == "expand" then overlay.code({ title = "Run output", code = rawOutput })
+			elseif action == "clear" then runner.clearCompleted(); selected = nil; render()
+			else selected = nil; render(); scroll.toBottom() end
 		end) end, { icon = "ellipsis", name = "OutputMore" })
 		local function layout()
 			if not handle.alive then return end

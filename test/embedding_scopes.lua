@@ -100,6 +100,22 @@ scenario("signals and hooks release callbacks and contain host errors", function
 	check("scope operations after destroy are refused", scope.connect(signal, function() end) == nil and scope.hook("preTool", function() end) == nil)
 end)
 
+scenario("scoped delayed callbacks release ownership and cancel on destruction", function()
+	local h, _, handle, scopes = fixture()
+	local scope = assert(scopes.create(handle, "timers"))
+	local received, calls
+	local cancel = assert(scope.delay(0.1, function(a, b, c) received = { a, b, c }; calls = (calls or 0) + 1 end, "one", nil, "three"))
+	check("pending timers count as owned resources", scope.resourceCount() == 1)
+	h.sched.advance(0.2)
+	check("firing releases the timer while preserving nil arguments", scope.resourceCount() == 0 and calls == 1 and received[1] == "one" and received[3] == "three" and not cancel())
+	local release = assert(scope.delay(1, function() calls = calls + 10 end))
+	check("early cancellation is idempotent", release() and not release())
+	assert(scope.delay(1, function() calls = calls + 100 end))
+	scope.destroy(); h.sched.advance(2)
+	check("destroyed scopes cannot run pending callbacks", calls == 1 and scope.resourceCount() == 0)
+	check("destroyed scopes reject new timers", scope.delay(0, function() end) == nil)
+end)
+
 scenario("hook mutations during dispatch preserve membership and registration order", function()
 	local _, env = fixture()
 	local hooks, order = env.require("agent/hooks"), {}
@@ -141,6 +157,10 @@ scenario("scoped tools copy definitions and reject malformed extension data", fu
 		{ "run", true }, { "prepare", "run" }, { "timeout", -1 }, { "needs", { "ok", false } }, { "parameters", true },
 		{ "parameters", { type = "object", required = "count" } },
 		{ "parameters", { type = "object", properties = { count = { type = "number", minimum = "one" } } } },
+		{ "parameters", { type = "object", anyOf = { { type = "unknown" } } } },
+		{ "parameters", { type = "object", additionalProperties = "yes" } },
+		{ "parameters", { type = "object", properties = { count = { type = "integer", minimum = 5, maximum = 2 } } } },
+		{ "parameters", { type = "object", description = string.rep("x", 262145) } },
 	}
 	for _, item in ipairs(malformed) do
 		local bad = tool("bad_tool"); bad[item[1]] = item[2]

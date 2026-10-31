@@ -232,8 +232,9 @@ scenario("boot mounts the interface", function()
 	local text = harness.textOf(screen)
 	contains("the sidebar offers a new conversation", text, "New conversation")
 	contains("and names the place the client is in", text, "Mock Place")
-	contains("the first-run provider is visible", text, "Project UAI Free")
-	check("the first-run provider has a usable default model", handle.providers.active().model, "auto")
+	contains("setup offers the optional Free provider", text, "Project UAI Free")
+	check("first run does not create a provider", #handle.providers.list(), 0)
+	check("first run leaves provider selection empty", handle.providers.active(), nil)
 
 	-- Navigation is the sidebar's, and in a client whose panels are its surfaces the
 	-- panel list has to be reachable rather than hidden behind an invisible control.
@@ -291,10 +292,14 @@ scenario("requests carry the Claude Code identity", function()
 	check("the executor transport was used", requests[1].via, "executor")
 
 	-- And the identity is genuinely gone on a transport that cannot carry it.
-	local vanilla = envMock.new({ executor = false })
+	-- Keep the password vault's filesystem while omitting executor HTTP.
+	local vanilla = envMock.new()
+	vanilla.sandbox.request = nil
 	vanilla.http.handler = function() return { StatusCode = 200, Body = chatBody({ content = "ok" }) } end
 	suppressTour(vanilla)
 	local vanillaHandle = select(1, vanilla.boot())
+	authenticate(vanilla, vanillaHandle)
+	check("the comparison client uses HttpService", vanillaHandle.caps.http, "roblox")
 	local record = vanillaHandle.providers.blank("custom")
 	record.label = "Vanilla"
 	record.baseUrl = "https://harness.test/v1"
@@ -760,6 +765,7 @@ scenario("a write tool waits for permission", function()
 	end
 	suppressTour(denied)
 	local deniedHandle = select(1, denied.boot())
+	authenticate(denied, deniedHandle)
 	local record = deniedHandle.providers.blank("custom")
 	record.label = "D"
 	record.baseUrl = "https://harness.test/v1"
@@ -1171,6 +1177,9 @@ scenario("the request payload is shaped the way gateways expect", function()
 		handler = function() return { StatusCode = 200, Body = chatBody({ content = "ok" }) } end,
 	})
 	handle.config.set("permissions.mode", "auto")
+	-- Exercise full individual schemas, including zero-argument tools. Focused
+	-- family declarations intentionally have action parameters instead.
+	handle.config.set("agent.toolProfile", "all")
 
 	handle.sessions.current().send("hello")
 	harness.settle(6)
@@ -2590,6 +2599,7 @@ scenario("the Anthropic Messages API is spoken natively", function()
 	end
 	suppressTour(harness)
 	local handle = select(1, harness.boot())
+	authenticate(harness, handle)
 	harness.settle(1)
 
 	local record = handle.providers.blank("anthropic-messages")
@@ -2984,6 +2994,7 @@ scenario("an over-large reply ceiling is lowered to what the model allows", func
 	end
 	suppressTour(native)
 	local nativeHandle = select(1, native.boot())
+	authenticate(native, nativeHandle)
 	native.settle(1)
 
 	local record = nativeHandle.providers.blank("anthropic-messages")
@@ -5292,7 +5303,7 @@ end)
 -- and a window mounted, which on a slow client is seconds of nothing and looks exactly
 -- like a script that failed. The count is the one honest thing there is to report
 -- before the interface exists, and it comes from the loader itself.
-scenario("the boot indicator reports real module progress", function()
+scenario("the boot indicator reports completed stages and actual module counts", function()
 	local harness = envMock.new({})
 	harness.http.handler = function() return { StatusCode = 404, Body = "{}" } end
 	-- Read before settling: the notice is on screen during the boot and removes itself
@@ -5316,11 +5327,9 @@ scenario("the boot indicator reports real module progress", function()
 
 	local text = harness.textOf(pill)
 	contains("naming the client", text, "UAI")
-	-- A real fraction of a real total. The denominator is every module in the artifact
-	-- and the numerator is how many actually loaded, so the two must differ: a boot
-	-- deliberately does not reach the panels nobody has opened.
-	truthy("with a count of modules against the artifact's total",
-		text:find("%d+ / %d+") ~= nil, text)
+	-- Lazy modules are counted separately from the three real startup milestones.
+	truthy("with an actual loaded component count",
+		text:find("%d+ components loaded") ~= nil, text)
 	truthy("the loader counted them", handle.env.moduleCount > 0)
 	truthy("out of the artifact's own total", handle.env.moduleTotal >= handle.env.moduleCount)
 	truthy("and the total is not a guess -- it is every module in the bundle",
@@ -5328,12 +5337,11 @@ scenario("the boot indicator reports real module progress", function()
 	truthy("a boot does not load all of them, and the notice says so",
 		handle.env.moduleCount < handle.env.moduleTotal,
 		tostring(handle.env.moduleCount) .. " of " .. tostring(handle.env.moduleTotal))
-	contains("explaining what the rest are waiting for", text, "load with the panel")
-
-	local fill = harness.byName("BootFill", pill)
-	truthy("the bar is filled to the fraction that loaded", fill ~= nil)
-	truthy("which is a real share, not full",
-		fill.Size.X.Scale > 0.5 and fill.Size.X.Scale < 1, tostring(fill.Size.X.Scale))
+	contains("explaining what the rest are waiting for", text, "Other components load when you open them")
+	for index = 1, 3 do
+		local stage = harness.byName("BootStage" .. index, pill)
+		truthy("startup milestone completed " .. index, stage and stage:FindFirstChild("StageTrack"):GetAttribute("StageStatus") == "done")
+	end
 
 	-- And it leaves nothing behind.
 	harness.settle(4)
@@ -6246,29 +6254,28 @@ scenario("a menu over the editor dismisses without it", function()
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
-scenario("a first-run client is pointed at the featured provider", function()
+scenario("a first-run client discovers optional providers without installing them", function()
 	local harness, handle = bootWith({ provider = "default" })
 	local active = handle.providers.active()
-	check("included free provider is selected", active and active.label, "Project UAI Free")
-	check("the provider-supported auto router is ready", active and active.model, "auto")
-	truthy("the home introduces free access", harness.byName("FreeIntroduction") ~= nil)
+	check("no provider is selected before setup", active, nil)
+	check("first run installs no provider", handle.providers.count(), 0)
+	falsy("the home does not claim a Free subscription", harness.byName("FreeIntroduction"))
 	handle.app.show("providers")
 	harness.settle(1)
 
-	-- The panel keeps the way to everything else visible above the included route.
+	-- The empty panel exposes choices without committing one for the user.
 	truthy("the start card is shown", harness.byName("StartCard") ~= nil)
-	truthy("included access leads the quick picks", harness.byName("Start_hcnsec") ~= nil)
+	falsy("community access is not an automatic quick pick", harness.byName("Start_projectuai-free"))
 	truthy("AgentRouter is a quick pick", harness.byName("Start_agentrouter") ~= nil)
-	check("viewing recommendations keeps Free active", handle.providers.active(), active)
-	check("viewing recommendations adds no providers", handle.providers.count(), 1)
+	check("viewing recommendations preserves empty selection", handle.providers.active(), nil)
+	check("viewing recommendations adds no providers", handle.providers.count(), 0)
 
-	-- The gallery leads with AgentRouter, keeps its exact registration address, and
-	-- no longer recommends a model in its description.
+	-- The library offers Free explicitly and retains the other routes' guidance.
 	harness.click(harness.byName("StartBrowse"))
 	harness.settle(1)
 	local catalog = handle.env.require("provider/catalog")
 	local preset = catalog.get("agentrouter")
-	check("included access leads the free tier", catalog.byTier("free")[1].id, "hcnsec")
+	check("optional community access leads the library", catalog.byTier("free")[1].id, "projectuai-free")
 	check("AgentRouter follows it", catalog.byTier("free")[2].id, "agentrouter")
 	check("with its registration address", preset.docs, "https://agentrouter.org/register?aff=4pqF")
 	truthy("the gallery describes it", harness.byName("ChoiceDescription", harness.byName("Choice_agentrouter")) ~= nil)
@@ -6277,14 +6284,16 @@ scenario("a first-run client is pointed at the featured provider", function()
 	harness.settle(1)
 	contains("the card opens AgentRouter setup", harness.textOf(harness.byName("Preset")), "AgentRouter")
 	check("opening setup preserves the active provider", handle.providers.active(), active)
+	check("opening an editor does not save its draft", handle.providers.count(), 0)
 	harness.press("Escape")
 	harness.settle(1)
 
 	-- The free preset keeps its own endpoint and community docs.
-	local free = catalog.get("hcnsec")
+	local free = catalog.get("projectuai-free")
 	check("the free preset points at the api host", free.baseUrl, "https://api.hcnsec.cn/v1")
 	check("with the community as its docs", free.docs, "https://discord.gg/9xYyyYuKap")
-	check("and marked featured", free.featured, true)
+	falsy("community access stays out of the featured quick picks", free.featured)
+	falsy("personal HCNSEC does not contain community authentication", catalog.get("hcnsec").free)
 
 	-- OpenCode Zen keeps its guidance and is recommended as a hybrid.
 	local zen = catalog.get("zen")
@@ -6294,12 +6303,14 @@ scenario("a first-run client is pointed at the featured provider", function()
 	contains("OpenCode explains direct desktop support", zen.note, "without a bridge")
 	contains("OpenCode highlights its mobile relay requirement", zen.noteHighlight, "UAI Relay app")
 
-	handle.providers.remove(active.id)
-	harness.settle(1)
-	truthy("removing free access leaves the start card", harness.byName("StartCard") ~= nil)
-	harness.click(harness.byName("Start_hcnsec"))
-	harness.settle(1)
-	check("one action restores free access", handle.providers.active().label, "Project UAI Free")
+	harness.click(harness.byName("StartBrowse")); harness.settle(1)
+	harness.click(harness.byName("Choice_projectuai-free")); harness.settle(1)
+	check("choosing Free opens an unsaved draft", handle.providers.count(), 0)
+	contains("Free setup explains the supported auto model", harness.textOf(harness.byName("ActiveModel")), "auto")
+	harness.click(harness.byName("SaveProvider")); harness.settle(1)
+	local optedIn = handle.providers.active()
+	check("explicit save opts into community access", optedIn and optedIn.label, "Project UAI Free")
+	check("the saved Free route uses its supported auto model", optedIn and optedIn.model, "auto")
 
 	local custom = handle.providers.blank("custom")
 	custom.label, custom.baseUrl = "My provider", "https://harness.test/v1"
@@ -6657,7 +6668,12 @@ scenario("the agent names its own conversation, never the user's", function()
 
 	local function offered()
 		for _, definition in ipairs(sent[#sent].tools or {}) do
-			if definition["function"] and definition["function"].name == "conversation_rename" then return true end
+			local fn = definition["function"]
+			if fn and fn.name == "conversation_rename" then return true end
+			if fn and fn.name:sub(1, 4) == "uai_" then
+				local names = fn.parameters and fn.parameters.properties and fn.parameters.properties.name
+				for _, name in ipairs(names and names.enum or {}) do if name == "conversation_rename" then return true end end
+			end
 		end
 		return false
 	end
@@ -7346,9 +7362,14 @@ scenario("the changelog carries every release and marks itself read", function()
 	truthy("the initial release is present", initial)
 
 	-- Newest first, strictly: a duplicate or a misorder breaks the marker.
+	local function versionNumber(version)
+		local major, minor, patch = version:match("^(%d+)%.(%d+)%.(%d+)$")
+		assert(major, "release version must use major.minor.patch")
+		return tonumber(major) * 1000000 + tonumber(minor) * 1000 + tonumber(patch)
+	end
 	for index = 2, #all do
 		truthy("version " .. all[index - 1].version .. " is newer than " .. all[index].version,
-			all[index - 1].version > all[index].version)
+			versionNumber(all[index - 1].version) > versionNumber(all[index].version))
 	end
 
 	-- Every entry is renderable: a title, a date, and at least one section
@@ -7403,6 +7424,21 @@ scenario("the what's new modal renders every release on wide and narrow viewport
 	contains("category badges label the sections", text, "New")
 	contains("and the improved ones", text, "Improved")
 	contains("and the fixed ones", text, "Fixed")
+	local latest = changelog.latest()
+	check("the release candidate is the latest entry", latest.version, "3.8.0")
+	local latestCard = harness.byName("Release_" .. latest.version, modal.content)
+	truthy("the latest release has its own card", latestCard ~= nil)
+	local latestText = harness.textOf(latestCard)
+	for _, section in ipairs(latest.sections) do
+		contains("latest section is rendered", latestText, section.label or section.category)
+		for _, item in ipairs(section.items) do contains("latest change is rendered", latestText, item) end
+	end
+	harness.click(harness.byName("CopyLatestRelease", modal.footer))
+	local copied = harness.sandbox.__clipboard
+	for _, section in ipairs(latest.sections) do
+		for _, item in ipairs(section.items) do contains("latest change is copied", copied, item) end
+	end
+	truthy("release history has a scrolling body", modal.scroll and modal.scroll.instance.ScrollingEnabled)
 	-- Opening marked it read.
 	check("opening the modal marked it read", changelog.isUnread(), false)
 	modal.close()
@@ -7419,6 +7455,10 @@ scenario("the what's new modal renders every release on wide and narrow viewport
 	local phoneText = harness.textOf(harness.byName("Modal"))
 	for _, entry in ipairs(changelog.all()) do
 		truthy("v" .. entry.version .. " is on the phone too", phoneText:find(entry.version, 1, true) ~= nil)
+	end
+	local phoneLatest = harness.textOf(harness.byName("Release_" .. latest.version, phoneModal.content))
+	for _, section in ipairs(latest.sections) do
+		for _, item in ipairs(section.items) do contains("latest change survives narrow layout", phoneLatest, item) end
 	end
 	phoneModal.close()
 	harness.settle(1)
@@ -7557,6 +7597,8 @@ scenario("the first run opens the introduction and its pages step", function()
 	local reloadedHandle = select(1, reloaded.boot())
 	truthy("the saved client boots again", reloadedHandle ~= nil)
 	reloaded.settle(3)
+	authenticate(reloaded, reloadedHandle)
+	reloaded.settle(3)
 	falsy("a new session does not replay the saved introduction", reloaded.byName("TourPage"))
 	check("the saved first-run gate survives reload", reloadedHandle.config.get("ui.tutorial.seen"), true)
 	check("reloading has no thread errors", #reloaded.errors(), 0)
@@ -7592,8 +7634,15 @@ scenario("a UI-free client defers the introduction until its window opens", func
 	local handle = select(1, harness.boot())
 	truthy("the UI-free client boots", handle ~= nil)
 	harness.settle(3)
-	check("runtime boot does not mount an interface", handle.uiMounted, false)
+	check("credential entry mounts its required interface", handle.uiMounted, true)
+	check("credential entry keeps the normal window hidden", handle.app.window.visible, false)
+	check("new storage still requires an explicit choice", handle.config.vaultStatus().ready, false)
 	check("runtime boot leaves first run eligible", handle.config.get("ui.tutorial.seen"), false)
+	authenticate(harness, handle)
+	harness.settle(3)
+	check("authentication preserves the UI-free display preference", handle.app.window.visible, false)
+	falsy("authentication does not show the deferred tour", harness.byName("TourPage"))
+	check("authentication preserves first-run eligibility", handle.config.get("ui.tutorial.seen"), false)
 	handle.show()
 	harness.settle(3)
 	truthy("showing the window mounts the introduction", harness.byName("TourPage") ~= nil)

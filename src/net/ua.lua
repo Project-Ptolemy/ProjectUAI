@@ -54,7 +54,9 @@ return function(env)
 	function M.version()
 		local config = env.require("runtime/config")
 		local value = config.get("identity.version", M.DEFAULT_VERSION)
-		if type(value) ~= "string" or value == "" then return M.DEFAULT_VERSION end
+		if type(value) ~= "string" then return M.DEFAULT_VERSION end
+		value = util.trim(value)
+		if value == "" or #value > 80 or value:find("[^%w%.%+%-]") then return M.DEFAULT_VERSION end
 		return value
 	end
 
@@ -66,6 +68,8 @@ return function(env)
 	-- spent, so the first attempt sends 0.
 	function M.headers(opts)
 		opts = opts or {}
+		local attempt = tonumber(opts.attempt) or 1
+		if attempt ~= attempt or math.abs(attempt) == math.huge then attempt = 1 end
 		local headers = {
 			["User-Agent"] = M.userAgent(),
 			["x-app"] = "cli",
@@ -75,10 +79,10 @@ return function(env)
 			["X-Stainless-Arch"] = M.arch,
 			["X-Stainless-Runtime"] = "node",
 			["X-Stainless-Runtime-Version"] = M.NODE_VERSION,
-			["X-Stainless-Retry-Count"] = tostring(math.max((opts.attempt or 1) - 1, 0)),
+			["X-Stainless-Retry-Count"] = tostring(math.max(math.floor(attempt) - 1, 0)),
 		}
 		if opts.timeout then
-			headers["X-Stainless-Timeout"] = tostring(math.floor(opts.timeout))
+			headers["X-Stainless-Timeout"] = tostring(math.floor(env.require("net/deadline").seconds(opts.timeout)))
 		end
 		local protected = {}
 		if opts.required then
@@ -103,9 +107,10 @@ return function(env)
 	function M.describe()
 		local caps = env.require("runtime/caps")
 		local lines = { M.userAgent() }
-		for _, key in ipairs(util.keys(M.headers({ attempt = 1 }), true)) do
+		local headers = M.headers({ attempt = 1 })
+		for _, key in ipairs(util.keys(headers, true)) do
 			if key ~= "User-Agent" then
-				lines[#lines + 1] = key .. ": " .. M.headers({ attempt = 1 })[key]
+				lines[#lines + 1] = key .. ": " .. headers[key]
 			end
 		end
 		if not caps.uaSupported then

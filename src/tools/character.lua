@@ -29,6 +29,8 @@ return function(env)
 	return {
 		{
 			name = "character_state",
+			examples = { { title = "Inspect before movement", arguments = {},
+				note = "Read the current position and movement state before choosing a target." } },
 			risk = "read",
 			description = "Read your character: position, health, movement values and what it is standing on.",
 			parameters = { type = "object", properties = util.emptyObject(), required = {} },

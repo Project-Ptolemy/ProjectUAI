@@ -12,13 +12,13 @@ const root = path.resolve(__dirname, '..'), bridge = path.join(root, 'bridge');
 // these private CommonJS helpers, using ordinary source (no eval or extraction),
 // while checkout/executor/desktop installations keep their separate modules.
 function runtimeSource(name, directory = bridge) {
-  const inline = new Set(['opencode', 'support', 'mcp', 'mcp-stdio', 'environment', 'kilo', 'kilo-tor', 'kilo-proxy', 'cline']);
+  const inline = new Set(['opencode', 'support', 'mcp', 'mcp-stdio', 'environment', 'kilo', 'kilo-tor', 'kilo-proxy', 'cline', 'vaults', 'vault-paths', 'vault-notes', 'vault-storage', 'vault-search', 'vault-errors']);
   function read(filename, parents = new Set()) {
     if (parents.has(filename)) throw Error('Circular embedded bridge helper');
     const active = new Set(parents); active.add(filename);
     const input = path.join(directory, filename);
     if (!fs.lstatSync(input).isFile()) throw Error('Unexpected bridge helper input: ' + filename);
-    return fs.readFileSync(input, 'utf8').replace(/\r\n/g, '\n').replace(/require\('\.\/(opencode|support|mcp|mcp-stdio|environment|kilo|kilo-tor|kilo-proxy|cline)'\)/g, (call, helper) => {
+    return fs.readFileSync(input, 'utf8').replace(/\r\n/g, '\n').replace(/require\('\.\/(opencode|support|mcp|mcp-stdio|environment|kilo|kilo-tor|kilo-proxy|cline|vaults|vault-paths|vault-notes|vault-storage|vault-search|vault-errors)'\)/g, (call, helper) => {
       if (!inline.has(helper)) return call;
       const source = read(helper + '.js', active).replace(/^#![^\n]*\n/, '');
       return '(() => {\nconst embedded = { exports: {} };\n(function(module, exports, require) {\n' + source +

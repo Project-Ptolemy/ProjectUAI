@@ -50,6 +50,8 @@ return function(env)
 	local tools = {
 		{
 			name = "instance_tree",
+			examples = { { title = "Inspect the local character", arguments = { path = "me.Character", depth = 2, limit = 12 },
+				note = "Narrow the root to a known object. Omitted branches require a paginated child read." } },
 			risk = "read",
 			description = "Read a depth-limited tree within the result budget. Reports omitted/unreadable branches; use explorer_children for complete paginated children of a known handle.",
 			parameters = {

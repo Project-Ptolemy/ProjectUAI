@@ -1,4 +1,4 @@
--- Focused 3.2 default provider, migration and model-discovery contracts.
+-- Explicit library installation, separated access, migration and discovery.
 -- All inference responses are synthetic; no private credential is used.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("coding_fixture")
@@ -14,18 +14,21 @@ local function previousCommunityCredential()
 	return table.concat(out)
 end
 
-case("an empty setup receives a usable free provider without network setup", function()
+case("an empty setup stays empty until free access is explicitly installed", function()
 	local f = F.new()
 	-- 12:00 UTC is 20:00 at the fixed UTC+8 opening, independent of host time.
 	f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end
 	local registry = f.env.require("provider/registry")
 	local free = f.env.require("provider/free")
 	free.start()
+	check("startup leaves provider selection to the user", registry.count() == 0 and registry.active() == nil)
+	check("selection repair cannot install a provider", free.ensure() == nil and registry.count() == 0)
+	assert(free.use())
 	local record = registry.active()
 	check("free provider is active", record and record.label == "Project UAI Free" and registry.count() == 1)
 	check("included credential and supported router are ready", f.env.require("provider/community_key").isApplied(record)
 		and record.model == "auto" and record.models[1] == "auto" and registry.validate(record))
-	check("default setup sends no traffic", f.h.http.requestCount == 0)
+	check("explicit installation sends no traffic", f.h.http.requestCount == 0)
 	free.start(); free.use()
 	check("restarting and choosing free access do not duplicate it", registry.count() == 1)
 	f.h.http.handler = function(entry)
@@ -43,7 +46,7 @@ end)
 
 case("included access follows a fixed UTC+8 schedule from 20:00 to noon", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("hcnsec"); local community = f.env.require("provider/community_key")
+	local record = registry.blank("projectuai-free"); local community = f.env.require("provider/community_key")
 	local base, hour = 1767225600000, 3600000 -- 08:00 UTC+8 on 1 January.
 	for _, sample in ipairs({ { 4 * hour - 1, true }, { 4 * hour, false }, { 8 * hour, false },
 		{ 12 * hour - 1, false }, { 12 * hour, true }, { 16 * hour, true }, { 24 * hour - 1, true },
@@ -79,7 +82,8 @@ case("the retired included credential migrates without changing personal access"
 	local previous = previousCommunityCredential()
 	check("only the actual previous public credential is retired", credential.isRetired(previous)
 		and not credential.isRetired(credential.key) and not credential.isRetired("personal-migration-fixture"))
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
+	record.preset = "hcnsec"
 	record.id, record.apiKey = "retired-community-fixture", previous
 	record.headers = { Authorization = "Bearer " .. previous, ["x-api-key"] = previous, ["X-Route"] = "preserved" }
 	record.keyIds = { "11111111-1111-4111-8111-111111111111" }
@@ -97,7 +101,7 @@ case("the retired included credential migrates without changing personal access"
 		function(item) item.apiKey = previous .. "\npersonal-migration-fixture" end,
 		function(item) item.baseUrl = "https://custom.fixture/v1" end,
 		function(item) item.preset = "custom" end }) do
-		local other = registry.blank("hcnsec"); other.apiKey = previous; change(other)
+		local other = registry.blank("projectuai-free"); other.apiKey = previous; change(other)
 		local expected = other.apiKey
 		check("personal pools and unrelated endpoints are never migrated", not community.migrate(other) and other.apiKey == expected)
 	end
@@ -113,7 +117,7 @@ end)
 case("a saved community reference restores only its included key", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
 	local community = f.env.require("provider/community_key")
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
 	record.apiKey, record.communityCredential, record.authStyle = "", true, "x-api-key"
 	record.headers = { ["x-api-key"] = "personal-restoration-fixture" }
 	record.keyIds = { "11111111-1111-4111-8111-111111111111" }
@@ -137,7 +141,7 @@ case("community references retain pause and accounting metadata across cold relo
 		local f = F.new(); local registry = f.env.require("provider/registry")
 		local config, credentials = f.env.require("runtime/config"), f.env.require("runtime/credentials")
 		local community, credential = f.env.require("provider/community_key"), f.env.require("runtime/community_credential")
-		local record = registry.blank("hcnsec")
+		local record = registry.blank("projectuai-free")
 		record.id = "paused-community-reference"
 		record.keyIds = { "11111111-1111-4111-8111-111111111111" }
 		record.keyNames, record.keyPaused, record.keyMode, record.selectedKey = { "Paused included label" }, { true }, "single", 1
@@ -171,7 +175,7 @@ end)
 
 case("retired community references cannot retain old accounting IDs", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
 	record.apiKey = previousCommunityCredential()
 	record.keyIds = { "11111111-1111-4111-8111-111111111111" }
 	record.keyNames, record.keyPaused = { "Preserved label" }, { true }
@@ -179,7 +183,7 @@ case("retired community references cannot retain old accounting IDs", function()
 	check("retired raw credentials become current references without old IDs", referenced.apiKey == "" and referenced.communityKeyState.keyIds == nil
 		and referenced.communityKeyState.keyPaused[1] and referenced.communityKeyState.keyNames[1] == "Preserved label")
 	check("a malformed reference cannot silently resume included access", not f.env.require("provider/community_key").restore({
-		preset = "hcnsec", baseUrl = "https://api.hcnsec.cn/v1", apiKey = "", communityCredential = true,
+		preset = "projectuai-free", baseUrl = "https://api.hcnsec.cn/v1", apiKey = "", communityCredential = true,
 		communityKeyState = { revision = "2026-10-29", keyPaused = { "invalid" } } }))
 	f.healthy(); f.close()
 end)
@@ -188,7 +192,7 @@ case("closed included access can be saved but cannot start inference or discover
 	local f = F.new(); local registry = f.env.require("provider/registry")
 	-- 16:00 UTC+8: after the midday close and before the evening opening.
 	f.env.require("runtime/clock").ms = function() return 1767225600000 + 8 * 3600000 + f.h.sched.now * 1000 end
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
 	check("closed included access remains a valid saved provider", registry.validate(record) and registry.save(record))
 	local reply, why = f.run(function()
 		return f.env.require("provider/chat").complete(record, { messages = { { role = "user", content = "Hello" } }, stream = false })
@@ -198,6 +202,7 @@ case("closed included access can be saved but cannot start inference or discover
 	check("closed discovery explains its schedule", #found == 0 and has(note, "20:00-12:00 UTC+8"))
 	check("closed admissions send no network requests", f.h.http.requestCount == 0)
 	record.apiKey = "personal-schedule-fixture"
+	record.preset = "hcnsec"
 	check("personal HCNSEC requests remain eligible during daytime", registry.protocolProblem(record) == nil)
 	f.healthy(); f.close()
 end)
@@ -205,7 +210,7 @@ end)
 case("an admitted free inference can settle after closing", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
 	f.env.require("runtime/clock").ms = function() return 1767326400000 - 1000 + f.h.sched.now * 1000 end
-	local record = registry.blank("hcnsec"); registry.save(record)
+	local record = registry.blank("projectuai-free"); registry.save(record)
 	f.h.http.handler = function()
 		f.h.sched.wait(2)
 		return { StatusCode = 200, Body = f.h.json.encode({ choices = { { message = { role = "assistant", content = "Finished" }, finish_reason = "stop" } } }) }
@@ -239,20 +244,20 @@ case("missing selection adopts an existing enabled provider", function()
 	f.env.require("provider/free").stop(); f.healthy(); f.close()
 end)
 
-case("remove is respected and empty imports or next startup restore free access", function()
+case("removal, imports, reset and future startup never reinstall community access", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
 	local config, free = f.env.require("runtime/config"), f.env.require("provider/free")
-	free.start(); registry.remove(registry.active().id)
+	free.start(); assert(free.use()); registry.remove(registry.active().id)
 	check("explicit removal stays removed in this session", registry.count() == 0)
 	free.stop(); free.start()
-	check("next start restores an otherwise empty setup", registry.count() == 1 and registry.active().model == "auto")
+	check("next start keeps an otherwise empty setup", registry.count() == 0 and registry.active() == nil)
 	config.replace({ providers = { active = "", list = {} } })
-	check("an empty import receives included free access", registry.count() == 1 and registry.active().label == "Project UAI Free")
+	check("an empty import stays empty", registry.count() == 0 and registry.active() == nil)
 	config.reset("providers")
-	check("provider reset receives included free access", registry.count() == 1)
-	free.stop(); registry.remove(registry.active().id); config.reset("providers")
+	check("provider reset stays empty", registry.count() == 0)
+	free.stop(); config.reset("providers")
 	check("stopped bootstrap releases its listener", registry.count() == 0)
-	free.start(); registry.remove(registry.active().id)
+	free.start(); assert(free.use()); registry.remove(registry.active().id)
 	f.env.require("runtime/dispose").drain(); config.reset("providers")
 	check("client unload releases the free provider listener", registry.count() == 0)
 	f.healthy(); f.close()
@@ -368,18 +373,13 @@ case("only verified native free models waive personal key entry", function()
 	f.healthy(); f.close()
 end)
 
-case("free setup and introduction are available without key entry", function()
+case("free library setup is available without personal key entry", function()
 	local f = F.ui(390, 760); local registry = f.env.require("provider/registry")
-	f.env.require("ui/panels/providers").editor(registry.blank("hcnsec"), function(id) f.saved = registry.get(id) end)
+	f.env.require("ui/panels/providers").editor(registry.blank("projectuai-free"), function(id) f.saved = registry.get(id) end)
 	check("free setup explains included access", has(f.h.textOf(), "No account, payment or personal API key") and has(f.h.textOf(), "https://discord.gg/9xYyyYuKap"))
 	f.h.click(assert(f.h.byName("SaveProvider")))
 	check("Save needs no key or model edits", f.saved and f.saved.model == "auto" and registry.validate(f.saved))
-	f.env.require("ui/panels/home").card(f.host, 1)
-	local intro = assert(f.h.byName("FreeIntroductionText"))
-	check("welcome thanks continued support and explains capacity", has(intro.Text, "continued use and support") and has(intro.Text, "availability vary") and has(intro.Text, "More free providers"))
-	check("Discord is directly visible", has(f.h.byName("FreeCommunityInvite").Text, "https://discord.gg/9xYyyYuKap"))
-	check("the card counts down to the next schedule change", has(assert(f.h.byName("FreeHoursTimer")).Text, "Closes in ")
-		and has(f.h.byName("FreeHoursTimer").Text, "20:00-12:00 UTC+8"))
+	check("the installed access type has its own preset", f.saved.preset == "projectuai-free")
 	check("all managed-provider models qualify for free filtering", f.env.require("provider/models").isFree(f.saved, "auto"))
 	check("setup and introduction send no inference", f.h.http.requestCount == 0)
 	f.healthy(); f.close()

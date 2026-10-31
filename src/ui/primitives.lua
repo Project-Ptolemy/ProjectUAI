@@ -573,9 +573,16 @@ return function(env)
 
 		function handle.setEnabled(value)
 			handle.enabled = value ~= false
-			button.Active = handle.enabled
-			button.Selectable = handle.enabled
+			button.Active = handle.enabled and not handle.busy
+			button.Selectable = handle.enabled and not handle.busy
 			if not handle.enabled then focused = false; pressed = false end
+			paint()
+		end
+		function handle.setBusy(value)
+			handle.busy = value == true
+			button.Active = handle.enabled and not handle.busy
+			button.Selectable = handle.enabled and not handle.busy
+			if handle.busy then focused, pressed = false, false end
 			paint()
 		end
 
@@ -691,14 +698,14 @@ return function(env)
 			alignY = props.alignY or "Center",
 		})
 
-		local handle = { instance = button, row = row, selected = props.selected == true }
+		local handle = { instance = button, row = row, selected = props.selected == true, enabled = props.enabled ~= false }
 		local hovered, focused, pressed = false, false, false
 
 		local function paint()
 			local target = props.bg
 			if handle.selected then target = props.bgSelected or theme.color.surfaceActive end
-			if (hovered or focused) and not handle.selected then target = props.bgHover or theme.color.surfaceHover end
-			if pressed then target = props.bgPress or theme.color.surfaceActive end
+			if handle.enabled and (hovered or focused) and not handle.selected then target = props.bgHover or theme.color.surfaceHover end
+			if handle.enabled and pressed then target = props.bgPress or theme.color.surfaceActive end
 			local motion = pressed and "press" or "hover"
 			P.animate(button, motion, {
 				BackgroundColor3 = target or props.bgHover or theme.color.surfaceHover,
@@ -718,6 +725,7 @@ return function(env)
 		button.SelectionLost:Connect(function() focused = false; pressed = false; paint() end)
 
 		button.Activated:Connect(function()
+			if not handle.enabled then return end
 			if props.onClick then
 				local ok, err = pcall(props.onClick, handle)
 				if not ok then env.require("runtime/log").warn("ui", "row handler failed", err) end
@@ -727,6 +735,12 @@ return function(env)
 		function handle.setSelected(value)
 			handle.selected = value == true
 			paint("rest")
+		end
+		function handle.setEnabled(value)
+			handle.enabled = value ~= false
+			button.Active, button.Selectable = handle.enabled, handle.enabled
+			if not handle.enabled then hovered, focused, pressed = false, false, false end
+			paint()
 		end
 
 		-- The two things every one of these rows puts in itself, so a caller does not
@@ -758,7 +772,7 @@ return function(env)
 			})
 		end
 
-		paint("rest")
+		handle.setEnabled(handle.enabled)
 		return handle
 	end
 
@@ -837,7 +851,8 @@ return function(env)
 			fitPadding()
 		end
 
-		local handle = { instance = box, shell = shell, stroke = stroke }
+		local handle = { instance = box, shell = shell, stroke = stroke,
+			enabled = props.enabled ~= false, readOnly = props.readOnly == true }
 
 		local focused, hovered = false, false
 		local function paintField()
@@ -876,8 +891,30 @@ return function(env)
 
 		function handle.get() return box.Text end
 		function handle.set(value) box.Text = tostring(value or "") end
-		function handle.focus() pcall(function() box:CaptureFocus() end) end
+		function handle.focus()
+			if not handle.enabled then return false end
+			return pcall(function() box:CaptureFocus() end)
+		end
 		function handle.clear() box.Text = "" end
+		function handle.selectAll()
+			if not handle.focus() then return false end
+			box.CursorPosition, box.SelectionStart = #box.Text + 1, 1
+			return true
+		end
+		function handle.setEnabled(value)
+			handle.enabled = value ~= false
+			box.TextEditable = handle.enabled and not handle.readOnly
+			box.Active, box.Selectable = handle.enabled, handle.enabled
+			box.TextColor3 = handle.enabled and theme.color.text or theme.color.textDisabled
+			if not handle.enabled then pcall(function()
+				if env.uis:GetFocusedTextBox() == box then box:ReleaseFocus() end
+			end) end
+		end
+		function handle.setReadOnly(value)
+			handle.readOnly = value == true
+			handle.setEnabled(handle.enabled)
+		end
+		handle.setEnabled(handle.enabled)
 		if multiline and props.role == "mono" and props.syntax ~= false then
 			box.TextWrapped = false
 			handle.syntax = env.require("ui/code/syntax").attach(box, props.language or "luau")

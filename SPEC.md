@@ -1,12 +1,14 @@
 # Project UAI — contract
 
-Current client release: **3.7.2 - October 29, 2026**, with password-vault setup,
-an explicit unprotected-storage option, safer exports and scheduled included access.
-The bridge, web UI and Android companion (version code 8) remain **3.7.1**, which
-accepts every Kilo free-model spelling in quota
-recovery. The Windows desktop app remains **3.7.0**.
+Release: **Project UAI client, bridge/web UI and Windows desktop 3.8.0 —
+October 31, 2026**. This release adds focused tool families, persistent script
+goals, optional provider setup, separate Free/HCNSEC presets, native Obsidian
+browsing/editing, conversation and editor conveniences, and staged startup.
+The embedding SDK is **1.1.0** and standalone **UI LIB is 1.6.0**.
+The Android companion remains **3.7.1 (version code 8)**; its existing protocol,
+Kilo quota recovery and release assets are unchanged.
 
-Bridge 3.7.1 and Windows desktop 3.7.0 use verified automatic GitHub updates.
+Bridge 3.8.0 and Windows desktop 3.8.0 use verified automatic GitHub updates.
 Bridge worker replacement waits for idle work and retains its session token;
 desktop app updates stage for restart with a retained fallback. Desktop detects
 Node.js 18+ or downloads a verified LTS runtime per user instead of bundling Node.
@@ -94,6 +96,16 @@ may yield and queue another call without losing that new call. UTF-8 validation
 and repair preserve their byte/character contracts while processing contiguous
 ASCII or valid spans.
 
+`runtime/boot_progress` receives real Prepare, Restore and Open milestones from
+`init.lua`; `ui/boot` presents the responsive startup card. Loaded-module counts
+remain separate from stage progress because feature modules load lazily. Elapsed
+time is visible, and eight seconds without progress adds a still-working hint.
+Success closes the card; failure freezes the current stage with console guidance
+until Close notice. Raw host errors stay off the card. Its pulse, listeners and
+delays are owned and released on completion, dismissal or unload.
+`context.ui = false` suppresses this splash. Native startup does not introduce a
+reduced-motion setting.
+
 ### Embedding SDK
 
 The full client initially requires password setup or the explicit red
@@ -109,10 +121,11 @@ any required authentication unless `context.reuse = true`, which retains the exi
 display preference and boot context; it does not bypass an enabled vault. Changed-build
 replacement keeps the existing guarded save/reload contract.
 
-`handle.sdk.version` independently identifies the embedding API, beginning at
-`1.0.0`. `features` advertises `passwordGate`, `resourceScopes`, `requests`, and
-`sessionLookup`; `uiFreeBoot` is false because `ui = false` hides the normal app
-rather than guaranteeing no application construction. SDK APIs use dot calls.
+`handle.sdk.version` independently identifies the embedding API as `1.1.0`.
+`features` advertises `passwordGate`, `resourceScopes`, `requests`, `sessionLookup`,
+`requestSnapshots` and `scheduledScopes`; `uiFreeBoot` is false because `ui = false`
+hides the normal app rather than guaranteeing no application construction. SDK
+APIs use dot calls.
 Public `hooks`, `permissions`, and
 `openSession` remove the need to import presentation or lifecycle internals for
 ordinary host integrations. `env` and `app` remain implementation escape hatches,
@@ -126,6 +139,16 @@ and invalidates cooperative running calls; it does not undo applied effects or
 kill a native call. Scope destruction does not delete conversations or unload a
 shared client.
 
+Scope IDs are nonblank UTF-8 strings of at most 128 bytes without control
+characters. `scope.delay(seconds, callback, ...)` accepts a finite nonnegative
+delay and returns an idempotent cancellation function. Firing or cancellation
+releases ownership before the callback; destruction cancels pending callbacks.
+`resourceCount()` reports resources still owned. Already-running callbacks remain
+cooperative. Host tool descriptions are bounded to 16,000 UTF-8 bytes; schemas
+are bounded to 256 KiB of text, 8,192 entries and depth 32. Composed schemas,
+additional-properties schemas and numeric/length ranges are validated before
+registration.
+
 `sdk.request(session, text, options?)` returns a request or `nil, reason` on
 admission rejection. Options provide `onEvent`, `onComplete`, and the established
 `files`/`images` references. Accepted requests settle exactly once as `succeeded`,
@@ -134,6 +157,11 @@ callbacks are protected. Ordinary settlement follows busy release; removal and
 unload settle cancellation even when legacy send callbacks cannot run. Cancelling
 targets only that request and stays cooperative. `await(timeoutSeconds?)` returns
 the result or `nil, reason`; timeout stops waiting, not the request.
+Events and completion results are copied per callback; `await()` and the public
+`result` field are detached from the retained outcome. `snapshot()` returns
+`status`, `sessionId`, `startedAt`, optional `finishedAt`, `elapsedMs` and an
+optional detached result. Polling or mutating these copies cannot change another
+observer's result or settle the request.
 
 `sessions.get(id)` looks up a registered conversation. `open(id, options?)`
 returns `session, created` and selects only with `activate = true`; existing
@@ -166,6 +194,13 @@ sidebar profile uses Roblox headshots with a readable initial, display name,
 username and game. Motion is owned, reversible,
 and reduced-motion aware; cleanup settles active transitions exactly.
 See `docs/UI_LIBRARY.md` for the public API.
+
+UI LIB 1.6.0 adds `NumberInput`, selectable `TextView`, searchable/paged `ItemList`,
+`ActionGroup`, `Callout` and `KeyValue`. Item lists retain at most 500 records with
+1–20 visible records per page; action groups own 1–8 actions; key/value readouts
+accept at most 64 rows. Form validation, profiles and owned callbacks use the
+same window lifecycle as existing controls. Scripts declare domain values and
+callbacks instead of implementing these components locally.
 
 `node tools/build_ui_lib.js` deterministically generates the library, SHA-256
 manifest, and `runtime/ui_library_docs` from that guide. The read-only
@@ -201,7 +236,8 @@ credentials or raw error bodies. Runtime modules do not depend on `net/*`.
   [the provider and WebSocket contract](docs/PROVIDER_COMPATIBILITY.md).
 * Explicit `x-should-retry: false` suppresses transport retries.
 * Retries: 408/409/429/5xx and transport errors, exponential backoff with
-  jitter, `Retry-After` honoured, capped attempts, then the next provider in the
+  jitter, numeric or GMT-date `Retry-After` honoured with a cancellable 60-second
+  maximum wait, capped attempts, then the next provider in the
   fallback chain.
 * Native request deadlines, cancellation, malformed streams and response-limit
   errors are terminal. A long unanswered transport failure cannot trigger a
@@ -235,6 +271,10 @@ credentials or raw error bodies. Runtime modules do not depend on `net/*`.
   provider path/query. Connect/setup failures before `Send` may fall back to HTTP;
   failures after entering `Send` remain terminal. The Messages adapter uses HTTP
   or the web relay and does not use `wsUrl`.
+  Socket setup, an allowed HTTP fallback and native retries spend the original
+  request budget; a caller's earlier deadline wins. An expired socket request
+  never opens a connection. Header maps reject invalid names, duplicate names
+  ignoring case, nonscalar values and line/control injection before dispatch.
 * Base URLs preserve explicit schemes, path prefixes and query strings. Bare local,
   LAN and private addresses default to HTTP; public hosts default to HTTPS. Local
   reachability is checked by URL, including custom records. Model-list caches are
@@ -370,12 +410,20 @@ never submits a corrective native prompt or approves desktop execution. Mixed to
 batches retain provider order even when MCP calls arrive out of order.
 Capability and catalog data cannot survive a changed connection.
 
-Project UAI Free uses an intentionally distributed HCNSEC community key
+Project UAI Free is an optional Providers library preset (`projectuai-free`),
+separate from personal-key HCNSEC (`hcnsec`). Selecting its card prepares a draft;
+Save configures it. Startup, reset and empty imports do not insert a provider.
+Existing saved configurations remain intact. Recognized legacy community-only
+records adopt Free's identity; arbitrary personal/custom records are not guessed.
+Switching away from Free removes recognized community credentials, even after a
+draft's endpoint/auth fields change, while preserving other personal key metadata.
+
+Project UAI Free uses an intentionally distributed community key
 and the provider-supported `auto` router, verified through live discovery and tool
 inference. New included-access inference, discovery and background probes are
-admitted daily during **20:00–06:00 UTC+8**, including the opening instant and
+admitted daily during **20:00–12:00 UTC+8**, including the opening instant and
 excluding the closing instant, independent of the device's local timezone.
-Accepted replies retain their owner and are not cut off at 06:00. Personal
+Accepted replies retain their owner and are not cut off at 12:00. Personal
 HCNSEC credentials and other providers are unaffected. Client checks communicate
 the schedule; the upstream service must enforce actual availability and quotas.
 The key is reversibly encoded to deter literal searches, not encrypted or secret
@@ -402,12 +450,27 @@ race or replay the current prompt. Synthetic latency is not a real-request SLA.
 Per-request selections retain the saved `auto`, preserve scoped adapter lessons,
 and cannot override later provider edits. Free model choices have a subdued green
 rounded outline in the model picker and provider menus; selection stays distinct.
-Empty startup/import/reset configurations receive this scheduled provider;
-configured providers and credentials remain intact. Explicit removal stays removed
-for the current session. Public credentials remain masked in the UI. The welcome
-thanks users for continued support, explains variable shared availability and speed,
-mentions possible future free providers, and advertises the Discord community.
+Empty startup/import/reset configurations remain empty. Public credentials remain
+masked in the UI. The welcome directs new users to Providers; a selected Free
+record shows its schedule and variable shared availability. Personal HCNSEC
+setup never offers or automatically installs the community credential.
 No session-only development credential belongs in source or generated artifacts.
+
+Saved providers own exact-ID model favorites and recent selections in
+`ui.modelFavorites[providerId]` and `ui.recentModels[providerId]`. Favorites lead
+recents without changing the saved catalog, with at most 100 favorites and 12
+unique recents per provider. Removing a provider removes its shortcut buckets.
+Public configuration copies retain these preferences; import rejects unknown
+provider buckets, malformed IDs, duplicate recents and excess counts.
+`runtime/model_id` is the shared UTF-8/control/160-byte boundary, with the
+compatible `provider/model_id` entry point. Model filters support words in any
+order, quoted phrases, exclusions, favorites and documented tool support.
+
+Duplicate setup opens an unsaved draft retaining public endpoint/model/protocol
+fields and fresh preset defaults; it omits keys, URL queries and custom maps.
+Community access is added through its own library card. Reset learned
+compatibility clears parameter repairs and token/tool limits while retaining
+health, key cooldowns and accepted request ownership. It never resends work.
 
 Provider key pools select ready credentials round-robin, advancing the shared
 cursor before network work can yield. Quota refusals bench their rejected key;
@@ -421,6 +484,10 @@ Names are trimmed single-line UTF-8 text, at most 120 bytes, stored in the order
 replacing or removing an entry preserves other credentials and their names. There
 is no UI limit on the number of entries. Existing newline/comma-separated pools
 remain compatible and default to rotation without rewriting their saved data.
+Name/status search hides existing manager rows without replacing its focused
+field or searching credential contents. Browser pool replacement preserves the
+names, pauses and accounting IDs of exact surviving keys. A browser form for a
+removed provider cannot silently recreate it.
 
 `keyMode` defaults to `rotate`. In `single` mode only `selectedKey` is used for
 inference and model discovery; quota recovery never selects a different key from
@@ -769,6 +836,22 @@ error, not a crash. Returning `{ ok = false, text = "..." }` reports a semantic
 failure without raising. Dispatch rechecks disabled groups and the session's tool
 filters before execution, including after a pending approval resolves.
 
+The default `agent.toolProfile` is `focused`. It exposes at most nine families
+(`uai_files`, `uai_code`, `uai_instances`, `uai_game`, `uai_inspect`, `uai_connect`,
+`uai_automate`, `uai_context`, `uai_other`) plus seven eligible direct tools:
+`ask_user`, `notify`, `dispatch_agent`, `agent_status`, `agent_followup`,
+`tool_search` and `script_workflow`. Empty or unavailable families are omitted.
+Each family supports `list`, paged `describe` and `call`; declarations use
+`strict=false` for optional discovery fields and arbitrary action arguments.
+Exact target schemas and up to three validated examples are read on demand.
+
+Family calls re-enter the underlying action's ordinary dispatcher, including
+permissions, approval, hooks, revisions, timeouts and cancellation. The original
+request's allowed action names remain authoritative through family and overflow
+dispatch. Conversation exclusions and named/headless restrictions cannot widen
+when a schema is requested or a call runs. Existing profiles and `all` remain
+selectable; consolidation changes declarations without deleting tools.
+
 Schema validation preserves already-valid union types and bounds recursive work
 to depth 32, 8,192 visited values and 16 reported errors. Declared oversized
 arrays fail before member coercion. Invalid worker counts fall back to eight;
@@ -1109,6 +1192,23 @@ describe review, build, output inspection and focused test/repair workflows.
 `filter` is a case-sensitive literal substring of case names. Skipped cases are
 counted, fresh state is created for each executed case, and zero matching cases
 is an incomplete failed run.
+
+`script_workflow` records a conversation-owned goal with 1–16 acceptance criteria
+and six stages: define, inspect, plan, build, validate and review. Advancement
+requires stage evidence; completion requires evidence for every checked criterion
+and a successful syntax receipt for the current source revision. A failed latest
+test blocks validation. A later validation failure reopens validation, and known
+source writes or editor source changes invalidate receipts and completed criteria.
+Receipts capture the workflow identity/revision at dispatch start, so a late check
+cannot validate work changed while it ran. The history retains at most 24 receipts.
+Blocked goals retain their observed blocker; rewind and resume are explicit.
+Goals persist with the existing conversation policy and credential storage.
+Runtime workflow state never dispatches tools or imports the agent layer.
+
+The native project wizard stages new files for complete source review before an
+explicit Apply. A cancelled review preserves the form draft and discards its
+untouched proposal; a partially applied checkpoint stays available for recovery.
+Its original conversation/operation lifetime gates reads and writes.
 
 ## 6. Event stream
 
@@ -1516,6 +1616,13 @@ Its built-in header mode icon, `GetTheme` and `ToggleTheme` use `SetTheme`;
 profiles optionally retain mode and custom accent, with validation before any
 changes and compatibility with earlier profiles. Custom accent foregrounds use
 linear sRGB contrast. Theme switching preserves controls, drafts, and layout.
+The appearance contract also includes Palette (`Neutral`, `Graphite`, `Ocean`,
+`Forest`, `Rose`), Contrast (`Standard`, `High`), Density (`Comfortable`, `Compact`,
+`Spacious`), Shape (`Rounded`/8, `Soft`/14, `Square`/0 or custom `CornerRadius`),
+Typography (`Sans`, `System`, `Mono`) and TabHeader (`Simple`, `Detailed`, `Hidden`).
+Neutral and Simple are defaults. `GetAppearance`/`SetAppearance` update semantic
+settings; `GetAppearanceOptions` and `GetPalette` return copied values.
+Configuration remains version 1, and omitted new fields retain current choices.
 
 On touch devices, Enter inserts a newline; only Send submits. Attachments use the
 shared wrapping scroll region, with management available from Message options
@@ -1525,6 +1632,36 @@ selections or live forms. Collapsing the sidebar does not rebuild the window or
 transcript. The shared conversation search opens a matching chat directly;
 conversation management remains in the sidebar and app menu. The
 mobile launcher is visible only while the main window is minimized.
+
+`runtime/command_catalog` and `runtime/shortcuts` own search and key policy;
+`ui/commands` presents actions, settings and up to 64 loaded conversation titles.
+Ctrl+K opens commands, Ctrl+Shift+P searches dialogue, Ctrl+, opens settings and
+Ctrl+L focuses the composer. Only a visible, unlocked window with no focused
+field, handled input or other overlay accepts these shortcuts. Command Up/Down
+and Enter operate on the selected result; touch has the same row actions.
+Window destruction/unload releases its global listener. Conversation search
+reveals matches in pages of 12, keeps UTF-8 excerpt boundaries, and excludes
+system/tool context from fallback dialogue results.
+
+Code tabs retain drafts when closed and offer bounded recent reopening (20 views)
+and cycling without recreating source documents. Reentrant selection callbacks
+cannot consume the wrong history entry or overwrite a newer source selection.
+Explicit line transforms use UTF-8 byte boundaries and undo checkpoints; go-to
+positions use code-point columns. Reload from disk refuses dirty drafts and
+rechecks document revision and file-binding ownership after a yielded read.
+Observers saving another file during reload retain their newer binding.
+
+`runtime/transcript_export` freezes retained user/assistant dialogue as Markdown
+when its export dialog opens. Tool results/arguments, reasoning and request
+internals are excluded. Output is capped at 1 MiB between whole messages with an
+omission notice; the UI preview is capped separately at 12,000 bytes. Copy uses
+the host clipboard result; Save chooses a new scoped filename and verifies bytes
+before reporting success. Repeated Save after success does not duplicate the file.
+Conversation exports are readable files, not credential-vault encrypted payloads.
+
+`runtime/clipboard.write` recognizes native exceptions and explicit false returns
+as failures without logging payload-bearing host errors. Nil is a valid executor
+success result; no portable clipboard readback exists.
 
 Sheets, panels and desktop windows can all be moved. Default desktop placement
 avoids CoreGui's top bar, but dragging and restoring a chosen position use the full
@@ -1789,6 +1926,42 @@ documented in [bridge/README.md](bridge/README.md). Executor downloads start wit
 `node UAI/bridge/start.txt`; Git checkouts use `node bridge/server.js`. Bridge test
 fixtures and helpers live under `bridge/tests/` and are excluded from downloads.
 
+### Obsidian vaults
+
+Authenticated bridge routes `/api/vaults` and `/api/vaults/config` serve local
+Markdown vaults. User configuration connects up to 16 absolute folders and
+controls read-only policy; agents cannot configure roots or enable writes.
+Agent-facing listings omit absolute paths. Configuration is persisted on the
+bridge computer, separate from executor configuration and credential storage.
+
+Notes are UTF-8 `.md` files up to 1 MiB. Paths reject traversal, hidden components,
+reserved Windows names and linked files/folders. Reads paginate on UTF-8 boundaries
+and expose SHA-256 revisions. Create refuses existing notes; update/append require
+the exact read revision and verify saved bytes. A stale or uncertain write is
+terminal and never automatically retried. Native and browser views retain drafts
+when a save cannot be confirmed. Disconnecting a vault removes its configuration,
+not its files. Search/backlinks have bounded discovery and explicit incomplete
+coverage; metadata is a bounded subset of Markdown/frontmatter, not a YAML engine.
+
+`runtime/obsidian` holds pure path/paging contracts, `net/obsidian` owns authenticated
+loopback requests and connection epochs, and `tools/obsidian` exposes operations
+through the normal permission/scope dispatcher. Notes read by the agent enter its
+conversation with the selected provider. The native settings pane owns connections
+and opens Browse notes for connected vaults. Native and browser surfaces provide
+folder/text filters, paged listings, note creation, metadata, outgoing links,
+backlinks and a complete Markdown editor. No companion routes are added.
+
+Native complete reads bind revision, size, byte offsets and eof across at most
+90 pages/1 MiB. Editing preserves existing CRLF. Save explicitly creates or
+updates once and validates returned path/revision/byte count. A failed or
+unconfirmed save blocks another Save until Read current file completes a review.
+Keep draft adopts the reviewed revision for a later explicit Save; Use file
+discards local text. Neither review choice writes. Closed unsaved or uncertain
+drafts stay only in memory, at most eight; the ninth is refused without eviction.
+Each draft has one modal owner, and unload clears all drafts without executor
+recovery files. Read-only notes disable editing and Save.
+See [Obsidian](docs/OBSIDIAN.md) and [its API](docs/OBSIDIAN_API.md).
+
 The separate Windows launcher in `desktop/` embeds its bridge/client/license
 payload in one executable and verifies it into a private user cache. It detects
 Node.js 18+ or offers an official, checksum-verified LTS installation per user.
@@ -1796,6 +1969,11 @@ Desktop release updates verify executable bytes and stage them for the next
 app restart, preserving the original executable and a working fallback.
 Its native dashboard persists OpenCode, MCP, browser-open, start-on-launch and
 automatic desktop-update preferences under the stable installation identity.
+Ctrl+1 through Ctrl+5 select Workspace, Connections, Updates, Settings and Tunnels
+through the same navigation commands. Current supported capability replies own
+OpenCode/Cline/Kilo status; missing, malformed or disconnected replies clear stale
+readiness and versions. Desktop 3.8.0 embeds the matching reviewed client and
+bridge, including all native/browser Obsidian payload modules.
 Integration switches apply at Start and remain disabled while running. Minimize
 retains the taskbar window; closing stops owned processes and exits. No tray icon
 or close-to-tray behavior remains. Disabling automatic desktop downloads keeps

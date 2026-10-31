@@ -10,6 +10,7 @@ return function(env)
 	local models = env.require("provider/models")
 	local urls = env.require("net/url")
 	local bridge = env.require("net/bridge")
+	local community = env.require("provider/community_key")
 	local M = {}
 	local opened
 
@@ -34,7 +35,15 @@ return function(env)
 		for _, id in ipairs(known) do if models.isFree(record, id) then free = free + 1 end end
 		local detail = util.pluralise(#known, "model") .. (free > 0 and (" / " .. free .. " free") or "")
 		local route, tone = urls.display(record.baseUrl), theme.color.textTertiary
-		if providers.isCline(record) then
+		if community.isApplied(record) then
+			local availability = community.availability(record)
+			local countdown = community.countdown(record)
+			detail = "Community access / " .. (countdown and countdown.text or community.shortHours)
+			route, tone = community.shortHours, availability.open and theme.color.success or theme.color.warn
+		elseif record.preset == "hcnsec" then
+			detail = "Personal HCNSEC / " .. detail
+			if providers.keyPoolSize(record) == 0 then detail, tone = "API key required / " .. detail, theme.color.warn end
+		elseif providers.isCline(record) then
 			local state = bridge.clineStatus()
 			local labels = { ready = "Desktop connected", ["auth-required"] = "Sign in on desktop", disabled = "Enable in Tunnels",
 				missing = "Install Cline on desktop", starting = "Connecting on desktop", failed = "Check desktop connection",
@@ -49,7 +58,13 @@ return function(env)
 			detail, tone = "API key required / " .. detail, theme.color.warn
 		end
 		if record.enabled == false then detail, tone = "Disabled / " .. detail, theme.color.textDisabled
-		elseif providers.cooling(record) then detail, tone = "Cooling down / " .. detail, theme.color.warn end
+		elseif providers.keyPoolSize(record) > 0 and #providers.requestKeys(record) == 0 then
+			detail, tone = "No active API key / " .. detail, theme.color.warn
+		elseif providers.cooling(record) then detail, tone = env.require("provider/health").message(record) .. " / " .. detail, theme.color.warn end
+		local admission = env.require("provider/availability").describe(record)
+		if not admission.ready and admission.state ~= "disabled" and admission.state ~= "key-required" then
+			detail, tone = admission.message, theme.color.warn
+		end
 		return { detail = detail, route = route, tone = tone }
 	end
 
@@ -95,7 +110,9 @@ return function(env)
 						bg = theme.color.surface, radius = theme.radius.md,
 						stroke = true, strokeColor = theme.color.borderSubtle, padding = { x = theme.space.md }, gap = theme.space.sm,
 						layoutOrder = index + 2, onClick = function()
-							providers.setActive(record.id); modal.close(); if onChange then onChange() end
+							local ok, why = providers.setActive(record.id)
+							if not ok then overlay.toast(why or "This provider is no longer available.", "warn"); return end
+							modal.close(); if onChange then onChange() end
 						end })
 					local text = P.column(button.row, { name = "ProviderInfo", size = UDim2.new(0, 0, 0, 0), auto = "Y", flex = "Fill", gap = theme.space.hair })
 					local name = P.text(text, { name = "ProviderName", text = record.label, role = "label", truncate = true,

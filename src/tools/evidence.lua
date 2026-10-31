@@ -7,6 +7,8 @@ return function(env)
 	return {
 		{
 			name = "evidence",
+			examples = { { title = "Recover syntax-check evidence", arguments = { action = "search", query = "check_luau", limit = 10 },
+				note = "Read the returned record ID and continuation pages before relying on older results." } },
 			risk = "read",
 			needs = { "fs" },
 			description = "Read retained tool results for this conversation after compaction. action=list returns compact receipts; action=search filters by tool or text; action=read pages one record's full text, structured data or summary. Offsets are bytes. The ledger never executes captured content.",

@@ -39,7 +39,7 @@ return function(env)
 				if type(item.choices) ~= "table" or not util.isArray(item.choices) or #item.choices < 1 or #item.choices > 32 then return nil, "Choices require 1–32 values" end
 				def.choices = {}; local seen = {}
 				for _, choice in ipairs(item.choices) do
-					if type(choice) ~= "string" or #choice > limits.inputString or seen[choice] or not util.validUtf8(choice) then return nil, "Invalid or repeated choice" end
+				if type(choice) ~= "string" or util.trim(choice) == "" or #choice > limits.inputString or seen[choice] or not util.validUtf8(choice) then return nil, "Choices must be nonblank, valid and distinct" end
 					seen[choice] = true; def.choices[#def.choices + 1] = choice
 				end
 			end

@@ -4,7 +4,11 @@ return function(env)
 	local theme = env.require("ui/theme")
 	local P = env.require("ui/primitives")
 	local providers = env.require("provider/registry")
+	local clock = env.require("runtime/clock")
 	local M = {}
+	-- Rebuilding the sidebar and opening the menu share one local headshot. Only
+	-- ready native results are cached, briefly, so avatar changes can still appear.
+	local headshot
 
 	function M.identity()
 		local username, display, userId = "", "", 0
@@ -18,7 +22,8 @@ return function(env)
 		local initial = name:match("^[%z\1-\127\194-\244][\128-\191]*") or "?"
 		local image
 		if userId > 0 and userId < math.huge and userId == math.floor(userId) then
-			image = string.format("rbxthumb://type=AvatarHeadShot&id=%.0f&w=150&h=150", userId)
+			image = headshot and headshot.userId == userId and headshot.expires > clock.ms() and headshot.url
+				or string.format("rbxthumb://type=AvatarHeadShot&id=%.0f&w=150&h=150", userId)
 		end
 		return { name = name, username = username, initial = initial:upper(), image = image, userId = image and userId or nil }
 	end
@@ -75,13 +80,16 @@ return function(env)
 				for attempt = 1, 3 do
 					if attempt > 1 then task.wait(attempt - 1) end
 					if not alive or photo.IsLoaded then return end
-					if identity.userId then
+					if identity.userId and not (headshot and headshot.userId == identity.userId and headshot.expires > clock.ms()) then
 						local ok, url, ready = pcall(function()
 							return env.services.Players:GetUserThumbnailAsync(identity.userId,
 								Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
 						end)
 						if not alive then return end
-						if ok and ready == true and type(url) == "string" and url ~= "" then photo.Image = url end
+						if ok and ready == true and type(url) == "string" and url ~= "" then
+							photo.Image = url
+							headshot = { userId = identity.userId, url = url, expires = clock.ms() + 300000 }
+						end
 					end
 					pcall(function() env.services.ContentProvider:PreloadAsync({ photo }) end)
 					if not alive then return end

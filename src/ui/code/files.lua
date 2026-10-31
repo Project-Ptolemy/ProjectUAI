@@ -129,10 +129,10 @@ return function(env)
 			end })
 		refresh = function()
 			if not handle.alive or not handle.visible then return end
-			local rows, needle = {}, (view.query or ""):lower()
+			local rows, match = {}, env.require("runtime/search").compile(view.query)
 			local function append(row, depth)
 				if #rows >= 4000 or depth > 24 then return end
-				local matches = needle == "" or row.isDir or row.name:lower():find(needle, 1, true)
+				local matches = row.isDir or match(row.name, row.path)
 				if matches then
 					local item = util.copy(row); item.label, item.depth, item.selected = item.name, depth, item.path == view.selected; rows[#rows + 1] = item
 				end

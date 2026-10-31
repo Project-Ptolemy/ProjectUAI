@@ -10,7 +10,7 @@ for _, size in ipairs({ { 320, 640 }, { 844, 390 } }) do
 	local uis = h.services.UserInputService
 	uis.TouchEnabled, uis.MouseEnabled, uis.KeyboardEnabled = true, false, false
 	h.setViewport(size[1], size[2])
-	local app = assert(h.boot()); h.settle(0.5)
+	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.5)
 	local record = app.providers.blank("custom")
 	record.label, record.baseUrl, record.authStyle = "Touch fixture", "https://touch.fixture/v1", "none"
 	record.model, record.models = "claude-opus-5", { "claude-opus-5" }

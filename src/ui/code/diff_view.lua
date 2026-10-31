@@ -25,12 +25,14 @@ return function(env)
 		local current = 0
 		local function nextChange(delta)
 			if #comparison.hunks == 0 then return end
-			current = ((current + delta - 1) % #comparison.hunks) + 1
+			current = diff.nextHunk(current, delta, #comparison.hunks)
+			summary.setText("Change " .. current .. "/" .. #comparison.hunks .. " · +" .. comparison.added .. " −" .. comparison.removed)
 			local index = comparison.hunks[current].first
 			list.root.CanvasPosition = Vector2.new(list.root.CanvasPosition.X, math.max(0, (index - 3) * list.rowHeight))
 		end
 		bar.add("", function() nextChange(-1) end, { name = "PreviousSourceChange", icon = "arrowLeft", iconOnly = true, enabled = #comparison.hunks > 0 })
 		bar.add("Next change", function() nextChange(1) end, { name = "NextSourceChange", tight = true, enabled = #comparison.hunks > 0 })
+		bar.add("Copy", function() common.copy(diff.describe(comparison)) end, { name = "CopyInlineChanges", tight = true })
 		if #comparison.hunks > 0 then nextChange(1) end
 		local handle = { root = root, comparison = comparison, list = list, nextChange = nextChange,
 			destroy = function() root:Destroy() end }

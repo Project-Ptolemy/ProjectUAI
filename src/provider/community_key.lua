@@ -6,12 +6,15 @@ return function(env)
 	local M = {}
 	local credential = env.require("runtime/community_credential")
 	local key = credential.key
-	function M.eligible(record)
-		if type(record) ~= "table" or record.preset ~= "hcnsec" then return false end
+	local function official(record)
+		if type(record) ~= "table" then return false end
 		local base = url.normaliseBase(record.baseUrl)
 		local parsed = url.parse(base)
 		return parsed ~= nil and parsed.scheme == "https" and parsed.authority:lower() == "api.hcnsec.cn"
 			and parsed.path == "/v1" and (not parsed.query or parsed.query == "")
+	end
+	function M.eligible(record)
+		return type(record) == "table" and record.preset == "projectuai-free" and official(record)
 	end
 	function M.apply(record)
 		if not M.eligible(record) then return nil, "Project UAI Free requires the official HCNSEC endpoint. Help: https://discord.gg/9xYyyYuKap" end
@@ -30,7 +33,7 @@ return function(env)
 		return true
 	end
 	local function usesIncluded(record, expected)
-		if not M.eligible(record) or record.apiKey ~= expected or (record.authStyle or "bearer") ~= "bearer" then return false end
+		if not official(record) or record.apiKey ~= expected or (record.authStyle or "bearer") ~= "bearer" then return false end
 		-- Extra headers win over generated authentication. A personal override
 		-- must not keep the included-access badge or its zero-cost estimate.
 		for name, value in pairs(record.headers or {}) do
@@ -41,10 +44,33 @@ return function(env)
 		return true
 	end
 	function M.isApplied(record)
-		return usesIncluded(record, key)
+		return M.eligible(record) and usesIncluded(record, key)
+	end
+	-- Preset changes remove only known public credentials, even after a draft's
+	-- endpoint or auth style was edited. Remaining personal keys keep their IDs,
+	-- labels, pauses and selected position through the ordinary key-pool API.
+	function M.clear(record)
+		local keys = env.require("runtime/provider_keys")
+		local pool = keys.keys(record)
+		local removes = {}
+		for index, value in ipairs(pool) do
+			if value == key or credential.isRetired(value) then removes[#removes + 1] = index end
+		end
+		if #removes > 0 then
+			local valid, why = keys.validate(record)
+			if not valid then return nil, why end
+			for index = #removes, 1, -1 do keys.remove(record, removes[index]) end
+		end
+		for name, value in pairs(type(record.headers) == "table" and record.headers or {}) do
+			local raw = type(value) == "string" and value:gsub("^[Bb]earer%s+", "") or ""
+			if raw == key or credential.isRetired(raw) then record.headers[name] = nil end
+		end
+		record.communityCredential, record.communityKeyState = nil, nil
+		return true
 	end
 	function M.migrate(record)
-		if not M.eligible(record) or not credential.isRetired(record.apiKey) then return false end
+		if not official(record) or (record.preset ~= "hcnsec" and record.preset ~= "projectuai-free")
+			or not credential.isRetired(record.apiKey) then return false end
 		-- Replace only the exact old included credential and matching auth copies.
 		-- Preserve personal header overrides and key preferences; usage IDs cannot
 		-- follow a different credential into its new accounting history.
@@ -58,7 +84,8 @@ return function(env)
 		return true
 	end
 	function M.restore(record)
-		if not M.eligible(record) or record.communityCredential ~= true or util.trim(record.apiKey) ~= "" then return false end
+		if not official(record) or (record.preset ~= "hcnsec" and record.preset ~= "projectuai-free")
+			or record.communityCredential ~= true or util.trim(record.apiKey) ~= "" then return false end
 		local state = record.communityKeyState
 		if state ~= nil then
 			if type(state) ~= "table" or type(state.revision) ~= "string" or state.revision == "" then return false end
@@ -74,6 +101,19 @@ return function(env)
 		-- and explicit personal auth overrides retain their existing values.
 		record.apiKey = key
 		return true
+	end
+
+	-- Earlier releases used one HCNSEC preset for both access types. Migrate only
+	-- effective community access; personal keys, pools and custom names survive.
+	function M.separate(record)
+		if type(record) ~= "table" or record.preset ~= "hcnsec" then return false end
+		if usesIncluded(record, key) then
+			record.preset = "projectuai-free"
+			if record.label == "HCNSEC" or record.label == "Project UAI Free" then record.label = "Project UAI Free" end
+			return true
+		end
+		if record.label == "Project UAI Free" then record.label = "HCNSEC"; return true end
+		return false
 	end
 
 	-- The window opens at 20:00 and closes at 12:00 the following midday, so the
@@ -122,6 +162,7 @@ return function(env)
 		if not status.applies then return nil end
 		local now = atMs or env.require("runtime/clock").ms()
 		local target = status.open and status.nextCloseMs or status.nextOpenMs
+		if type(target) ~= "number" then return { open = false, text = "Check device clock", hours = M.hours } end
 		local left = target - now
 		return { open = status.open, ms = left, opensAt = status.nextOpenMs, closesAt = status.nextCloseMs,
 			text = (status.open and "Closes in " or "Opens in ") .. M.remaining(left) }

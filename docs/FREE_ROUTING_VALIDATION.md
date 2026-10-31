@@ -1,5 +1,13 @@
 # Managed Free latency routing
 
+Current setup is opt-in: add **Project UAI Free** from the Providers library and
+save it before using this routing. HCNSEC personal accounts have their own
+provider and never enable these community probes. Empty startup, import and reset
+configurations remain empty. See the [setup guide](providers/projectuai-free.md).
+
+The measurements and test counts below describe their dated runs. They are not
+current availability guarantees or evidence for a later release.
+
 Measured October 17, 2026, from the development desktop using the intentionally
 distributed community credential. No private credential or conversation was used.
 These are availability snapshots, not native Roblox or executor benchmarks.

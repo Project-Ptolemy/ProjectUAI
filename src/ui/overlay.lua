@@ -1035,7 +1035,7 @@ return function(env)
 				size = "sm",
 				layoutOrder = 1,
 				onClick = function()
-					local ok = pcall(caps.fn.clipboard, tostring(props.code or ""))
+					local ok = env.require("runtime/clipboard").write(tostring(props.code or ""))
 					M.toast(ok and "Copied" or "Could not reach the clipboard",
 						ok and "good" or "warn", 2)
 				end,

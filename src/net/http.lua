@@ -17,6 +17,8 @@ return function(env)
 	local urls = env.require("net/url")
 	local headerMap = env.require("net/headers")
 	local tunnelRoute = env.require("net/tunnel_route")
+	local budgets = env.require("net/deadline")
+	local retryAfter = env.require("net/retry_after")
 
 	local HISTORY_LIMIT = 60
 	local MAX_BODY, MAX_WORKERS, MAX_RELAY_WORKERS = 8 * 1024 * 1024, 8, 16
@@ -314,14 +316,18 @@ return function(env)
 		end
 		local method = (spec.method or "GET"):upper()
 		local attempt = spec.attempt or 1
+		local validHeaders, headerProblem = headerMap.validate(spec.headers)
+		if not validHeaders then return nil, "malformed: " .. headerProblem, 0, "terminal" end
 		local headers = buildHeaders(spec, attempt)
+		validHeaders, headerProblem = headerMap.validate(headers)
+		if not validHeaders then return nil, "malformed: " .. headerProblem, 0, "terminal" end
 		local started = clock.ms()
 
 		if aborted(spec) then return nil, "aborted", 0, "terminal" end
 		local transport = spec.relay and env.require("net/transport")
 		local relayEndpoint = transport and (spec.relayEndpoint or transport.endpoint())
 		local relayUnlimited = relayEndpoint and transport.unlimited(spec, relayEndpoint)
-		local deadline = math.min(tonumber(spec.deadlineMs) or math.huge, started + math.max(1, math.min(300, tonumber(spec.timeout) or 120)) * 1000)
+		local deadline = budgets.at(spec.timeout, spec.deadlineMs, started)
 		-- Capable local relays own the long provider connection. Their default
 		-- inference waits have no overall deadline; native exchanges stay short.
 		if relayUnlimited then
@@ -468,14 +474,12 @@ return function(env)
 		return res
 	end
 
-	-- Retry-After is seconds or an HTTP date. Only the numeric form is honoured:
-	-- parsing an RFC date to save a couple of seconds is not worth the code, and
-	-- the backoff curve is a sane fallback.
+	-- Server delays and GMT dates share the same bounded, cancellable wait.
 	local function retryDelay(res, attempt, opts)
 		if res then
 			local header = M.header(res, "retry-after")
-			local seconds = tonumber(header)
-			if seconds and seconds > 0 then return math.min(seconds, 60), "retry-after" end
+			local seconds = retryAfter.seconds(header)
+			if seconds then return math.min(seconds, 60), "retry-after" end
 		end
 		return clock.backoff(attempt, opts), "backoff"
 	end
@@ -512,7 +516,7 @@ return function(env)
 		-- Retry-After is the exception, and the only one: a server naming a moment to
 		-- come back has told us the request will work later, which is precisely what a
 		-- deadline cannot promise.
-		local told = res and tonumber(M.header(res, "retry-after"))
+		local told = res and retryAfter.seconds(M.header(res, "retry-after"))
 		if elapsed >= DEADLINE_FLOOR and util.trim(body) == "" and not told then
 			return false, string.format("nothing returned after %s", util.formatDuration(elapsed))
 		end
@@ -555,8 +559,10 @@ return function(env)
 	-- lets the caller report the wait to the interface, and `spec.aborted` lets a
 	-- user cancel during the sleep rather than after it.
 	function M.send(spec)
-		local attempts = math.max(1, math.min(8, tonumber(spec.attempts) or 1))
-		local deadline = tonumber(spec.deadlineMs) or (clock.ms() + math.max(1, math.min(300, tonumber(spec.timeout) or 120)) * 1000)
+		local attempts = tonumber(spec.attempts) or 1
+		if attempts ~= attempts then attempts = 1 end
+		attempts = math.floor(math.max(1, math.min(8, attempts)))
+		local deadline = budgets.at(spec.timeout, spec.deadlineMs)
 		local relayUnlimited = spec.relay and env.require("net/transport").unlimited(spec)
 		if relayUnlimited then deadline = math.huge end
 		local lastRes, lastErr

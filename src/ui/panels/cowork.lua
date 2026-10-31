@@ -282,7 +282,7 @@ return function(env)
 			if caps.clipboard then
 				P.button(installerCard, { name = "CopyBridgeStart", text = "Copy start command", variant = "ghost", size = "sm", fill = true, layoutOrder = 4,
 					onClick = function()
-						local ok = pcall(caps.fn.clipboard, "node " .. env.require("runtime/fsx").root .. "/bridge/start.txt")
+						local ok = env.require("runtime/clipboard").write("node " .. env.require("runtime/fsx").root .. "/bridge/start.txt")
 						overlay.toast(ok and "Start command copied" or "Could not reach the clipboard", ok and "good" or "warn", 2)
 					end })
 			end
@@ -341,7 +341,7 @@ return function(env)
 				size = "sm",
 				layoutOrder = 1,
 				onClick = function()
-					local ok = pcall(caps.fn.clipboard, bridge.status().url)
+					local ok = env.require("runtime/clipboard").write(bridge.status().url)
 					overlay.toast(ok and "Address copied" or "Could not reach the clipboard",
 						ok and "good" or "warn", 2)
 				end,

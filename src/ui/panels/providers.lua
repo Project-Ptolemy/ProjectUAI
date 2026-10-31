@@ -35,6 +35,7 @@ return function(env)
 	local communityKey = env.require("provider/community_key")
 	local icons = env.require("ui/icons")
 	local urls = env.require("net/url")
+	local connectionActions = env.require("provider/connection_actions")
 
 	local M = {}
 
@@ -132,13 +133,13 @@ return function(env)
 	-- `chat.endpointOf` and `registry.endpoint` both existed for this and both had zero
 	-- call sites; the comment on endpointOf says "for the Providers panel to show".
 	local function factsFor(record)
-		local health = record.health or {}
+		local health = env.require("provider/health").read(record)
 		local key, keyTone = maskedKey(record)
 		local streaming = record.stream ~= false and config.get("agent.stream", true)
 		if record.params and record.params.stream ~= nil then streaming = record.params.stream == true end
 		local transport = streaming and "Buffered SSE over HTTP" or "JSON over HTTP"
-		if chat.styleOf(record) == "anthropic" and util.trim(record.wsUrl) ~= "" then
-			transport = transport .. " (socket unused for Messages)"
+		if not chat.supportsSocket(record) and util.trim(record.wsUrl) ~= "" then
+			transport = transport .. " (socket unused for this protocol)"
 		elseif streaming and util.trim(record.wsUrl) ~= "" then
 			transport = caps.ws and "UAI gateway socket, with HTTP fallback before send" or "Buffered SSE over HTTP (socket unavailable)"
 		end
@@ -149,7 +150,8 @@ return function(env)
 		local out = {
 			{ key = "Endpoint", value = registry.isCline(record) and "Cline through Project UAI Bridge" or urls.display(chat.endpointOf(record)) },
 			{ key = "Model list", value = modelSource(record) },
-			{ key = "Protocol", value = labelOf(chat.STYLES, chat.styleOf(record)) },
+			{ key = "Protocol", value = chat.protocolOf(record) == "responses" and "OpenAI Responses" or labelOf(chat.STYLES, chat.styleOf(record)) },
+			{ key = "Availability", value = env.require("provider/availability").describe(record).message },
 			{ key = "Auth", value = labelOf(AUTH_OPTIONS, record.authStyle or "bearer")
 				.. "  \194\183  " .. key, tone = keyTone },
 			{ key = "Streaming", value = transport },
@@ -975,14 +977,14 @@ return function(env)
 						diameter = theme.size.controlSmall,
 						layoutOrder = 2,
 						onClick = function()
-							local ok = pcall(caps.fn.clipboard, tostring(presetRecord.docs))
+							local ok = env.require("runtime/clipboard").write(tostring(presetRecord.docs))
 							overlay.toast(ok and "Link copied" or "Could not reach the clipboard",
 								ok and "good" or "warn", 2)
 						end,
 					})
 				end
 				docsNoteRow = R.paragraph(guideBody,
-					presetRecord.free and "Free access is included. Join our Discord for updates, availability notices and help."
+					presetRecord.free and "Save this library choice to enable community access. Discord has availability notices and help."
 						or presetRecord.authStyle == "none"
 						and "Server setup and API documentation are at the address above."
 						or "Keys for this provider are issued at the address above.",
@@ -996,40 +998,18 @@ return function(env)
 		local function applyPreset(id)
 			local preset = catalog.get(id)
 			if not preset then return end
-			local previous = catalog.get(editing.preset)
-			if previous and util.trim(editing.label) == util.trim(previous.label) then
-				editing.label = preset.label
-			end
-			if util.trim(editing.label) == "" then editing.label = preset.label end
-			-- A gateway routes to its own upstream. Do not retain another preset's
-			-- gateway when changing servers, but preserve it when reselecting this one.
-			if editing.preset ~= preset.id then editing.wsUrl = "" end
-			editing.preset = preset.id
-			editing.baseUrl = preset.baseUrl or ""
-			editing.authStyle = preset.authStyle or "bearer"
-			editing.api = preset.api or "openai"
-			editing.claudeUa = preset.claudeUa ~= false
-			editing.headers = util.deepCopy(preset.headers or {})
-			editing.params = util.deepCopy(preset.params or {})
-			editing.query = util.deepCopy(preset.query or {})
-			editing.note = preset.note
-			editing.requires = preset.requires
-			if preset.free then
-				if util.trim(editing.apiKey or "") == "" then communityKey.apply(editing) end
-				if util.trim(editing.model or "") == "" then
-					editing.model, editing.models = preset.defaultModel, { preset.defaultModel }
-				end
-				if keyLabel then
-					local shown, tone = maskedKey(editing)
-					keyLabel.Text, keyLabel.TextColor3 = shown, tone and theme.color.warn or theme.color.textSecondary
-				end
+			local ok, why = env.require("provider/preset").apply(editing, id)
+			if not ok then overlay.toast(why, "warn"); return false end
+			if keyLabel then
+				local shown, tone = maskedKey(editing)
+				keyLabel.Text, keyLabel.TextColor3 = shown, tone and theme.color.warn or theme.color.textSecondary
 			end
 			if presetButton then presetButton.setText(preset.label) end
 			if urlField then urlField.set(editing.baseUrl) end
 			-- The name follows when it was never hand-edited -- the same rule the label
-		-- above applies -- and every control derived from the preset repaints, because a
-		-- preset changes the protocol, the auth header, the key hint and the docs link,
-		-- and a form where half the rows still describe the previous vendor reads as
+			-- above applies -- and every control derived from the preset repaints, because a
+			-- preset changes the protocol, the auth header, the key hint and the docs link,
+			-- and a form where half the rows still describe the previous vendor reads as
 			-- broken rather than as partially updated.
 			if nameField then nameField.set(editing.label) end
 			if protocolControl then protocolControl.set(chat.styleOf(editing)) end
@@ -1043,6 +1023,7 @@ return function(env)
 			refreshDocs()
 			if forgetFetchedModels then forgetFetchedModels() end
 			showProblems()
+			return true
 		end
 
 		row("Preset", nil, function(column)
@@ -1185,6 +1166,11 @@ return function(env)
 						onApply = function(updated)
 							if modal.closed or registry.isCline(editing) then return false end
 							if applyKeys(editing, updated) and forgetFetchedModels then forgetFetchedModels() end
+							if editing.preset == "projectuai-free" and not communityKey.isApplied(editing)
+								and util.trim(editing.apiKey) ~= "" then
+								if not applyPreset("hcnsec") then return false end
+								overlay.toast("Personal keys use the separate HCNSEC provider. This draft now uses HCNSEC.", "info")
+							end
 							showProblems()
 							return true
 						end,
@@ -1192,7 +1178,7 @@ return function(env)
 				end,
 			})
 			communityRow = P.column(column, { name = "CommunityKey", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 6 })
-			R.paragraph(communityRow, "Included community access is available. Switching replaces this draft's personal keys with included access.", { layoutOrder = 1 })
+			R.paragraph(communityRow, "Restore this provider's community access. Personal keys belong to the separate HCNSEC provider.", { layoutOrder = 1 })
 			P.button(communityRow, { name = "UseCommunityKey", text = "Use included free access", variant = "secondary", fill = true, layoutOrder = 2,
 				onClick = function()
 					local ok, why = communityKey.apply(editing)
@@ -1426,6 +1412,7 @@ return function(env)
 			fetched = {}
 			if modelButton then modelButton.setEnabled(true) end
 			if fetchButton then fetchButton.setEnabled(true) end
+			paintModel()
 			setModelNote(DEFAULT_MODEL_NOTE, false)
 		end
 
@@ -1690,12 +1677,6 @@ return function(env)
 				radius = theme.radius.md,
 				layoutOrder = index,
 				onClick = function()
-					if preset.free then
-						local record, why = env.require("provider/free").use()
-						if not record then overlay.toast(why, "warn", 4); return end
-						if onSetup then onSetup(record.id) end
-						return
-					end
 					M.editor(registry.blank(preset.id), onSetup)
 				end,
 			})
@@ -2116,8 +2097,8 @@ return function(env)
 					text = "Use this provider",
 					variant = "primary",
 					onClick = function()
-						registry.setActive(record.id)
-						overlay.toast(record.label .. " is now the active provider", "good", 2)
+						local ok, why = registry.setActive(record.id)
+						overlay.toast(ok and (record.label .. " is now the active provider") or tostring(why), ok and "good" or "warn", 2)
 					end,
 				}
 			end
@@ -2127,6 +2108,20 @@ return function(env)
 				variant = "secondary",
 				onClick = function() M.editor(record, function() panel.select(record.id) end) end,
 			}
+			if record.preset ~= "projectuai-free" then
+				actions[#actions + 1] = { name = "DuplicateConnection", text = "Duplicate setup", variant = "ghost", onClick = function()
+					local draft, why = connectionActions.duplicate(record)
+					if not draft then overlay.toast(tostring(why), "warn", 3); return end
+					M.editor(draft, function(id) panel.select(id) end)
+					overlay.toast("Setup copied without keys or custom credential fields. Review and save the new connection.", "info", 4)
+				end }
+			end
+			if connectionActions.hasLearned(record) then
+				actions[#actions + 1] = { name = "ResetCompatibility", text = "Reset learned compatibility", variant = "ghost", onClick = function()
+					local ok, why = connectionActions.resetLearned(record)
+					overlay.toast(ok and "Future requests can relearn this connection's parameter and token limits." or tostring(why), ok and "good" or "warn", 4)
+				end }
+			end
 			if not registry.isCline(record) then
 				actions[#actions + 1] = {
 					name = "ManageProviderKeys", text = "Manage API keys", variant = "secondary",
@@ -2139,8 +2134,8 @@ return function(env)
 					text = "Copy endpoint",
 					variant = "ghost",
 					onClick = function()
-						pcall(caps.fn.clipboard, chat.endpointOf(record))
-						overlay.toast("Copied", "good", 1.5)
+						local ok, why = env.require("runtime/clipboard").write(chat.endpointOf(record))
+						overlay.toast(ok and "Copied" or why, ok and "good" or "warn", 1.5)
 					end,
 				}
 			end

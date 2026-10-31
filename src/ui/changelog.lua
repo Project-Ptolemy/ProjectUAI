@@ -16,6 +16,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local overlay = env.require("ui/overlay")
 	local changelog = env.require("runtime/changelog")
+	local clipboard = env.require("runtime/clipboard")
 
 	local M = {}
 
@@ -43,6 +44,21 @@ return function(env)
 
 		local releases = changelog.all()
 		local latestVersion = changelog.latest() and changelog.latest().version
+		local cards = {}
+		local count = P.text(modal.content, { name = "ReleaseSearchCount", text = "", role = "caption",
+			auto = "Y", wrap = true, color = theme.color.textSecondary, layoutOrder = -1 })
+		local search = P.field(modal.content, { name = "ReleaseSearch", placeholder = "Find a release or change", layoutOrder = -2,
+			onChange = function(query)
+				query = util.trim(query:sub(1, 160)):lower()
+				local total = 0
+				for _, entry in ipairs(cards) do
+					local visible = true
+					for term in query:gmatch("%S+") do if not entry.search:find(term, 1, true) then visible = false; break end end
+					entry.card.Visible = visible
+					if visible then total = total + 1 end
+				end
+				count.Text = total == 0 and "No matching releases." or string.format("%d release%s", total, total == 1 and "" or "s")
+			end })
 
 		for index, release in ipairs(releases) do
 			local card = P.column(modal.content, {
@@ -56,6 +72,12 @@ return function(env)
 				layoutOrder = index,
 			})
 			P.stroke(card, theme.color.borderSubtle)
+			local terms = { release.version, release.title or "", release.date or "", release.highlights or "" }
+			for _, section in ipairs(release.sections or {}) do
+				terms[#terms + 1] = section.label or section.category
+				for _, item in ipairs(section.items or {}) do terms[#terms + 1] = item end
+			end
+			cards[#cards + 1] = { card = card, search = table.concat(terms, " "):lower() }
 
 			-- The header: top metadata row with version pill, optional latest badge,
 			-- spacer, and release date cleanly right-aligned.
@@ -81,6 +103,7 @@ return function(env)
 			P.text(pill, {
 				text = "v" .. release.version,
 				role = "label",
+				auto = "XY",
 				color = theme.color.accent,
 			})
 
@@ -98,6 +121,7 @@ return function(env)
 				P.text(latestBadge, {
 					text = "LATEST",
 					role = "overline",
+					auto = "XY",
 					color = theme.toneColor("good"),
 				})
 			end
@@ -213,8 +237,24 @@ return function(env)
 			end
 		end
 
+		count.Text = string.format("%d releases", #cards)
+		P.button(modal.footer, { name = "ClearReleaseSearch", text = "Clear search", variant = "ghost", size = "sm", layoutOrder = 1,
+			onClick = function() search.clear(); search.focus() end })
+		P.button(modal.footer, { name = "CopyLatestRelease", text = "Copy latest", size = "sm", layoutOrder = 2,
+			enabled = releases[1] ~= nil, onClick = function()
+				local release = releases[1]
+				if not release then return end
+				local lines = { "Project UAI " .. release.version .. " - " .. release.title, release.date, release.highlights or "" }
+				for _, section in ipairs(release.sections or {}) do
+					lines[#lines + 1] = "\n" .. (section.label or section.category)
+					for _, item in ipairs(section.items or {}) do lines[#lines + 1] = "- " .. item end
+				end
+				local ok, why = clipboard.write(table.concat(lines, "\n"))
+				overlay.toast(ok and "Release notes copied." or why, ok and "good" or "warn")
+			end })
 		P.button(modal.footer, {
 			text = "Close",
+			layoutOrder = 3,
 			variant = "secondary",
 			size = "sm",
 			onClick = function() modal.close() end,

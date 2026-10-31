@@ -33,13 +33,12 @@ return function(env)
 	local opencodeModels = {}
 	local clineModelIds = {}
 	local clineStates = { disabled = true, missing = true, starting = true, ["auth-required"] = true, ready = true, failed = true }
+	local capability = env.require("net/capability")
+	local opencodeStates = { disabled = true, missing = true, starting = true, ready = true, failed = true, stopped = true }
 	local function readCline(value)
-		if type(value) ~= "table" or value.schema ~= 1 then return nil end
-		local state = clineStates[value.state] and value.state or "unavailable"
-		local message = type(value.message) == "string" and util.trim(value.message) or ""
-		return { enabled = value.enabled == true, available = value.enabled == true and value.available == true and state == "ready",
-			state = state, message = util.truncate(message ~= "" and message or "Check the Cline connection in the Windows app's Tunnels tab.", 400),
-			version = type(value.version) == "string" and util.truncate(value.version, 80) or nil }
+		local state = capability.read(value, clineStates)
+		if state and state.message == "" then state.message = "Check the Cline connection in the Windows app's Tunnels tab." end
+		return state
 	end
 	local uploadFailed, pollFailed = false, false
 	local function syncRuntime()
@@ -218,8 +217,10 @@ return function(env)
 			return nil, "Cline returned an invalid model list."
 		end
 		local known = {}
-		for _, row in ipairs(value.data) do
-			if type(row) == "table" and type(row.id) == "string" and #row.id > 0 and #row.id <= 160 then known[row.id] = true end
+		for index, row in ipairs(value.data) do
+			if index > 10000 then break end
+			local id = type(row) == "table" and env.require("provider/model_id").parse(row.id)
+			if id then known[id] = true end
 		end
 		clineModelIds = known
 		return value
@@ -231,6 +232,7 @@ return function(env)
 		opts = opts or {}
 		local support = env.require("runtime/support")
 		if not M.opencodeStatus().available then return nil, support.error(support.opencode()) end
+		local mine, instance = generation, bridgeInstance
 		local res, err = call({ url = base() .. "/api/opencode/models", method = "GET",
 			requiresAccess = true, timeout = opts.timeout or 10, aborted = opts.aborted })
 		if not res or not res.ok then return nil, env.require("provider/openai").errorText(res, err) end
@@ -238,10 +240,14 @@ return function(env)
 		if type(value) ~= "table" or type(value.data) ~= "table" or value.error then
 			return nil, support.error("OpenCode CLI returned an invalid model list.")
 		end
-		if not M.opencodeStatus().available then return nil, support.error("OpenCode CLI availability changed; fetch models again.") end
+		if mine ~= generation or instance ~= bridgeInstance or not M.opencodeStatus().available then
+			return nil, support.error("OpenCode CLI connection changed; fetch models again.")
+		end
 		local known = {}
-		for _, row in ipairs(value.data) do
-			if type(row) == "table" and type(row.id) == "string" then known[row.id] = true end
+		for index, row in ipairs(value.data) do
+			if index > 10000 then break end
+			local id = type(row) == "table" and env.require("provider/model_id").parse(row.id)
+			if id then known[id] = true end
 		end
 		opencodeModels = known
 		return value
@@ -681,13 +687,9 @@ return function(env)
 				local previousCline = cline
 				kilo = kiloStatus.read(type(capabilities) == "table" and capabilities.kilo)
 				cline = readCline(type(capabilities) == "table" and capabilities.cline)
-				opencode = nil
-				if type(backend) == "table" and backend.schema == 1 then
-					opencode = { available = backend.available == true, state = tostring(backend.state or "unavailable"),
-						version = type(backend.version) == "string" and backend.version or nil }
-				end
+				opencode = capability.read(backend, opencodeStates, { ready = true, starting = true })
 				nextHello = clock.ms() + 4000
-				if not opencode or not opencode.available then opencodeModels = {} end
+				if not opencode or not opencode.available or previous and previous.version ~= opencode.version then opencodeModels = {} end
 				if not cline or not cline.enabled or (previousCline and previousCline.available and not cline.available)
 					or (previousCline and cline and previousCline.version ~= cline.version) then clineModelIds = {} end
 				if util.encode(previous) ~= util.encode(opencode) then M.changed:fire() end

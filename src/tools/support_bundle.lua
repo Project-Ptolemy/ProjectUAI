@@ -5,6 +5,8 @@ return function(env)
 	return {
 		{
 			name = "support_bundle",
+			examples = { { title = "Prepare local diagnostics", arguments = {},
+				note = "Creates a redacted local file and returns its path; it does not upload the report." } },
 			risk = "write",
 			description = "Write a redacted support bundle for this client: version/build, place, capabilities, provider health, permissions, enabled tools, session metadata, recent HTTP failures and logs, UI/device facts. API keys, authorization values, conversation text, file contents and captured payloads are excluded. The file is local; nothing is uploaded.",
 			parameters = {

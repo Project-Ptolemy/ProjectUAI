@@ -20,7 +20,7 @@ end
 local hostContext = ...
 local replacementConfig, replacementVault
 
-local VERSION = "3.7.2"
+local VERSION = "3.8.0"
 local FOLDER = "UAI"
 local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 
@@ -265,6 +265,7 @@ local function start()
 	-- Startup order matters in exactly one place: config has to be read before
 	-- anything derives from it, because the theme and the provider list are both
 	-- built from stored values.
+	if boot then boot.stage("prepare", "Checking capabilities and loading preferences.") end
 	local caps = env.require("runtime/caps")
 	local log = env.require("runtime/log")
 	local config = env.require("runtime/config")
@@ -293,6 +294,7 @@ local function start()
 	-- this is the step between "it used to see my notes" and the tidy layout, so it
 	-- is reported through the boot indicator while it happens rather than logged
 	-- where nobody looks. A fresh install sweeps an empty root and reports nothing.
+	if boot then boot.stage("restore", "Restoring your workspace and conversations.") end
 	pcall(function()
 		local fsx = env.require("runtime/fsx")
 		local alreadyMigrated = config.get("fs.migrated", false) == true
@@ -311,13 +313,13 @@ local function start()
 			end
 		end
 		if (pending > 0 or hasDisplacedSkills) and boot then
-			boot.phase("updating: your files are moving to the new layout", 0)
+			boot.phase("Updating your workspace layout.")
 		end
 		local moved = fsx.migrate(function(count, name)
-			if boot then boot.phase(string.format("moved %d: %s", count, name), math.min(count / 30, 0.9)) end
+			if boot then boot.phase(string.format("Moved %d: %s", count, name)) end
 		end)
 		if moved and moved > 0 and boot then
-			boot.phase(string.format("moved %d file(s) into files/", moved), 1)
+			boot.phase(string.format("Moved %d file(s) into files/", moved))
 		end
 		config.set("fs.migrated", true)
 		config.save()
@@ -327,6 +329,12 @@ local function start()
 
 	local sessions = env.require("agent/session")
 	sessions.restore()
+	local workflow = env.require("runtime/script_workflow")
+	env.require("runtime/dispose").add(env.require("runtime/code_store").changed:connect(function(event)
+		if event.kind == "source" or event.kind == "create" or event.kind == "delete" then
+			for _, session in ipairs(sessions.list()) do workflow.invalidate(session) end
+		end
+	end), "Script goal source revisions")
 
 	-- After the restore, because the first run recovers the real message history out
 	-- of whatever transcripts are already on disk, and before the interface, because
@@ -357,6 +365,7 @@ local function start()
 	end
 	-- Even an embedding that hides the application must present its password
 	-- prompt. The app keeps its normal window hidden after UI-free authentication.
+	if boot then boot.stage("interface", "Preparing your workspace controls.") end
 	local mounted, mountWhy = mountApp()
 	if not mounted then error(mountWhy, 0) end
 	if mountAtBoot then
@@ -366,14 +375,8 @@ local function start()
 		sessions.current()
 	end
 
-	-- The interface is up, so the indicator has nothing left to report. The count is
-	-- what it closes on: the rest of the artifact is the panels nobody has opened yet.
-	env.onModuleLoaded = nil
+	-- Mount callbacks are only needed during initial construction.
 	env.onMountPhase = nil
-	if boot then
-		pcall(boot.done, string.format("%d of %d modules loaded -- the rest load with the panel that needs them",
-			env.moduleCount, env.moduleTotal))
-	end
 
 	-- After the interface, because the bridge attaches to whichever thread is
 	-- active and the interface is what establishes that on a fresh install. A
@@ -470,7 +473,6 @@ local function start()
 		if linksStarted or not handle.alive or config.accessProblem() or config.vaultStatus().busy then return end
 		linksStarted = true
 		handle.providers.migrate()
-		env.require("provider/free").ensure()
 		local bridgeOk, bridgeWhy = bridge.sync()
 		if not bridgeOk and bridgeWhy then log.warn("bridge", "not started", bridgeWhy) end
 		env.require("net/relay_link").ensure()
@@ -482,6 +484,11 @@ local function start()
 	startLinks()
 
 	if globalTable then globalTable.UAI = handle end
+	env.onModuleLoaded = nil
+	if boot then
+		pcall(boot.done, "Your workspace is ready.")
+		env.require("runtime/dispose").add(boot.destroy, "Startup card")
+	end
 	log.info("boot", "ready")
 	return handle
 end

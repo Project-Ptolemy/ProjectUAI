@@ -10,6 +10,7 @@ local GROUPS = {
 	"script",
 	"coding",
 	"fs",
+	"obsidian",
 	"net",
 	"web",
 	"players",

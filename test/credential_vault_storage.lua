@@ -285,7 +285,7 @@ end)
 case("fresh included access keeps its reference and pool settings through same-session locking", function()
 	local f = setup(); local registry = f.env.require("provider/registry")
 	local community = f.env.require("provider/community_key")
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
 	record.keyNames, record.keyPaused, record.keyMode, record.selectedKey = { "Included fixture" }, { true }, "single", 1
 	record.keyIds = { "33333333-3333-4333-8333-333333333333" }
 	assert(registry.save(record))

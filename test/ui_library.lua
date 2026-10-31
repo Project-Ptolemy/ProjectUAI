@@ -30,7 +30,7 @@ local function input(kind, x, y, key)
 end
 local function key(name) return input(E.UserInputType.Keyboard, 0, 0, E.KeyCode[name]) end
 check("fixed attribution is part of the window and launcher", node("Attribution", window.Frame).Text == "Project UAI | UI LIB." and node("Attribution", node("Restore")).Text == "Project UAI | UI LIB.")
-check("public metadata points to this repository", UI.Version == "1.4.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
+check("public metadata points to this repository", UI.Version == "1.6.0" and UI.URL:find("Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua", 1, true) ~= nil)
 check("window chrome draws the mark and leaves the window controls unfilled",
 	node("Brand", window._header) ~= nil and h.byName("minus", window._minimize) ~= nil and h.byName("close", window._close) ~= nil
 		and window._minimize.BackgroundTransparency == 1 and window._close.BackgroundTransparency == 1)
@@ -153,6 +153,17 @@ check("live callbacks can replace their value without stale draft rendering", li
 live:Destroy()
 progress:Set(130); badge:Set("Complete")
 check("progress and status have live state", progress:Get() == 100 and badge:Get() == "Complete")
+
+local renameAction = section:Button({ Text = "Review", ActionText = "Review" })
+renameAction:SetActionText("Apply", "Applying"):SetLoading(true)
+check("button action and loading wording update through the public API", node("Action", renameAction.Frame):FindFirstChildOfClass("TextLabel").Text == "Applying")
+renameAction:SetLoading(false)
+check("updated action wording returns after loading", node("Action", renameAction.Frame):FindFirstChildOfClass("TextLabel").Text == "Apply")
+renameAction:Destroy()
+local divider = section:Divider({ Text = "Before" })
+divider:SetText("After")
+check("renamed dividers retain their uppercase label style", divider._label.Text == "AFTER")
+divider:Destroy()
 
 local menu = dropdown:Open()
 local lastOption = node("Option_3", menu.Root)

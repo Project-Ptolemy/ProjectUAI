@@ -7,6 +7,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local overlay = env.require("ui/overlay")
 	local M = {}
+	function M.browse(app) return env.require("ui/conversation_browser").open(app) end
 
 	local function errorLabel(parent, order)
 		return P.text(parent, { name = "FolderError", text = "", role = "small", wrap = true,

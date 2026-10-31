@@ -133,7 +133,7 @@ return function(env)
 			local rowHeight = window.Target
 			if window.Touch then
 				for _, spec in ipairs(buttons) do
-					rowHeight = math.max(rowHeight, math.min(window.Target * 2, C.measure(spec.Text or "Done", 14 * window.TextScale, cellWidth - 16) + 16))
+					rowHeight = math.max(rowHeight, math.min(window.Target * 2, C.measure(spec.Text or "Done", 14 * window.TextScale, cellWidth - 16, env.require("typography").font(window.Typography, "Body")) + 16))
 				end
 			end
 			for index, button in ipairs(actions) do
@@ -143,7 +143,7 @@ return function(env)
 			return math.ceil(#actions / columns) * (rowHeight + 8) - 8
 		end
 		panel.OnLayout = function(width)
-			content.Size = UDim2.new(1, 0, 0, C.measure(content.Text, 14 * window.TextScale, width - 40))
+			content.Size = UDim2.new(1, 0, 0, C.measure(content.Text, 14 * window.TextScale, width - 40, content.Font))
 		end
 		window:_Layout()
 		panel:Focus(actions[#actions])
@@ -204,7 +204,7 @@ return function(env)
 			local headerHeight = math.max(titleHeight + 32, window.Target + 4)
 			local actionHeight = action and window.Target + 12 or 0
 			if headerHeight + actionHeight > available then actionHeight = 0 end
-			local bodyHeight = body.Text == "" and 0 or math.min(120, math.max(0, available - headerHeight - actionHeight), C.measure(body.Text, 12 * window.TextScale, width - 32))
+			local bodyHeight = body.Text == "" and 0 or math.min(120, math.max(0, available - headerHeight - actionHeight), C.measure(body.Text, 12 * window.TextScale, width - 32, body.Font))
 			local dismissWidth = math.max(window.Target, 64 * window.TextScale)
 			title.Size = UDim2.new(1, -dismissWidth - 40, 0, titleHeight)
 			body.Position = UDim2.fromOffset(16, headerHeight - 14)

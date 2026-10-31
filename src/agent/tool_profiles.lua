@@ -17,6 +17,9 @@ return function(env)
 	}
 
 	local PROFILES = {
+		focused = {
+			label = "Focused families", hint = "A small set of tool families. Discover exact actions and arguments when needed; permissions stay unchanged.",
+		},
 		all = {
 			label = "All tools", hint = "Every tool is declared, exactly as before.",
 		},
@@ -36,8 +39,8 @@ return function(env)
 			groups = { coding = true, gui = true, skills = true },
 		},
 		integrate = {
-			label = "Integrations", hint = "Core plus Gravity, Infinite Yield, players, character and world tools.",
-			groups = { gravity = true, iy = true, chat = true, players = true, character = true, world = true, input = true, remotes = true, meta = true },
+			label = "Integrations", hint = "Core plus Obsidian vaults, Gravity, Infinite Yield, players, character and world tools.",
+			groups = { gravity = true, iy = true, chat = true, players = true, character = true, world = true, input = true, remotes = true, meta = true, obsidian = true },
 		},
 		chat = {
 			label = "Chat", hint = "Core plus in-game chat and player tools.",
@@ -45,7 +48,7 @@ return function(env)
 		},
 	}
 
-	local order = { "all", "lean", "inspect", "build", "ui", "integrate", "chat" }
+	local order = { "focused", "all", "lean", "inspect", "build", "ui", "integrate", "chat" }
 
 	local function copy(list)
 		local out = {}

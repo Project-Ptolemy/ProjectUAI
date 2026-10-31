@@ -813,6 +813,8 @@ return function(env)
 
 		function view.attach(session, force)
 			if destroyed then return end
+			if view.session and view.session ~= session and view.session.setViewed then view.session.setViewed(view, false) end
+			if session and session.setViewed then session.setViewed(view, visible) end
 			if session and view.session == session and not force then
 				-- A paused view (hidden window or another panel) returns through an
 				-- incremental replay. It must not tear down its measured rows first.
@@ -838,6 +840,20 @@ return function(env)
 		end
 
 		function view.refresh() view.attach(view.session, true) end
+		function view.jumpTo(id)
+			if destroyed or not view.session or not view.session.transcript.get(id) then return false end
+			view.pinned = false
+			chunkReading, disclosureReading = nil, nil
+			reading = { pinned = false, anchor = id, offset = theme.space.sm, y = scroll.instance.CanvasPosition.Y }
+			view.session.viewState = util.copy(reading)
+			local handle = view.rows[id]
+			if handle and handle.root.Parent then
+				local offset = viewport.offset(handle.root)
+				if offset then reading.y = math.max(0, offset - theme.space.sm); move(reading.y) end
+			end
+			follow(); viewport.wake()
+			return true
+		end
 
 		-- Coming back from a hidden window or another panel keeps the measured
 		-- spacers and reconciles only the events that arrived while the view was
@@ -862,6 +878,7 @@ return function(env)
 			if destroyed or visible == value then return end
 			saveReading()
 			visible = value
+			if view.session and view.session.setViewed then view.session.setViewed(view, value) end
 			local visited = {}
 			for _, handle in pairs(view.rows) do
 				if handle.setVisible and not visited[handle] then
@@ -881,6 +898,7 @@ return function(env)
 		end
 		local function cleanup()
 			if destroyed then return end
+			if view.session and view.session.setViewed then view.session.setViewed(view, false) end
 			saveReading(); destroyed = true
 			view.generation = view.generation + 1
 			if view.replay then view.replay.events, view.replay.pending = {}, {} end

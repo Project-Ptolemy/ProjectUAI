@@ -46,7 +46,9 @@ internal static class EmbeddedPayload
                 var item = files[name]; total += item.Bytes;
                 if (item.Bytes < 0 || item.Bytes > Limit || total > Limit) throw new IOException("Embedded bridge files are too large.");
             }
-            foreach (string name in new[] { "bridge/server.js", "bridge/environment.js", "bridge/inference.js", "bridge/kilo.js", "bridge/kilo-tor.js", "bridge/kilo-proxy.js", "bridge/opencode.js", "bridge/cline.js", "bridge/support.js", "bridge/mcp.js", "bridge/mcp-stdio.js", "bridge/picture-store.js", "bridge/launcher.js", "bridge/release.js", "bridge/updater.js", "bridge/supervisor.js", "bridge/web/index.html", "client/uai.lua" })
+            foreach (string name in new[] { "bridge/server.js", "bridge/environment.js", "bridge/inference.js", "bridge/kilo.js", "bridge/kilo-tor.js", "bridge/kilo-proxy.js", "bridge/opencode.js", "bridge/cline.js", "bridge/support.js", "bridge/mcp.js", "bridge/mcp-stdio.js", "bridge/picture-store.js", "bridge/launcher.js", "bridge/release.js", "bridge/updater.js", "bridge/supervisor.js", "bridge/web/index.html", "client/uai.lua",
+                "bridge/vaults.js", "bridge/vault-paths.js", "bridge/vault-notes.js", "bridge/vault-storage.js", "bridge/vault-search.js", "bridge/vault-errors.js",
+                "bridge/web/vault-client.js", "bridge/web/vaults.js", "bridge/web/vaults.css" })
                 if (!files.ContainsKey(name)) throw new IOException("The embedded package is incomplete.");
             if (Directory.Exists(root))
             {

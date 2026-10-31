@@ -1,15 +1,17 @@
--- Every public control, using the exact loader agents put in standalone scripts.
+-- Core controls, using the exact loader agents put in standalone scripts.
 local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua"))()
 local window = UI:CreateWindow({
 	Id = "uai-library-showcase",
 	Title = "Fieldwork",
 	Subtitle = "A considered set of tools for your session",
 	Search = true,
+	Palette = "Graphite",
+	TabHeader = "Detailed",
 })
 
-local overview = window:Tab({ Title = "Overview" })
-local controls = window:Tab({ Title = "Controls" })
-local preferences = window:Tab({ Title = "Preferences" })
+local overview = window:Tab({ Id = "overview", Title = "Overview" })
+local controls = window:Tab({ Id = "controls", Title = "Controls" })
+local preferences = window:Tab({ Id = "preferences", Title = "Preferences" })
 
 local session = overview:Section({ Title = "Session", Description = "Small, purposeful controls. One consistent interface." })
 session:Badge({ Text = "Workspace", Default = "Ready", Kind = "Success" })
@@ -25,8 +27,8 @@ session:Button({
 })
 
 local inputs = controls:Section({ Title = "Inputs", Description = "Values stay separate from your application logic." })
-inputs:Input({ Id = "name", Text = "Workspace name", Default = "My workspace", Placeholder = "Give this workspace a name" })
-inputs:Input({ Id = "limit", Text = "Item limit", Description = "A number between 1 and 100.", Numeric = true, Min = 1, Max = 100, Default = 20 })
+inputs:Input({ Id = "name", Text = "Workspace name", Default = "My workspace", Required = true, Placeholder = "Give this workspace a name" })
+inputs:NumberInput({ Id = "limit", Text = "Item limit", Description = "A number between 1 and 100.", Min = 1, Max = 100, Step = 1, Default = 20 })
 inputs:Dropdown({
 	Id = "mode", Text = "Selection mode", Default = "nearest",
 	Options = { { Label = "Nearest first", Value = "nearest" }, { Label = "In view", Value = "visible" }, { Label = "All available", Value = "all" } },
@@ -51,6 +53,12 @@ inputs:Button({ Text = "Refresh players", ActionText = "Refresh", Callback = fun
 	target:SetOptions(options)
 	window:Notify({ Title = "Player list refreshed", Content = tostring(#options) .. " player(s) available.", Kind = "Success" })
 end })
+local refreshPlayers = window:Debounce(0.1, function()
+	if automatic:Get() then target:SetOptions(playerOptions(), true) end
+end)
+window:Give(game:GetService("Players").PlayerAdded:Connect(refreshPlayers))
+window:Give(game:GetService("Players").PlayerRemoving:Connect(refreshPlayers))
+window:Give(automatic:OnChanged(refreshPlayers))
 inputs:Checkbox({ Id = "remember", Text = "Remember selection", Description = "Preserve your selection between refreshes.", Default = true })
 inputs:Keybind({
 	Id = "shortcut", Text = "Quick notification", Default = Enum.KeyCode.K,
@@ -74,7 +82,7 @@ more:Button({ Text = "About this workspace", ActionText = "About", Callback = fu
 end })
 more:Button({ Text = "Reset session", ActionText = "Reset", Style = "Danger", Callback = function()
 	window:Confirm({ Title = "Reset this session?", Content = "Return the selection and progress to their defaults.", ConfirmText = "Reset", Danger = true, Callback = function()
-		automatic:Reset(); radius:Reset(); progress:Reset()
+		window:ResetValues({ Ids = { "automatic", "radius", "progress" } })
 	end })
 end })
 return window

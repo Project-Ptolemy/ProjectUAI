@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
 const { once } = require('node:events');
 const { StringDecoder } = require('node:string_decoder');
+const { version: bridgeVersion } = require('./release');
 
 const ENDPOINT = 'https://uai-tunnel.invalid/cline/v1/chat/completions';
 // This is the same explicit promotion list used by Cline CLI's free-model-cost
@@ -304,7 +305,7 @@ function createCline({ env = process.env, enabled = env.UAI_CLINE_DISABLED !== '
           }
         }
       });
-      const initialized=await rpc('initialize',{protocolVersion:1,clientInfo:{name:'project-uai',version:'3.7.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
+      const initialized=await rpc('initialize',{protocolVersion:1,clientInfo:{name:'project-uai',version:bridgeVersion},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
       if(initialized.protocolVersion!==1 || initialized.agentInfo?.name!=='cline')throw issue('Installed Cline does not support the required local protocol.');
       if(typeof initialized.agentInfo.version==='string')version=initialized.agentInfo.version.slice(0,60);
       const created=await rpc('session/new',{cwd:workspace,mcpServers:[]});

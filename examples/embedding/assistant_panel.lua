@@ -19,19 +19,21 @@ return function(uai, UI, options)
 	local status = taskSection:Badge({ Id = "status", Text = "Conversation", Default = "Ready", Persist = false })
 	local prompt = taskSection:Input({
 		Id = "prompt", Text = "Your request", MultiLine = true, Lines = 3, Live = true,
-		MaxLength = 8000, Persist = false, Placeholder = "Ask about this place or the example workbench",
+		MaxLength = 8000, Persist = false, Required = true, Placeholder = "Ask about this place or the example workbench",
 	})
 	local submit, stop
 	local reply = main:Section({ Title = "Latest response" }):Paragraph({
 		Id = "reply", Text = "Assistant", Content = "Send a request to begin.", Persist = false,
 	})
 	local latest, preview, lastError = "", "", nil
-	local queued, cancelPaint = false, nil
 	local function paint()
 		if not window.Alive then return end
+		local setup = uai.config.accessProblem() ~= nil
+		local provider = uai.providers.active()
 		status:Set(session.removed and "Conversation removed" or session.preparing and "Preparing"
-			or session.busy and session.status or "Ready", true)
-		if submit then submit:SetDisabled(session.busy or session.preparing ~= nil or session.removed == true) end
+			or session.busy and session.status or setup and "Complete UAI setup"
+			or not provider and "Choose a provider" or "Ready", true)
+		if submit then submit:SetDisabled(session.busy or session.preparing ~= nil or session.removed == true or setup or not provider) end
 		if stop then stop:SetDisabled(not session.busy and not session.preparing) end
 		local text = lastError or (preview ~= "" and preview or latest)
 		if text == "" then text = "Send a request to begin." end
@@ -39,17 +41,11 @@ return function(uai, UI, options)
 		local bounded = uai.env.require("runtime/util").truncate(text, 6000)
 		reply:SetDescription(bounded)
 	end
+	local paintQueued = false
 	local function queuePaint()
-		if queued or not window.Alive then return end
-		queued = true
-		local completed, release = false, nil
-		local thread = task.delay(0.06, function()
-			completed, queued = true, false
-			if release then release(false) end
-			cancelPaint = nil
-			paint()
-		end)
-		if not completed then release = window:Give(thread); cancelPaint = release end
+		if paintQueued or not window.Alive then return end
+		paintQueued = true
+		window:Delay(0.06, function() paintQueued = false; paint() end)
 	end
 	local function remember(event)
 		if event.kind == "assistant:text" then
@@ -74,6 +70,8 @@ return function(uai, UI, options)
 	-- paragraph, so replay never creates a second copy of a message.
 	window:Give(session.events:connect(function(event) remember(event); queuePaint() end))
 	window:Give(uai.sessions.listChanged:connect(queuePaint))
+	window:Give(uai.providers.changed:connect(queuePaint))
+	window:Give(uai.config.changed:connect(queuePaint))
 	for _, event in ipairs(session.transcript.snapshot()) do
 		remember(event)
 	end
@@ -82,14 +80,15 @@ return function(uai, UI, options)
 	submit = taskSection:Button({
 		Id = "send", Text = "Send request", ActionText = "Send", Style = "Primary",
 		Callback = function()
-			local submitted = prompt:Get()
+			local valid, submitted = prompt:Commit(true)
+			if not valid then prompt:Focus(); return end
 			local accepted, why = session.send(submitted, function()
 				-- onDone runs after the session releases busy; Ready events can arrive earlier.
 				if window.Alive then paint() end
 			end)
 			if not window.Alive then return end
 			if accepted then
-				if prompt:Get() == submitted then prompt:Set("", true) end
+				if prompt:GetDraft() == submitted then prompt:Reset(true) end
 			else window:Notify({ Title = "Request kept", Content = tostring(why), Kind = "Warning" }) end
 			paint()
 		end,
@@ -105,7 +104,10 @@ return function(uai, UI, options)
 	if model then
 		local settings = window:Tab({ Id = "workbench", Title = "Workbench" }):Section({ Title = "Host settings" })
 		local current = model.read()
-		local title = settings:Input({ Id = "workbench-title", Text = "Title", Default = current.title, MaxLength = 80 })
+		local title = settings:Input({ Id = "workbench-title", Text = "Title", Default = current.title, MaxLength = 80,
+			Required = true, Validate = function(value)
+				return not value:find("[%z\1-\31\127]"), "Use a single-line title."
+			end })
 		local enabled = settings:Toggle({ Id = "workbench-enabled", Text = "Enable workbench", Default = current.enabled })
 		local batch = settings:Slider({ Id = "workbench-batch", Text = "Batch size", Min = 1, Max = 20, Step = 1, Default = current.batchSize })
 		local summary = settings:Paragraph({ Id = "workbench-state", Text = "Applied state", Persist = false })
@@ -117,6 +119,7 @@ return function(uai, UI, options)
 		reflect(current)
 		settings:Button({ Id = "workbench-apply", Text = "Apply these form values", ActionText = "Apply",
 			Callback = function()
+				if not window:CommitInputs({ Ids = { "workbench-title" }, FocusInvalid = true }) then return end
 				local ok, why = model.update({ title = title:Get(), enabled = enabled:Get(), batchSize = batch:Get() })
 				window:Notify({ Title = ok and "Settings applied" or "Settings kept", Content = ok and "The host model now uses these values." or tostring(why), Kind = ok and "Success" or "Warning" })
 			end })
@@ -138,7 +141,6 @@ return function(uai, UI, options)
 	if not viewScope then window:Destroy(); error(tostring(scopeError)) end
 	viewScope.give(function() window:Destroy() end)
 	window:OnDestroy(function() viewScope.destroy() end)
-	window:OnDestroy(function() if cancelPaint then cancelPaint(); cancelPaint = nil end end)
 	paint()
 	return window, session
 end

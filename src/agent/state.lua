@@ -17,8 +17,8 @@ return function(env)
 	local config = env.require("runtime/config")
 	local clock = env.require("runtime/clock")
 	local signal = env.require("runtime/signal")
+	local todoSnapshot = env.require("runtime/todo_snapshot")
 
-	local TODO_LIMIT = 24
 	local MEMORY_LIMIT = 60
 	local MEMORY_VALUE_CAP = 600
 	local MEMORY_INDEX_CAP = 2048
@@ -30,7 +30,6 @@ return function(env)
 
 	-- Todos -----------------------------------------------------------------
 
-	local STATUS = { pending = true, active = true, done = true, dropped = true }
 
 	-- Where a list lives when there is no session in scope. Nothing in the client
 	-- reaches this any more; it exists so a caller that loses its session writes
@@ -52,26 +51,13 @@ return function(env)
 	-- at a time drifts out of sync with its own plan; handing back the full list
 	-- every time keeps the transcript and the panel identical.
 	function M.setTodos(items, session)
-		local out = {}
-		for index, item in ipairs(items or {}) do
-			if index > TODO_LIMIT then break end
-			local text = util.trim(type(item) == "table" and (item.text or item.title) or item)
-			if text ~= "" then
-				local status = type(item) == "table" and tostring(item.status or "pending"):lower() or "pending"
-				if not STATUS[status] then status = "pending" end
-				out[#out + 1] = {
-					id = index,
-					text = util.ellipsis(text, 160),
-					status = status,
-					note = type(item) == "table" and item.note or nil,
-				}
-			end
-		end
+		local out = todoSnapshot.items(items)
 		local holder = holderFor(session)
 		holder.todos = out
 		-- The session goes with the list, so a strip showing one conversation can
 		-- ignore another conversation's plan instead of painting it.
 		M.todosChanged:fire(out, holder ~= orphan and holder or nil)
+		if holder.persist then holder.persist() end
 		return out
 	end
 
@@ -88,6 +74,7 @@ return function(env)
 		local holder = holderFor(session)
 		holder.todos = {}
 		M.todosChanged:fire({}, holder ~= orphan and holder or nil)
+		if holder.persist and not holder.clearingMessages then holder.persist() end
 	end
 
 	-- Rendered into the system prompt each turn so the plan cannot be forgotten,

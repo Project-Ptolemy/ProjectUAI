@@ -39,6 +39,7 @@ internal sealed class BridgeProcess : IAsyncDisposable
         "starting" => "Starting your installed OpenCode CLI...",
         "missing" => OpenCodeMessage ?? "Install OpenCode Desktop or the v2 CLI, then restart Cowork.",
         "failed" => OpenCodeMessage ?? "OpenCode could not start. Update OpenCode Desktop, then restart Cowork.",
+        "unavailable" => "OpenCode status is unavailable. Refresh the bridge connection or check for updates.",
         "disabled" => "Native OpenCode is off for this bridge session.",
         _ => "Use free models through your installed OpenCode CLI."
     };
@@ -68,7 +69,7 @@ internal sealed class BridgeProcess : IAsyncDisposable
             SetState("Starting", "Starting your local Cowork bridge...");
             string root = await Task.Run(EmbeddedPayload.Prepare, cancellationToken);
             var runtime = await NodeRuntime.FindAsync(cancellationToken);
-            if (runtime is null) throw new IOException("Node.js is needed to run the bridge. Choose Download Node.js below, or install it from nodejs.org and check again.");
+            if (runtime is null) throw new IOException("Node.js is needed to run the bridge. Choose Get Node.js on Workspace, or install it from nodejs.org and check again.");
             string node = runtime.Path;
             string server = Path.Combine(root, "bridge", "server.js");
             if (!File.Exists(server))
@@ -188,18 +189,9 @@ internal sealed class BridgeProcess : IAsyncDisposable
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             bool connected = doc.RootElement.GetProperty("connected").GetBoolean();
             if (secret != token || stopping) return;
-            if (doc.RootElement.TryGetProperty("capabilities", out var capabilities) && capabilities.TryGetProperty("opencode", out var openCode))
-            {
-                OpenCodeState = openCode.TryGetProperty("state", out var backendState) ? backendState.GetString() ?? "missing" : "missing";
-                OpenCodeMessage = openCode.TryGetProperty("message", out var backendDetail) ? backendDetail.GetString() : null;
-                OpenCodeVersion = openCode.TryGetProperty("version", out var backendVersion) ? backendVersion.GetString() : null;
-            }
-            if (capabilities.ValueKind == JsonValueKind.Object && capabilities.TryGetProperty("kilo", out var kilo))
-            {
-                KiloState = kilo.TryGetProperty("state", out var kiloState) ? kiloState.GetString() ?? "disabled" : "disabled";
-                KiloDetail = kilo.TryGetProperty("message", out var kiloMessage) ? kiloMessage.GetString() ?? "" : "";
-            }
-            else { KiloState = "unavailable"; KiloDetail = "Kilo status is unavailable. Check for bridge updates."; }
+            doc.RootElement.TryGetProperty("capabilities", out var capabilities);
+            ApplyOpenCodeCapability(capabilities.ValueKind == JsonValueKind.Object && capabilities.TryGetProperty("opencode", out var openCode) ? openCode : default);
+            ApplyKiloCapability(capabilities.ValueKind == JsonValueKind.Object && capabilities.TryGetProperty("kilo", out var kilo) ? kilo : default);
             ApplyClineCapability(capabilities.ValueKind == JsonValueKind.Object && capabilities.TryGetProperty("cline", out var cline) ? cline : default);
             if (capabilities.ValueKind == JsonValueKind.Object && capabilities.TryGetProperty("mcp", out var mcp))
                 McpEnabled = !mcp.TryGetProperty("enabled", out var enabled) || enabled.GetBoolean();
@@ -212,6 +204,7 @@ internal sealed class BridgeProcess : IAsyncDisposable
         {
             if (secret == token && !stopping)
             {
+                OpenCodeState = "unavailable"; OpenCodeMessage = null; OpenCodeVersion = null;
                 KiloState = "unavailable";
                 KiloDetail = "Waiting for the bridge to reconnect before checking Kilo.";
                 ClineState = "unavailable"; ClineVersion = null;
@@ -225,22 +218,11 @@ internal sealed class BridgeProcess : IAsyncDisposable
     {
         ClineState = "unavailable"; ClineVersion = null;
         ClineDetail = "Cline status is unavailable. Check for bridge updates or restart the bridge.";
-        if (capability.ValueKind != JsonValueKind.Object || !capability.TryGetProperty("schema", out var schema) ||
-            schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out int version) || version != 1) return;
-        static string? Text(JsonElement value, string name, int limit)
-        {
-            if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.String) return null;
-            string text = item.GetString() ?? "";
-            return text[..Math.Min(text.Length, limit)];
-        }
-        string? state = Text(capability, "state", 40);
-        if (state is not ("auth-required" or "starting" or "ready" or "failed" or "missing" or "disabled")) return;
-        if (state == "ready" && (!capability.TryGetProperty("enabled", out var enabled) || enabled.ValueKind != JsonValueKind.True ||
-            !capability.TryGetProperty("available", out var available) || available.ValueKind != JsonValueKind.True)) return;
-        ClineState = state;
-        ClineVersion = Text(capability, "version", 80);
-        string? detail = Text(capability, "message", 400);
-        ClineDetail = !string.IsNullOrWhiteSpace(detail) ? detail : state switch
+        var value = BridgeCapability.Read(capability, "auth-required", "starting", "ready", "failed", "missing", "disabled");
+        if (value is null) return;
+        ClineState = value.State;
+        ClineVersion = value.Version;
+        ClineDetail = !string.IsNullOrWhiteSpace(value.Message) ? value.Message : value.State switch
         {
             "ready" => "Cline is ready for free-model requests.",
             "auth-required" => "Sign in to Cline, then refresh models or restart the bridge.",
@@ -248,6 +230,33 @@ internal sealed class BridgeProcess : IAsyncDisposable
             "missing" => "Install Cline CLI, then restart the bridge.",
             "starting" => "Checking your installed Cline CLI and sign-in.",
             _ => "Check Cline setup and restart the bridge."
+        };
+    }
+
+    internal void ApplyOpenCodeCapability(JsonElement capability)
+    {
+        var value = BridgeCapability.Read(capability, "starting", "ready", "failed", "missing", "disabled");
+        OpenCodeState = value?.State ?? "unavailable";
+        OpenCodeMessage = value?.Message;
+        OpenCodeVersion = value?.Version;
+    }
+
+    internal void ApplyKiloCapability(JsonElement capability)
+    {
+        var value = BridgeCapability.Read(capability, "standby", "starting", "ready", "limited", "rotating", "downloading", "failed", "disabled");
+        KiloState = value?.State ?? "unavailable";
+        string? message = value?.Message;
+        KiloDetail = !string.IsNullOrWhiteSpace(message) ? message : KiloState switch
+        {
+            "disabled" => "Kilo tunnel is off for this bridge session.",
+            "standby" => "Starts automatically after an anonymous Kilo quota response.",
+            "ready" => "Kilo tunnel is ready for eligible free-model requests.",
+            "limited" => "Shared Kilo exits are limited. Wait before another attempt.",
+            "starting" => "Starting the Kilo tunnel connection.",
+            "downloading" => "Downloading the verified Kilo helper.",
+            "rotating" => "Changing the Kilo tunnel connection.",
+            "failed" => "The Kilo tunnel could not start. Restart the bridge to try again.",
+            _ => "Kilo status is unavailable. Check for bridge updates."
         };
     }
 
@@ -272,11 +281,15 @@ internal sealed class BridgeProcess : IAsyncDisposable
             using var response = await slowHttp.SendAsync(request);
             response.EnsureSuccessStatusCode();
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (secret != token || stopping) return;
             ApplyUpdate(doc.RootElement.GetProperty("update"));
             Changed?.Invoke();
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
-        { throw new IOException("The bridge update check did not complete. It will retry automatically."); }
+        {
+            if (secret != token || stopping) return;
+            throw new IOException("The bridge update check did not complete. It will retry automatically.");
+        }
     }
 
     public async Task StopAsync()
@@ -296,6 +309,7 @@ internal sealed class BridgeProcess : IAsyncDisposable
         stopping = true;
         token = null;
         OpenCodeState = "stopped";
+        OpenCodeMessage = null; OpenCodeVersion = null;
         KiloState = "disabled";
         ClineState = "stopped"; ClineVersion = null;
         ClineDetail = "Start the bridge to check your Cline sign-in.";

@@ -140,6 +140,11 @@ return function(env)
 				onClick = function() move(-1) end })
 			entry.down = P.button(actions, { name = "MoveQueuedDown_" .. item.id, text = "Move down", variant = "ghost", size = "sm", layoutOrder = 4,
 				onClick = function() move(1) end })
+			P.button(actions, { name = "CopyQueued_" .. item.id, text = "Copy text", variant = "ghost", size = "sm", layoutOrder = 5,
+				onClick = function()
+					local ok, why = env.require("runtime/clipboard").write(entry.item.text)
+					overlay.toast(ok and "Queued message copied." or tostring(why), ok and "info" or "warn")
+				end })
 			entry.remove = P.iconButton(entry.frame, { name = "RemoveQueued_" .. item.id, icon = "trash", diameter = theme.size.controlSmall,
 				variant = "ghost", layoutOrder = 3, onClick = function()
 					local ok, why = session.removeQueued(entry.item.id)

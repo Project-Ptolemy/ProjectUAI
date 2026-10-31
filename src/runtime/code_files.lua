@@ -69,8 +69,13 @@ return function(env)
 		local binding = M.bindings[doc.id]
 		local file, err = clean(path or (binding and binding.path)); if not file then return nil, err or "Choose a file name" end
 		if fs.isDir(file) then return nil, "Choose a file name, not a folder." end
+		local exists, existenceWhy = fs.probe(file); if exists == nil then return nil, existenceWhy end
 		local existing, readWhy = fs.read(file)
-		if fs.exists(file) and existing == nil then return nil, readWhy end
+		if exists and existing == nil then return nil, readWhy end
+		if existing == nil then
+			local stillMissing, probeWhy = fs.probe(file)
+			if stillMissing ~= false then return nil, probeWhy or readWhy or "The file changed while checking its existence" end
+		end
 		if binding and binding.path == file then
 			if existing ~= binding.base then return nil, "The file changed on disk. Your draft is kept; reopen a disk copy or save to a different file." end
 		elseif existing ~= nil then return nil, "That file already exists. Open it first or choose another name." end
@@ -84,7 +89,8 @@ return function(env)
 	end
 	function M.create(path, folder)
 		local file, why = clean(path); if not file then return nil, why end
-		if fs.exists(file) or fs.isDir(file) then return nil, "That name is already in use." end
+		local exists, probeWhy = fs.probe(file); if exists == nil then return nil, probeWhy end
+		if exists or fs.isDir(file) then return nil, "That name is already in use." end
 		if folder then
 			if not fs.ensure(fs.root .. "/" .. file) then return nil, "This host could not create the folder." end
 		else
@@ -96,6 +102,22 @@ return function(env)
 	function M.isDir(path)
 		local file = clean(path); if not file or file == "" then return false end
 		return fs.isDir(file)
+	end
+	function M.reload(id)
+		local doc, why = store.resolve(id); if not doc then return nil, why end
+		local binding = M.bindings[doc.id]
+		if not binding then return nil, "This script has no workspace file binding" end
+		if M.dirty(doc.id) then return nil, "Save the current draft to another file before reloading from disk" end
+		local revision, path = doc.revision, binding.path
+		local source, err = fs.read(path); if source == nil then return nil, err end
+		if source:find("%z") then return nil, "The disk file now contains binary data; the editor draft was kept" end
+		if M.bindings[doc.id] ~= binding or store.resolve(doc.id) ~= doc or doc.revision ~= revision then return nil, "The document or file binding changed while reading; the current draft was kept" end
+		local nextBinding = { path = path, base = source }
+		M.bindings[doc.id] = nextBinding
+		local updated, problem = store.update(doc.id, source, { expected_revision = revision, origin = "disk_reload", label = "Before reload from disk" })
+		if not updated then if M.bindings[doc.id] == nextBinding then M.bindings[doc.id] = binding end; return nil, problem end
+		if M.bindings[doc.id] == nextBinding and store.resolve(doc.id) == doc then store.changed:fire({ kind = "file_saved", documentId = doc.id, revision = doc.revision }) end
+		return { path = fs.root .. "/" .. path, revision = doc.revision }
 	end
 	-- Deleting a workspace entry. The root is never deletable, and a binding whose
 	-- file is gone is dropped so a later save cannot report a change against a file

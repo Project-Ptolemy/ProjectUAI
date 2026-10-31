@@ -71,7 +71,10 @@ return function(env)
 			truncate = true,
 			layoutOrder = 2,
 		})
-		summary.Size = UDim2.new(1, -(theme.size.icon + theme.space.xs), 1, 0)
+		summary.Size = UDim2.new(0, 0, 1, 0)
+		local summaryFlex = Instance.new("UIFlexItem", summary)
+		summaryFlex.FlexMode = Enum.UIFlexMode.Fill
+		local details = P.button(headerRow, { name = "PlanDetails", text = "Details", variant = "ghost", size = "sm", layoutOrder = 3 })
 		local trackHolder = P.frame(shell, {
 			name = "PlanProgress", size = UDim2.new(1, 0, 0, theme.size.track + theme.space.sm), layoutOrder = 2,
 		})
@@ -95,6 +98,7 @@ return function(env)
 		local list = planScroll.instance
 		list.Visible = false
 		local handle = { shell = shell, session = nil }
+		details.instance.Activated:Connect(function() if handle.session then env.require("ui/chat/plan").open(handle.session) end end)
 		local orphan = {}
 		local preference = orphan
 		-- A long plan keeps its own scroll area instead of consuming the conversation.

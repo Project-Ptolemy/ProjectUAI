@@ -1050,8 +1050,9 @@ return function(env)
 		local headers = rebuildHeaders()
 
 		local started = clock.ms()
-		local deadline, recovery
 		local relayUnlimited = env.require("net/transport").unlimited(request)
+		local deadline = env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
+		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local lastRequestMs = 0
 		local attemptsAllowed = request.attempts or config.get("agent.retries", 3)
 		local rotationsLeft = math.max(#pool - 1, 0)
@@ -1082,6 +1083,7 @@ return function(env)
 					onFrame = request.onFrame,
 					-- The transport bounds this setting to 1..300 seconds.
 					timeout = requestTimeout(request),
+					deadlineMs = deadline,
 				})
 				if streamBody then
 					return { ok = true, status = 200, body = streamBody, via = "websocket", ms = clock.since(started) }
@@ -1090,15 +1092,8 @@ return function(env)
 				log.warn("provider", "websocket stream failed, falling back to http", wsErr)
 			end
 			local requestStarted = clock.ms()
-			-- A socket setup failure before Send retains its existing HTTP fallback.
-			-- Native and explicitly bounded companion retries share one deadline.
-			-- Unlimited relay jobs retain that policy through refusal recovery.
-			if not deadline then
-				deadline = relayUnlimited and math.huge
-					or math.min(tonumber(request.deadlineMs) or math.huge,
-						requestStarted + math.max(1, math.min(300, tonumber(requestTimeout(request)) or 120)) * 1000)
-				recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
-			end
+			-- Setup fallback and explicit refusals spend the original budget. A slow
+			-- socket connection cannot silently grant another full HTTP timeout.
 			local res, err = http.send({
 				requiresAccess = true,
 				onDispatch = function() accounting.dispatch(currentKey, headers) end,

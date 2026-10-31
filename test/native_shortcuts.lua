@@ -1,0 +1,33 @@
+-- Real app wiring, alongside the pure shortcut policy checks.
+package.path = "test/?.lua;test/mock/?.lua;" .. package.path
+local F = require("coding_fixture")
+local suite = F.suite("Native shortcuts")
+local check, case = suite.check, suite.case
+
+case("the mounted app owns shortcuts and never steals a draft", function()
+	local f = F.new()
+	local config = f.env.require("runtime/config")
+	config.set("ui.tutorial.seen", true)
+	local app = f.env.require("ui/app").mount()
+	app.show("chat")
+	f.h.settle(0.4)
+	f.h.hold("LeftControl"); f.h.press("K")
+	check("Ctrl+K opens commands through the app", f.h.byName("CommandResults") ~= nil)
+	f.h.press("Escape"); f.h.settle(0.3)
+	local draft = f.h.Instance.new("TextBox", app.screen)
+	draft.Text = "Keep this draft"; draft:CaptureFocus(); f.h.press("K")
+	check("focused fields keep their input", f.h.byName("CommandResults") == nil and draft.Text == "Keep this draft")
+	draft:ReleaseFocus(false)
+	app.hide(); f.h.press("K")
+	check("hidden windows do not open command dialogs", f.h.byName("CommandResults") == nil)
+	app.show("chat"); f.h.press("K", true)
+	check("processed input is respected", f.h.byName("CommandResults") == nil)
+	f.h.hold("LeftShift"); f.h.press("P")
+	check("search shortcut opens conversation search", f.h.byName("SearchResults") ~= nil)
+	f.h.hold("LeftShift", false); f.h.press("Escape"); f.h.settle(0.3)
+	app.screen:Destroy(); f.h.press("K")
+	check("destroyed screens release shortcut work", app.disposed and f.h.byName("CommandResults", f.h.coreGui) == nil)
+	f.healthy(); f.close()
+end)
+
+suite.finish()

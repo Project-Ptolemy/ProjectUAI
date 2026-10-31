@@ -152,6 +152,13 @@ check("mode action returns after keyboard layout recovers", mode.Visible)
 local bindings = count(window._paint)
 for _ = 1, 30 do mode.Activated:Fire() end
 check("repeated mode switching does not add paint or motion subscriptions", count(window._paint) == bindings and next(window._motions) == nil)
+local status = section:Badge({ Text = "Status", Default = "Ready", Kind = "Success" })
+status:SetKind("Danger")
+window:SetTheme("Light")
+local statusLabel
+for _, child in ipairs(status._slot:GetDescendants()) do if child:IsA("TextLabel") then statusLabel = child end end
+check("updated badge tone survives a palette change", status.StatusKind == "Danger" and statusLabel.TextColor3 == window.Theme.Danger)
+check("unknown badge tones are rejected without changing state", not pcall(function() status:SetKind("unknown") end) and status.StatusKind == "Danger")
 window:Destroy(); other:Destroy(); h.settle(0.3)
 check("theme resources clean up without invalid properties or tasks", next(window._paint) == nil and #h.errors() == 0 and #h.instanceState.typeErrors == 0)
 print("UI library themes: " .. passed .. " checks passed")

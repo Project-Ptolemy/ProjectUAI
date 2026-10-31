@@ -1,7 +1,7 @@
 -- Generated from docs/UI_LIBRARY.md by tools/build_ui_lib.js; edit the Markdown.
 return function(env)
 	return {
-		version = "1.4.0",
+		version = "1.6.0",
 		url = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai-ui.lua",
 		repository = "https://github.com/Project-Ptolemy/ProjectUAI",
 		sections = {
@@ -174,7 +174,7 @@ Create controls with `section:ControlName({ ... })`. Common options:
 
 All controls have `Get()`, `Set(value, silent?)`, `Reset(silent?)`,
 `SetText(text)`, `SetDescription(text)`, `SetDisabled(boolean)`,
-`SetVisible(boolean)`, `OnChanged(callback)`, and `Destroy()`.
+`SetVisible(boolean)`, `OnChanged(callback)`, `GetDefault()`, `IsDefault()`, and `Destroy()`.
 `OnChanged` returns an unsubscribe function. Setters return the control.
 `Set` invokes value callbacks only when the value changes; `silent = true`
 suppresses them. Returned arrays are copies. A disabled control can be updated
@@ -183,20 +183,26 @@ programmatically. `Get/Set/Reset/OnChanged` are useful on value controls; use
 
 | Constructor | Options and behavior |
 | --- | --- |
-| `Button` | `ActionText = "Run"`, `Style = "Primary" / "Danger"` (otherwise secondary), `LoadingText`. `Callback()` runs in an owned task; repeated presses are ignored while it runs. `Press()` returns whether it started; `SetLoading(bool)` controls a loading indicator. |
+| `Button` | `ActionText = "Run"`, `Style = "Primary" / "Danger"` (otherwise secondary), `LoadingText`. `Callback()` runs in an owned task; repeated presses are ignored while it runs. `Press()` returns whether it started; `SetLoading(bool)` controls a loading indicator. `SetActionText(text, loadingText?)` updates action wording. |
 | `Toggle` | Boolean `Default`; `Callback(enabled)`. Full-size touch target around a compact switch. |
 | `Checkbox` | Same boolean API, with explicit On/Off text. |
 | `Slider` | `Min = 0`, `Max = 100`, `Step = 1`, `Default`, `Suffix`. `Callback(number)` on changes, `OnCommit(number)` once at gesture end. Values are clamped and rounded relative to Min; Max is reachable even when the step does not divide the range. Arrow/D-pad left/right changes one step; Home/End reaches the endpoints. |
-| `Input` | String `Default`, `Placeholder`, `MaxLength = 4096` UTF-8 bytes, `MultiLine`, `Lines = 3`, `Live = false`. Commits on focus loss; Live publishes valid edits while preserving the draft/caret until focus loss. `Numeric = true` uses finite numbers and optional `Min/Max`. Invalid drafts show an error while preserving the last valid value. `OnCommit(value)` and `Focus()` are available. |
-| `Dropdown` | `Options`, `Default`, `Multi = false`, `Searchable = true`, `Placeholder`. Option records accept `Image`, shown as a round profile image at the start of the row and in the closed field for the current selection. `SetOptions(array, silent?)` replaces choices and retains still-valid selections. `Open()` opens the picker. Empty options show an empty state. |
-| `Segmented` | Single selection among 1–8 `Options`. Same selection and `SetOptions` API as Dropdown; wraps into rows at narrow widths. |
+| `Input` | String `Default`, `Placeholder`, `MaxLength = 4096` UTF-8 bytes, `MultiLine`, `Lines = 3`, `Live = false`. Commits on focus loss; Live publishes valid edits while preserving the draft/caret until focus loss. `Numeric = true` uses finite numbers and optional `Min/Max`. Invalid drafts show an error while preserving the last valid value. `OnCommit(value)`, `OnSubmit(value)` (Enter), and `Focus()` are available. Optional `Required`, Lua `Pattern`, and `Validate(value)` rules are described below. |
+| `Dropdown` | `Options`, `Default`, `Multi = false`, `Searchable = true`, `Placeholder`. Option records accept `Image`, shown as a round profile image at the start of the row and in the closed field for the current selection. `SetOptions(array, silent?)` replaces choices and retains still-valid selections. `Open()` opens the picker. `GetOptions()` returns a copy; `Clear(silent?)` clears selection. Empty options show an empty state. |
+| `Segmented` | Single selection among 1–8 `Options`. Same selection, `GetOptions`, `Clear`, and `SetOptions` API as Dropdown; wraps into rows at narrow widths. |
 | `Keybind` | `Default = Enum.KeyCode.K` (or `"K"`), `Mode = "Press" / "Hold" / "Toggle"`, `ActiveWhenHidden = false`. `Callback(active, key)` handles activation; `OnChanged(key)` handles rebinding. Hold calls true on press and false on release/cancellation; Toggle alternates until canceled. Click to capture, Escape cancels, Backspace/Delete clears. `Set(nil)` unbinds. Window's toggle key is reserved. |
 | `ColorPicker` | `Default = Color3.fromRGB(...)`, optional `Alpha = 1` or `ShowAlpha = true`. HSV square, hue bar, hex and RGB inputs, preview, Apply/Cancel. Color components must be within 0–1; alpha is clamped to that range. `Callback(color, alpha)` fires on Apply or a changed Set. `Get()` returns color, alpha; `GetAlpha()` and `SetAlpha(alpha, silent?)` are available. |
 | `Label` | A wrapping `Text` and optional `Description`. |
 | `Paragraph` | `Text` is the title; `Content` (or Description) is the wrapping body. |
 | `Divider` | A small section label and separator. Use `Text = ""` for a plain separator. |
-| `Badge` | `Default` or `Value` is a status string. `Kind = "Success" / "Warning" / "Danger" / "Secondary"`. Change the string with `Set`. |
+| `Badge` | `Default` or `Value` is a status string. `Kind = "Success" / "Warning" / "Danger" / "Secondary"`. Change the string with `Set`, and its tone with `SetKind(kind)`. |
 | `Progress` | `Min = 0`, `Max = 100`, `Default` or `Value`. `Set(number)` updates a bounded track and percentage. |
+| `NumberInput` | Numeric `Default`, optional `Min/Max`, `Step = 1`. Typed values and Less/More actions clamp and quantize; `StepBy(integer)` commits a bounded number of steps. Shares Input draft validation, `Commit`, `Focus`, and `OnCommit/OnSubmit`; live/multiline editing is disabled. |
+| `TextView` | Selectable, read-only `Default` or `Value`, `Code = false`, `Lines = 4` (2–12), `MaxLength = 65536` (up to 262144 bytes). `Append(text)`, `ScrollToEnd()`, and `Copy()`; copy returns `true` or `false, message`. Oversized text is rejected intact. Transient unless `Persist = true`. |
+| `ItemList` | Up to 500 `Items = { { Id, Text, Description?, Disabled? } }`; selection is an item Id or `""`. `PageSize = 6` (1–20), `Searchable = true`, `SetItems(items, silent?)`, `GetItems()`, `SetQuery(text)`, `SetPage(number)`, `GetPage()` → page, total pages, matching count. Replacement validates atomically and silently clears a missing selection unless `silent = false`. |
+| `ActionGroup` | `Actions = { { Id, Text, Callback, Style?, Disabled? } }` (1–8). Responsive named actions with independent busy states. `Press(id)`, `SetActionEnabled(id, boolean)`, `SetActionText(id, text)`. Actions run in owned tasks and never persist as values. |
+| `Callout` | `Text`, `Content`, `Kind = "Info" / "Success" / "Warning" / "Danger"`, optional `ActionText` and `Callback`. `SetKind`, `SetContent`, and optional `Press()` update a semantic message/action. No persisted value. |
+| `KeyValue` | Up to 64 `Items = { { Key, Value } }` or `Default`; unique keys and text/finite-number/boolean values. Displays an ordered, wrapping readout. `SetValue(key, value, silent?)` updates one existing row. `Get()` returns copied records with string values. Transient unless `Persist = true`. |
 
 Dropdown/Segmented options are primitive strings, finite numbers, or booleans,
 or records such as `{ Label = "Balanced", Value = "balanced", Disabled = false }`.
@@ -215,13 +221,44 @@ Keybinds work across tabs while the window is open. They ignore processed input,
 text editing, and open dialogs. Hiding or destroying a window releases active
 Hold/Toggle actions. No initialization or configuration import simulates a key
 press. A keybind's `Set` updates the binding, not its active state.
+
+### Validated forms
+
+Inputs accept `Required = true`, a Lua `Pattern`, or `Validate(value)` returning
+`true` or `false, message`. Validators must be synchronous, pure checks; they may
+run during draft validation, programmatic changes, or configuration import.
+Exceptions show a generic field error. `RequiredMessage` and `ValidationMessage`
+customize built-in errors. A missing or incomplete default may mount without
+starting callbacks, so a required form can begin blank. `Reset` restores that
+initial value, including a blank required default.
+
+`NumberInput` validates the clamped, step-quantized candidate. A rejected
+Less/More action keeps the current value and displays the validator's message.
+
+`input:GetDraft()` returns the current text without committing it. `Validate()`
+returns `true` or `false, message` and updates the visible error. `GetError()`
+returns that displayed message or nil. `Commit(silent?)` validates and commits,
+returning `true, value` or `false, message`; a silent commit skips both change and
+commit callbacks. `OnSubmit` runs after a valid Enter commit, never on a disabled
+field or invalid draft. Programmatic `Set` still rejects invalid values.
+
+For an Apply action, call `window:CommitInputs({ Ids = { "name", "limit" },
+FocusInvalid = true })`. Every selected input draft validates before any input
+value changes. Failure returns `false, errorsById`; success returns `true, count`.
+`FocusInvalid` reveals the first invalid field in stable Id order. Inputs are
+committed silently by default; `{ Silent = false }` emits changed-value callbacks
+after the full form is ready. It does not simulate Enter or individual OnCommit.
+Hidden or disabled inputs are included unless restricted with `Ids`.
+See the [form recipe](UI_LIBRARY_FORMS.md) and [working example](../ui-lib/examples/forms.lua).
 ]=],
 			["layout"] = [=[
 ## Layout
 
 `UI:CreateWindow(options)` accepts `Id`, `Title`, `Subtitle`, optional
 `Width = 780` / `Height = 580`, `Search = true`, `Theme = "Dark" / "Light"`, `ThemeToggle = true`,
-`Accent = Color3`, `Colors = { token = Color3 }`, `CornerRadius = 10` (0–16),
+`Palette = "Neutral"`, `Contrast = "Standard"`, `Density = "Comfortable"`,
+`Shape = "Rounded"`, `Typography = "Sans"`, `TabHeader = "Simple"`,
+`Accent = Color3`, `Colors = { token = Color3 }`, optional `CornerRadius` (0–16),
 `TextScale = 1` (0.85–1.5), `ToggleKey = Enum.KeyCode.RightShift`
 (false disables it), `DisplayOrder = 80`, `Parent`, `OnDestroy`, optional
 `GameName`, and optional `ReducedMotion`.
@@ -240,12 +277,13 @@ keyboard obstruction, touch targets of at least 44 pixels, mouse dragging,
 mouse and touch resizing, wrapped descriptions, independently scrolling tabs, and scroll
 reveal for focused fields. It reflows at compact widths rather than shrinking
 the interface with UIScale. Navigation becomes a horizontal scrolling tab strip.
-On desktop, controls use a 40-pixel target, increasing with text scale.
+Comfortable desktop controls use a 40-pixel target; density and text size can increase it.
 Rows stack their value below the label when space is tight.
 
 The visual refresh keeps the v1 constructors, methods, callbacks and configuration
 format compatible. Existing scripts receive the new appearance without changing
-their declarations. Each tab has a heading and a live control/section count; these
+their declarations. Simple tab headings are the default; Detailed headings add
+live control/section counts, and Hidden omits the introductory block. Headings
 scroll with the content so they do not take space from short keyboard layouts.
 Search updates the count and keeps its empty state clear. Sections use gently rounded
 surfaces, fields use inset backgrounds, and selected choices have an accent edge.
@@ -260,16 +298,25 @@ Tab and control Ids beginning with `__uai_appearance_` belong to the library;
 consumer scripts must use their own Ids.
 
 `tab:Section({ Title, Description?, Collapsible?, Collapsed? })` creates a
-group. Sections support `SetCollapsed(bool)`, `SetVisible(bool)`, and `Destroy()`.
+group. Sections support `SetTitle(text)`, `SetDescription(text)`,
+`SetCollapsed(bool)`, `SetVisible(bool)`, and `Destroy()`. Tabs also support
+`SetTitle(text)` without changing their stable Id.
 Search filters the active tab's labels, descriptions, and section titles,
 reveals matching collapsed sections, and displays a clear empty state.
 
 Window methods: `Show()`, `Hide()`, `Minimize()`, `Toggle()`, `Destroy()`,
-`SelectTab(idOrTab)`, `SetTitle(title, subtitle?)`,
+`SelectTab(idOrTab)`, `GetActiveTab()`, `SetTitle(title, subtitle?)`,
+`SetSearch(text)`, `GetSearch()`, `Reveal(controlId)`,
 `SetTheme("Dark"|"Light", accent?)`, `GetTheme()`, `ToggleTheme()`, `SetTextScale(number)`,
 `SetReducedMotion(boolean)`, `Get(controlId)`,
 `SetSize(width, height)`, `GetSize()`, `ResetSize()`,
 `SetAppearance(options)`, `GetAppearance()`, `ResetAppearance()`.
+`Reveal(id)` returns the control after showing its window, tab, section, and row,
+expanding its section, clearing search, and scrolling it into view. It does not
+activate controls or take text focus. `GetActiveTab()` returns the current tab
+handle. Search accepts at most 256 UTF-8 bytes; a window with `Search = false`
+accepts only an empty filter.
+
 `GetSize()` returns the visible width and height in pixels. `SetSize` accepts
 finite pixel dimensions, clamped to 280–1600 wide and 240–1200 high, then fits
 them to the safe viewport. Dragging the grip uses the same bounds and keeps the
@@ -316,15 +363,17 @@ Use the existing configuration methods below to retain a chosen mode.
 ### Automatic Appearance settings
 
 Every window includes Appearance without any script declaration. Common settings
-cover Dark/Light mode, an accent color picker, corner radius, text size, and reduced
-motion. Collapsible groups expose surfaces, text, actions/status, interaction,
+cover Dark/Light mode, named palettes, contrast, density, shape, typography,
+tab headings, an accent picker, corner radius, text size, and reduced motion.
+Collapsible groups expose surfaces, text, actions/status, interaction,
 border, and overlay colors. Changes repaint the current window immediately;
 open pickers, dialogs, and the minimized launcher share those preferences.
 Reset colors restores the current mode's palette. Reset all restores the starting
 appearance supplied at creation. The fixed attribution remains visible.
 
 `GetAppearance()` returns a fresh table containing `Theme`, optional `Accent`,
-`Colors` (custom token overrides), `CornerRadius`, `TextScale`, and `ReducedMotion`.
+`Colors` (custom token overrides), `CornerRadius`, `TextScale`, `ReducedMotion`,
+`Palette`, `Contrast`, `Density`, `Shape`, `Typography`, and `TabHeader`.
 `SetAppearance(options)` accepts any subset of these fields and validates the
 complete change before applying it. `Accent = false` restores the default accent.
 Supplying `Colors` replaces the whole override map; `Colors = {}` clears it.
@@ -334,11 +383,31 @@ custom token overrides, and public setters silently reflect in the settings.
 ```lua
 window:SetAppearance({
 	Theme = "Dark",
-	Accent = Color3.fromRGB(122, 205, 191),
-	Colors = { Canvas = Color3.fromRGB(19, 28, 34), Surface = Color3.fromRGB(26, 38, 46) },
-	CornerRadius = 4,
+	Palette = "Ocean",
+	Density = "Compact",
+	Shape = "Square",
+	Typography = "System",
 })
 ```
+
+| Preference | Choices |
+| --- | --- |
+| Palette | Neutral (default), Graphite (warm), Ocean, Forest, Rose |
+| Contrast | Standard, High; High strengthens text, border and status contrast |
+| Density | Comfortable, Compact, Spacious; touch targets remain at least 44 pixels |
+| Shape | Rounded (8 px), Soft (14 px), Square (0 px); explicit CornerRadius takes precedence and reports Custom when needed |
+| Typography | Sans (BuilderSans with Gotham fallback), System (SourceSans), Mono (Code); code readouts stay monospace |
+| TabHeader | Simple, Detailed, Hidden |
+
+`UI:GetAppearanceOptions()` returns copied choice arrays. `UI:GetPalette(name,
+mode?)` returns a copied resolved token map for inspection. Scripts normally
+choose semantic preferences rather than supplying colors, fonts or padding.
+Palette changes made in the built-in picker reset advanced color overrides;
+programmatic `SetAppearance({ Palette = ... })` preserves them. Include
+`Accent = false, Colors = {}` to reset them explicitly. The v1 profile format
+retains all preferences; older profiles keep current values for omitted fields.
+See [appearance recipes](UI_LIBRARY_APPEARANCE.md), [structured readouts](UI_LIBRARY_READOUTS.md),
+and [searchable lists and actions](UI_LIBRARY_COLLECTIONS.md).
 
 Supported `Colors` keys are `Canvas`, `Sidebar`, `Chrome`, `Surface`, `Raised`,
 `Input`, `Hover`, `Pressed`, `Track`, `Border`, `Subtle`, `Edge`, `Text`, `Secondary`,
@@ -399,7 +468,8 @@ consumer scripts; doing so breaks the layout and ownership contract.
 | --- | --- | --- |
 | Roblox service connection | `window:Give(signal:Connect(fn))` | Window |
 | Host-model or UAI unsubscribe function | `window:Give(unsubscribe)` | Window |
-| Short scheduled debounce/paint | `window:Give(thread)`; unregister when it completes | Window or completion |
+| Short delayed update | `window:Delay(seconds, callback)` | Window or completion |
+| Latest-value debounce | `window:Debounce(seconds, callback)` | Window or cancellation |
 | Temporary domain state | One `window:OnDestroy(cleanup)` | Window |
 | Shared model or UAI client | Host-owned cleanup outside the view | Host/client, which can outlive the window |
 
@@ -414,30 +484,25 @@ resources is not guaranteed; combine dependent teardown steps in one function.
 
 ### Own a delayed update
 
-This helper schedules one pending paint, uses the most recent model state when
-it runs, and removes completed tasks from the window's cleanup registry:
+`window:Delay(seconds, callback)` returns an idempotent cancellation function.
+`window:Debounce(seconds, callback)` returns `schedule, cancel`; each schedule
+replaces the pending call and retains its latest arguments, including nil slots.
+Both accept a delay from 0 to 3600 seconds, contain callback errors, and cancel
+owned tasks when the window is destroyed or replaced. A retained schedule
+function returns false after destruction. Completed tasks leave the cleanup
+registry automatically. Hide and Minimize keep scheduled work alive.
 
 ```lua
-local function makeQueuedRefresh(window, refresh)
-	local queued = false
-	return function()
-		if queued or not window.Alive then return end
-		queued = true
-		local release, finished
-		local thread = task.delay(0.06, function()
-			finished, queued = true, false
-			if release then release(false) end
-			if window.Alive then refresh() end
-		end)
-		if not finished then release = window:Give(thread) end
-	end
-end
+local refreshSoon = window:Debounce(0.06, function()
+	-- Read the latest application state and reflect it with silent setters.
+	status:Set(model.status, true)
+end)
+window:Give(model.changed:Connect(refreshSoon))
 ```
 
-`refresh` is your synchronous, bounded view update. Subscribe a model's change
-signal to the returned function and register that subscription with the window.
-The example uses a 60 ms delay; choose a rate suited to the domain, and display
-final state immediately when the interaction requires it.
+Keep these callbacks short and bounded. Their cancellation is suitable for
+scheduled Lua work; use a host operation's own cancellation contract for native
+requests that may still be running. See the [lifecycle recipes](UI_LIBRARY_LIFECYCLE.md).
 
 ### Guard asynchronous results
 
@@ -491,6 +556,41 @@ Files are namespaced per window; paths cannot traverse directories.
 Missing executor filesystem functions return a clear error; JSON export/import
 works with Roblox HttpService and does not require executor storage.
 No configuration is read, saved, or applied automatically.
+`ListConfigs()` returns `true, sortedNames` or `false, error`, accepting common
+relative, absolute, and backslash host listings while ignoring other directories.
+`DeleteConfig(name)` returns `true, existed` or `false, error`; absence is harmless.
+It deletes only one profile in the current window's namespace. Provide an explicit
+user action for deletion, such as the [profile manager example](../ui-lib/examples/profiles.lua).
+An incomplete persistent required input prevents export/save until it is valid;
+mark intentionally transient fields `Persist = false`. Exports over 256 KiB fail
+with a clear error rather than creating a profile that cannot be imported.
+See [profile storage and troubleshooting](UI_LIBRARY_PROFILES.md).
+
+### Read and update a complete form
+
+`GetValues(options?)` returns an Id-to-value map of application controls. Nil
+values have no map entry. ColorPicker values use `{ Color = Color3, Alpha = n }`;
+other controls use their usual value shape. Arrays and records are detached
+copies. `InspectValues(options?)` returns records sorted by Id, including `Id`,
+`Kind`, `Value`, `Default`, `Changed`, `Persist`, `Visible`, `Disabled`, `Valid`,
+and optional validation `Message`. Its records preserve a nil-valued control's
+identity. Both accept `{ Ids = { ... }, PersistOnly = true }` filters and exclude
+automatic Appearance controls.
+
+`SetValues(values, options?)` validates the entire patch before applying it and
+returns `true, count` or `false, error`. Unknown controls and invalid values fail
+without writes. Use `{ Clear = { "selection" } }` to supply nil; the target must
+accept an empty value. A supplied value and Clear cannot name the same control.
+Updates are silent by default. `{ Silent = false }` emits changes in Id order
+after the complete patch, so callbacks see consistent state. Keybind releases
+follow restoration; no programmatic update activates a key.
+
+`ResetValues(options?)` uses the same selection/persistence filters and restores
+original defaults as one silent transaction. If a default selection was removed
+by `SetOptions`, reset fails without partial updates. `GetDefault()` returns a
+control's detached original default, and `IsDefault()` compares its current
+value to that default. Color defaults also use `{ Color, Alpha }` records.
+Use `CommitInputs` before reading drafts for an Apply action.
 
 ### Control values versus application state
 
@@ -989,7 +1089,11 @@ API; new reusable controls and lifecycle capabilities belong in `ui-lib/src`.
 | `controls.lua` | Base control contract and common control implementations |
 | `choice.lua` | Choice-based controls and pickers |
 | `color.lua` | Color picker behavior |
-| `config.lua` | Typed state serialization, validation, import/export, file profiles |
+| `config.lua` | Typed state serialization, validation, import/export, save/load |
+| `profiles.lua` | Namespaced profile listing and deletion |
+| `values.lua` | Atomic form snapshots, updates, resets and draft commits |
+| `validation.lua` | Required, pattern and custom input validation |
+| `tasks.lua` | Owned delayed callbacks and latest-argument debouncing |
 | `appearance.lua` | Automatic settings, silent preference reflection, palette editing |
 | `core.lua` | Resource scopes, instance helpers, layout/measurement, callbacks |
 | `theme.lua` | Shared visual tokens and theme values |
@@ -1044,7 +1148,8 @@ absent to read a long section completely.
 
 Library source is separate from `src/ui`, which remains the existing client UI.
 Modules in `ui-lib/src` are `return function(env) ... end` factories, using the
-repository's Lua 5.1-compatible Luau dialect. Keep visual tokens in `theme.lua`.
+repository's Lua 5.1-compatible Luau dialect. Keep semantic resolution in
+`theme.lua` and palette/contrast/density/shape/typography modules.
 Add reusable controls here; consumer scripts should only declare controls and
 implement application behavior.
 
@@ -1058,9 +1163,20 @@ luajit tools/bundle.lua --native
 node tools/build_site.js
 # Manually inspect the generated bundles, manifests, guide, and catalog here.
 luajit test/ui_library.lua
+luajit test/ui_library_forms.lua
+luajit test/ui_library_values.lua
+luajit test/ui_library_profiles.lua
+luajit test/ui_library_tasks.lua
+luajit test/ui_library_navigation.lua
+luajit test/ui_library_examples.lua
 luajit test/ui_library_theme.lua
 luajit test/ui_library_mobile.lua
 luajit test/ui_library_appearance.lua
+luajit test/ui_library_semantics.lua
+luajit test/ui_library_numberinput.lua
+luajit test/ui_library_readouts.lua
+luajit test/ui_library_itemlist.lua
+luajit test/ui_library_actions.lua
 luajit test/ui_library_agent.lua
 luajit test/embedding_examples.lua
 node tools/build_ui_lib.js --check

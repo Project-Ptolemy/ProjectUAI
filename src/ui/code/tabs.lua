@@ -48,6 +48,7 @@ return function(env)
 			button.SelectionGained:Connect(function() cell.hovered = true; paint(cell); reveal(cell, button) end)
 			button.SelectionLost:Connect(function() cell.hovered = false; paint(cell) end)
 			button.Activated:Connect(function() if options.onSelect then options.onSelect(cell.item.id, cell.item) end end)
+			button.MouseButton2Click:Connect(function() if options.onContextMenu then options.onContextMenu(cell.item.id, cell.item, cell.button) end end)
 			if options.onClose then
 				local close = Instance.new("TextButton", holder)
 				close.Name, close.Text, close.AutoButtonColor = "CloseTab", "", false

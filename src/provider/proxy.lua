@@ -2,7 +2,6 @@
 -- owned by net/http; this module owns classification and guarded URL changes.
 return function(env)
 	local util = env.require("runtime/util")
-	local clock = env.require("runtime/clock")
 	local log = env.require("runtime/log")
 	local registry = env.require("provider/registry")
 	local providerKeys = env.require("runtime/provider_keys")
@@ -86,7 +85,7 @@ return function(env)
 			local target = registry.proxyTarget(record)
 			if not target or not same(source, connection(record)) then return false end
 			if registered and registry.get(record.id) ~= record then return false end
-			if opts.deadlineMs and clock.ms() >= opts.deadlineMs then return false end
+			if env.require("net/deadline").expired(opts.deadlineMs) then return false end
 			if opts.aborted then
 				local ok, stopped = pcall(opts.aborted)
 				if not ok or stopped then return false end
@@ -107,6 +106,11 @@ return function(env)
 			end
 			-- Observers may edit or remove the provider while being notified.
 			if not same(expected, connection(record)) or (registered and registry.get(record.id) ~= record) then return false end
+			if env.require("net/deadline").expired(opts.deadlineMs) then return false end
+			if opts.aborted then
+				local ok, stopped = pcall(opts.aborted)
+				if not ok or stopped then return false end
+			end
 			return true
 		end
 		return handle

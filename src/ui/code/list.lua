@@ -220,7 +220,7 @@ return function(env)
 			render()
 		end
 		function list.move(delta)
-			if not alive then return end
+			if not alive or #list.items == 0 then return end
 			list.selected = math.max(1, math.min(#list.items, list.selected + delta))
 			local item = list.items[list.selected]; list.selectedKey = item and key(item, list.selected)
 			local y = (list.selected - 1) * rowHeight
@@ -233,6 +233,12 @@ return function(env)
 			if not alive then return end
 			local item = list.items[list.selected]
 			if item and options.onSelect then options.onSelect(item, list.selected) end
+		end
+		function list.page(direction)
+			list.move((direction == -1 and -1 or 1) * math.max(1, math.floor(list.root.AbsoluteSize.Y / rowHeight) - 1))
+		end
+		function list.edge(last)
+			list.move((last and #list.items or 1) - list.selected)
 		end
 		function list.toggle(expand)
 			if not alive then return end

@@ -167,7 +167,7 @@ local function bootStored(publicOnly, failMigration)
 	data.ui.tutorial.seen, data.ui.communityInvite.disabled = true, true
 	data.agent.autoFreeRouting = false
 	if publicOnly then
-		local record = f.env.require("provider/registry").blank("hcnsec")
+		local record = f.env.require("provider/registry").blank("projectuai-free")
 		record.id = "community-fixture"
 		data.providers = { active = record.id, list = { record } }
 		data.security = { rememberCredentials = true }

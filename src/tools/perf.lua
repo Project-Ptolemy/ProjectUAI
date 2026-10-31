@@ -8,6 +8,8 @@ return function(env)
 	return {
 		{
 			name = "performance",
+			examples = { { title = "Sample current performance", arguments = { sample = 1 },
+				note = "Compare equivalent samples before and after a change; one sample does not establish a long-term trend." } },
 			risk = "read",
 			description = "Measure frame rate over a short sample and report memory and network stats.",
 			parameters = {

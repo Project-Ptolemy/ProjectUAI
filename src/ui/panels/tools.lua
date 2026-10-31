@@ -219,6 +219,14 @@ return function(env)
 							layoutOrder = 3,
 						})
 						params.Size = UDim2.new(1, 0, 0, 0)
+						local examples = registry.examples(tool)
+						if examples ~= "" then
+							P.text(details, { name = "ToolExamples", text = "Examples\n" .. examples, role = "caption", auto = "Y", wrap = true, size = UDim2.new(1, 0, 0, 0), layoutOrder = 6 })
+							P.button(details, { name = "CopyToolExample", text = "Copy examples", size = "sm", variant = "ghost", layoutOrder = 7, onClick = function()
+								local ok, why = env.require("runtime/clipboard").write(examples)
+								env.require("ui/overlay").toast(ok and "Examples copied" or why, ok and "good" or "warn")
+							end })
+						end
 
 						if missing then
 							local reason = P.text(details, {
@@ -252,7 +260,7 @@ return function(env)
 		-- labels above it are constructed earlier but neither of them sets an order.
 		P.field(head, {
 			name = "ToolSearch",
-			placeholder = "Search tools, groups or actions",
+			placeholder = 'Search words, "phrases", or -exclude',
 			layoutOrder = 3,
 			onChange = function(text)
 				filter = util.trim(text)

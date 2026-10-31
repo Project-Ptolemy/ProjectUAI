@@ -488,6 +488,11 @@ return function(env)
 			if not handle.visible then return end
 			handle.visible = false
 			stopGestures()
+			-- Hidden editors must stop receiving native typing and gamepad actions.
+			local focused = env.uis:GetFocusedTextBox()
+			if focused and focused:IsDescendantOf(root) then focused:ReleaseFocus() end
+			local selected = env.guisvc.SelectedObject
+			if selected and selected:IsDescendantOf(root) then env.guisvc.SelectedObject = nil end
 			root.Visible = false
 			if handle.onHide then pcall(handle.onHide) end
 		end

@@ -88,6 +88,29 @@ Tool calls:
 	local TOOLBOX = [[
 Toolbox:
 - A tool profile may hide tools. Use tool_search list with a few action/name words to find one, describe for its exact schema (follow nextOffset for more), then call; hidden tools keep normal permissions and scope.]]
+	local FAMILIES = [[
+Focused tool families:
+- The uai_* tools combine related actions. Their name enum lists the actions in
+  this conversation. Use action=describe,name=<action> to learn exact arguments;
+  then action=call,name=<action>,arguments={<that schema>}. Reuse known schemas.
+- Workflow rules below name underlying actions. When that name is inside a family,
+  call it through the family instead of inventing an undeclared tool call.
+- Use action=list with a narrow query only when the correct action is unclear.
+  Each call keeps the original action's permissions, scope and revision checks.]]
+	local SCRIPT_WORKFLOW = [[
+Script-making goals:
+- For substantial script creation or revision, use script_workflow start with the
+  requested goal and observable acceptance criteria. Read an existing goal first.
+- Work through define, inspect, plan, build, validate and review in order. Record
+  concise evidence when advancing, and revise the goal by rewinding after changes.
+- Inspect the relevant environment and read scripting_docs quickstart. For a new
+  script interface read ui_library_docs; use UI LIB controls and owned cleanup.
+- Review source before checks, compile saved source, inspect generated output,
+  test relevant behavior, then review every acceptance criterion. Compilation
+  alone does not establish Roblox rendering, input, replication or cleanup.
+- The workflow retains real tool-check receipts. Do not mark a criterion done on
+  intention or guessed output. Record unavailable checks as blockers and continue
+  independent work. Completion requires the requested behavior and deliverables.]]
 
 	local SKILLS = [[
 Skills:
@@ -162,7 +185,8 @@ Modular projects:
   outcomes; project_patch_restore conditionally restores files only.
 - Review inputs, project_build, inspect output, then script_test relevant cases
   when allowed. Missing compilation is not a passed check. Tests have fresh caches
-  but share native game state; mocks do not prove rendering, input or server behavior.]]
+  but share native game state; mocks do not prove rendering, input or server behavior.
+  script_analyze reports syntax and literal dependencies, not Luau type inference.]]
 
 	local DELEGATION = [[
 Delegation:
@@ -196,6 +220,10 @@ Background chat:
 		for _, definition in ipairs(opts.tools) do
 			local fn = definition["function"] or definition
 			if fn.name then names[fn.name] = true end
+			if env.require("agent/tool_families").isFamily(fn.name) then
+				local namesField = fn.parameters and fn.parameters.properties and fn.parameters.properties.name
+				for _, action in ipairs(namesField and namesField.enum or {}) do names[action] = true end
+			end
 		end
 		return names
 	end
@@ -218,9 +246,9 @@ Background chat:
 			or "You are UAI, an agent embedded in a running Roblox client.", CORE }
 		local function include(enabled, text) if enabled then parts[#parts + 1] = text end end
 		include(names == nil or next(names) ~= nil, TOOL_PROTOCOL)
-		-- The toolbox guidance only applies when a profile actually hides tools.
-		-- The default All profile keeps the previous prompt and workflow.
 		include(offered(names, "tool_search") and opts.profile and opts.profile ~= "all", TOOLBOX)
+		include(offered(names, "uai_"), FAMILIES)
+		include(offered(names, "script_workflow"), SCRIPT_WORKFLOW)
 		if opts.opencodeCompatibility then
 			local declarations = {}
 			for _, name in ipairs({ "bash", "read", "edit", "glob", "grep", "list", "shell" }) do
@@ -313,6 +341,7 @@ Background chat:
 		opts = opts or {}
 		local parts, names = rules(opts)
 		appendContext(parts, opts, names)
+		if opts.session and opts.session.workflow then parts[#parts + 1] = env.require("runtime/script_workflow").describe(opts.session.workflow) end
 		appendInstructions(parts, opts)
 		return table.concat(parts, "\n\n")
 	end

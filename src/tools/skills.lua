@@ -16,6 +16,8 @@ return function(env)
 	return {
 		{
 			name = "skills_list",
+			examples = { { title = "Find UI guidance", arguments = { query = "UI", limit = 4000 },
+				note = "Read relevant skill bodies before applying them; the index is not the instructions." } },
 			risk = "read",
 			needs = { "fs" },
 			description = "List the installed markdown skills (playbooks) with their one-line "

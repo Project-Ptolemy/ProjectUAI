@@ -88,6 +88,7 @@ return function(env)
 		local inset = math.max(math.floor(height / 8), 2)
 		local knobSize = height - inset * 2
 		local button = Instance.new("TextButton", parent)
+		button.Name = props.name or "Switch"
 		button.Text = ""
 		button.AutoButtonColor = false
 		button.Size = UDim2.fromOffset(math.max(width, responsive.minTarget()), math.max(height, responsive.minTarget()))
@@ -114,13 +115,15 @@ return function(env)
 			radius = theme.radius.pill,
 		})
 
-		local handle = { value = props.value == true }
+		local handle = { value = props.value == true, enabled = props.enabled ~= false }
 
 		local hovered, focused, pressed = false, false, false
 		local function paint(animate)
+			button:SetAttribute("UAIValue", handle.value)
 			local motion = animate and (pressed and "press" or "hover") or "instant"
 			P.animate(rail, motion, {
-				BackgroundColor3 = handle.value and ((hovered or pressed) and theme.color.accentHot or theme.color.accent)
+				BackgroundColor3 = not handle.enabled and theme.color.surfaceRaised
+					or handle.value and ((hovered or pressed) and theme.color.accentHot or theme.color.accent)
 					or ((hovered or pressed) and theme.color.surfaceHover or theme.color.surfaceActive),
 			})
 			P.animate(stroke, motion, {
@@ -130,7 +133,8 @@ return function(env)
 			P.animate(knob, motion, {
 				Position = handle.value and UDim2.new(1, -(inset + knobSize / 2), 0.5, 0)
 					or UDim2.new(0, inset + knobSize / 2, 0.5, 0),
-				BackgroundColor3 = handle.value and theme.color.onSolid or theme.color.textSecondary,
+				BackgroundColor3 = not handle.enabled and theme.color.textDisabled
+					or handle.value and theme.color.onSolid or theme.color.textSecondary,
 			})
 		end
 		button.MouseEnter:Connect(function() hovered = true; paint(true) end)
@@ -146,7 +150,14 @@ return function(env)
 			if not silent and props.onChange then pcall(props.onChange, handle.value) end
 		end
 
-		button.Activated:Connect(function() handle.set(not handle.value) end)
+		function handle.setEnabled(value)
+			handle.enabled = value ~= false
+			button.Active, button.Selectable = handle.enabled, handle.enabled
+			if not handle.enabled then hovered, focused, pressed = false, false, false end
+			paint(false)
+		end
+		button.Activated:Connect(function() if handle.enabled then handle.set(not handle.value) end end)
+		handle.setEnabled(handle.enabled)
 		paint(false)
 		handle.instance = button
 		return handle
@@ -197,7 +208,7 @@ return function(env)
 			zIndex = 3,
 		})
 
-		local handle = { value = util.clamp(props.value or min, min, max), instance = shell }
+		local handle = { value = util.clamp(props.value or min, min, max), instance = shell, enabled = props.enabled ~= false }
 
 		local function nearestStop(value)
 			local bestIndex, bestGap = 1, math.huge
@@ -222,6 +233,7 @@ return function(env)
 		end
 
 		local function paint()
+			shell:SetAttribute("UAIValue", handle.value)
 			local alpha = alphaFor(handle.value)
 			fill.Size = UDim2.fromScale(alpha, 1)
 			knob.Position = UDim2.new(alpha, theme.size.knob * (0.5 - alpha), 0.5, 0)
@@ -266,7 +278,8 @@ return function(env)
 			local diameter = theme.size.knob + ((dragging or hovered or focused) and theme.space.hair or 0)
 			P.animate(knob, "press", { Size = UDim2.fromOffset(diameter, diameter) })
 			P.animate(knobOutline, "hover", { Transparency = (focused or dragging) and 0 or 1 })
-			P.animate(fill, "hover", { BackgroundColor3 = (hovered or dragging) and theme.color.accentHot or theme.color.accent })
+			P.animate(fill, "hover", { BackgroundColor3 = not handle.enabled and theme.color.textDisabled
+				or (hovered or dragging) and theme.color.accentHot or theme.color.accent })
 		end
 		hit.MouseEnter:Connect(function() hovered = true; paintInteraction() end)
 		hit.MouseLeave:Connect(function() hovered = false; paintInteraction() end)
@@ -307,7 +320,7 @@ return function(env)
 		hit.InputBegan:Connect(function(input)
 			local kind = input.UserInputType
 			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
-			if dragInput or not alive then return end
+			if dragInput or not alive or not handle.enabled then return end
 			dragInput, dragOrigin = input, input.Position
 			pendingTouch = kind == Enum.UserInputType.Touch and insideVerticalScroll()
 			dragging = not pendingTouch
@@ -343,15 +356,59 @@ return function(env)
 		end), "slider drag")
 		local stopRelease = dispose.connection(env.uis.InputEnded:Connect(finishDrag), "slider release")
 		local stopFocus = dispose.connection(env.uis.WindowFocusReleased:Connect(clearDrag), "slider focus")
+		function handle.stepBy(count)
+			if not alive or not handle.enabled then return false end
+			if type(count) ~= "number" or count ~= count or math.abs(count) == math.huge then return false end
+			count = math.floor(count)
+			local nextValue = stops and stops[math.max(1, math.min(#stops, nearestStop(handle.value) + count))]
+				or handle.value + count * ((step and step > 0) and step or (max - min) / 100)
+			nextValue = quantise(nextValue)
+			if nextValue == handle.value then return false end
+			handle.set(nextValue)
+			if props.onCommit then pcall(props.onCommit, handle.value) end
+			return true
+		end
+		function handle.setEnabled(value)
+			handle.enabled = value ~= false
+			hit.Active, hit.Selectable = handle.enabled, handle.enabled
+			if not handle.enabled then focused, hovered = false, false; clearDrag() end
+			paintInteraction()
+		end
+		-- Keyboard adjustment uses the same quantization and one commit as a drag.
+		-- Up/Down remain available for moving to another control.
+		local stopKeys = dispose.connection(env.uis.InputBegan:Connect(function(input)
+			if not alive or not handle.enabled or dragging then return end
+			local selected = focused or env.guisvc.SelectedObject == hit
+			if not selected or env.uis:GetFocusedTextBox() then return end
+			local ancestor = hit
+			while ancestor do
+				if ancestor:IsA("GuiObject") and not ancestor.Visible then return end
+				ancestor = ancestor.Parent
+			end
+			local key = input.KeyCode
+			if key == Enum.KeyCode.Left or key == Enum.KeyCode.DPadLeft then handle.stepBy(-1)
+			elseif key == Enum.KeyCode.Right or key == Enum.KeyCode.DPadRight then handle.stepBy(1)
+			elseif key == Enum.KeyCode.PageUp then handle.stepBy(10)
+			elseif key == Enum.KeyCode.PageDown then handle.stepBy(-10)
+			elseif key == Enum.KeyCode.Home or key == Enum.KeyCode.End then
+				local value = key == Enum.KeyCode.Home and min or max
+				if value ~= handle.value then
+					handle.set(value)
+					if props.onCommit then pcall(props.onCommit, handle.value) end
+				end
+			end
+		end), "slider keys")
 		shell.Destroying:Connect(function()
 			alive = false
 			clearDrag()
 			stopMove()
 			stopRelease()
 			stopFocus()
+			stopKeys()
 		end)
 
 		handle.value = quantise(handle.value)
+		handle.setEnabled(handle.enabled)
 		paint()
 		return handle
 	end

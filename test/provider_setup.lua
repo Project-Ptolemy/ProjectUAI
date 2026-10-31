@@ -61,8 +61,8 @@ case("large saved catalogs can be searched without losing focus on health update
 	panel.select(record.id); f.h.settle(0.2)
 	check("refreshing the provider preserves catalog reading position", f.h.byName("SavedModelList").CanvasPosition.Y == 800)
 	local row = f.h.byName("Model_12"); local search = typeInto(f, "SavedModelSearch", "model-12 vendor")
-	check("only matching IDs remain", row.Visible and not f.h.byName("Model_13").Visible and f.h.byName("Model_112").Visible
-		and f.h.byName("SavedModelCount").Text == "3 of 120 models")
+	check("only matching IDs remain", row.Visible and not f.h.byName("Model_13").Visible and not f.h.byName("Model_112").Visible
+		and f.h.byName("Model_120").Visible and f.h.byName("SavedModelCount").Text == "2 of 120 models")
 	check("search returns to the matching rows", f.h.byName("SavedModelList").CanvasPosition.Y == 0)
 	registry.changed:fire("health", record.id); f.h.settle(0.2)
 	check("health preserves search and rows", f.h.byName("Model_12") == row and search:IsFocused()
@@ -152,7 +152,7 @@ end)
 case("included setup keeps the model before optional guidance and connection overrides", function()
 	local f = F.ui(390, 700)
 	local registry = f.env.require("provider/registry")
-	f.env.require("ui/panels/providers").editor(registry.blank("hcnsec"))
+	f.env.require("ui/panels/providers").editor(registry.blank("projectuai-free"))
 	f.h.settle(0.2)
 	local model = f.h.byName("ActiveModel")
 	check("included access is shown once without asking to reapply it", f.h.byName("AccessSummary").Visible
@@ -161,7 +161,7 @@ case("included setup keeps the model before optional guidance and connection ove
 		and f.h.byName("ProviderGuide").Visible)
 	check("the full provider guidance and setup link remain available", f.h.byName("ProviderGuide").Visible
 		and f.h.byName("KeyLinkUrl").Text == "https://discord.gg/9xYyyYuKap"
-		and f.h.textOf(f.h.byName("ProviderGuide")):find("continued use and support", 1, true) ~= nil)
+		and f.h.textOf(f.h.byName("ProviderGuide")):find("separate HCNSEC provider", 1, true) ~= nil)
 	click(f, "ProviderGuideToggle")
 	check("collapsing help never replaces the selected model or persists the draft", not f.h.byName("ProviderGuide").Visible and f.h.byName("ActiveModel") == model
 		and f.h.textOf(model) == "auto" and registry.count() == 0 and f.h.http.requestCount == 0)

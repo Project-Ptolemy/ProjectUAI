@@ -31,7 +31,7 @@ local function preset(f, id)
 	closeMenu(f)
 	click(f, "Preset")
 	local target = assert(f.env.require("provider/catalog").get(id), "missing preset " .. id)
-	if target.tier == "paid" or target.tier == "local" then
+	if target.tier == "free" or target.tier == "paid" or target.tier == "local" then
 		click(f, "Segment_" .. target.tier, f.h.byName("ProviderTier"))
 		f.h.settle(0.2)
 	end
@@ -290,33 +290,37 @@ case("an uncooperative old discovery cannot unlock or overwrite a newer fetch", 
 	f.healthy(); f.close()
 end)
 
-case("switching to free access preserves an existing personal key until chosen", function()
+case("choosing Free replaces only the draft while HCNSEC keeps personal access", function()
 	local f = fixture()
 	local publicKey = f.env.require("runtime/community_credential").key
 	preset(f, "hcnsec")
-	check("official setup offers the free key", f.h.byName("CommunityKey").Visible)
-	check("opening setup preserves the supplied key", f.h.byName("KeyState").Text:find("-key", 1, true) ~= nil)
-	check("setup never creates a saved provider", f.env.require("provider/registry").count() == 0)
+	check("personal HCNSEC never offers the community key", not f.h.byName("CommunityKey").Visible)
 	click(f, "UseCommunityKey")
+	check("a hidden community action cannot replace a personal HCNSEC key", f.h.byName("KeyState").Text:find("-key", 1, true) ~= nil)
+	check("setup never creates a saved provider", f.env.require("provider/registry").count() == 0)
+	preset(f, "projectuai-free")
 	check("the public key stays masked", f.h.byName("KeyState").Text:find(publicKey:sub(-4), 1, true) ~= nil
 		and not f.h.textOf():find(publicKey, 1, true))
+	check("choosing Free already prepares its included access", not f.h.byName("CommunityKey").Visible)
 	check("the original record stays unchanged until Save", f.original.apiKey == "fixture-key"
 		and f.env.require("provider/registry").count() == 0)
 	click(f, "SaveProvider")
-	check("saving opts in only this provider", f.saved and f.saved.preset == "hcnsec"
+	check("saving opts in only this provider", f.saved and f.saved.preset == "projectuai-free"
 		and f.saved.apiKey == publicKey and f.saved.apiKey ~= "fixture-key")
-	check("the model remains the user's selection", f.saved.model == "manual-model")
+	check("Free starts with its supported default router", f.saved.model == "auto" and #f.saved.models == 1)
 	check("opting in never sends a request", f.h.http.requestCount == 0)
 	f.healthy(); f.close()
 end)
 
 case("community key action rechecks its endpoint and preserves existing providers", function()
-	local f = fixture("hcnsec")
+	local f = fixture("projectuai-free")
 	local registry = f.env.require("provider/registry")
 	local existing = registry.blank("hcnsec")
 	existing.apiKey, existing.model, existing.models = "personal-key", "my-model", { "my-model" }
 	assert(registry.save(existing))
 	check("a custom URL never advertises the shared key", not f.h.byName("CommunityKey").Visible)
+	field(f, "BaseUrl", "https://api.hcnsec.cn/v1")
+	check("Free can restore its community key only on the official route", f.h.byName("CommunityKey").Visible)
 	for _, value in ipairs({ "http://api.hcnsec.cn/v1", "https://api.hcnsec.cn.evil.test/v1", "https://api.hcnsec.cn:8443/v1", "https://api.hcnsec.cn/custom", "https://api.hcnsec.cn/v1?target=elsewhere" }) do
 		field(f, "BaseUrl", value)
 		check("the action is hidden for " .. value, not f.h.byName("CommunityKey").Visible)
@@ -328,7 +332,7 @@ case("community key action rechecks its endpoint and preserves existing provider
 	f.healthy(); f.close()
 end)
 
-case("choosing the community key replaces an entire key pool and its rotation state", function()
+case("choosing Free replaces an entire personal key pool and its rotation state", function()
 	local f = F.ui(390, 700)
 	local registry = f.env.require("provider/registry")
 	local publicKey = f.env.require("runtime/community_credential").key
@@ -336,8 +340,9 @@ case("choosing the community key replaces an entire key pool and its rotation st
 	record.apiKey, record.model, record.models = "first-personal-key\nsecond-personal-key", "my-model", { "my-model" }
 	record.keyRotation = { index = 2, cooldowns = { ["first-personal-key"] = 9999999999999 } }
 	f.env.require("ui/panels/providers").editor(record, function(id) f.saved = registry.get(id) end)
-	click(f, "UseCommunityKey"); click(f, "SaveProvider")
-	check("only the chosen community key remains in the pool", f.saved and #registry.keysOf(f.saved) == 1 and registry.nextKey(f.saved) == publicKey)
+	preset(f, "projectuai-free"); click(f, "SaveProvider")
+	check("only the chosen community key remains in the pool", f.saved and f.saved.preset == "projectuai-free"
+		and #registry.keysOf(f.saved) == 1 and registry.nextKey(f.saved) == publicKey)
 	check("replacing the pool never displays the complete public key", not f.h.textOf():find(publicKey, 1, true))
 	check("old rotation and cooldown state are discarded", f.saved.keyRotation == nil)
 	check("the source record retains its personal pool until explicit save", record.apiKey == "first-personal-key\nsecond-personal-key" and record.keyRotation.index == 2)

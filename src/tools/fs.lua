@@ -23,6 +23,8 @@ return function(env)
 	local tools = {
 		{
 			name = "file_list",
+			examples = { { title = "Browse an authoring folder", arguments = { path = "files/MyProject", limit = 20 },
+				note = "Replace MyProject with the current game folder or a path already returned by the tools." } },
 			risk = "read",
 			needs = { "fs" },
 			description = "List files in a workspace directory. Returned files/ paths can be used unchanged with every file tool. Start with the current game path from the environment; omit path for all games.",

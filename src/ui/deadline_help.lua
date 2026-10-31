@@ -19,8 +19,18 @@ return function(env)
 	end
 
 	function M.new(parent, order)
-		local button = P.rowButton(parent, { name = "DeadlineHelp", vertical = true,
-			size = UDim2.new(1, 0, 0, 0), auto = "Y", layoutOrder = order,
+		local group = P.column(parent, { name = "DeadlineRecovery", size = UDim2.new(1, 0, 0, 0),
+			auto = "Y", gap = theme.space.xs, layoutOrder = order })
+		P.text(group, { name = "DeadlineRecoveryAdvice", text = "Review the last reply and any completed actions before sending again. "
+			.. "A timeout does not confirm that the provider stopped working. Request wait settings can help with short client limits; host limits still apply.",
+			role = "caption", color = theme.color.textSecondary, wrap = true, auto = "Y", layoutOrder = 1 })
+		P.button(group, { name = "DeadlineRequestSettings", text = "Review request wait", size = "sm", layoutOrder = 2,
+			onClick = function()
+				local dialog = env.require("ui/app").showSettingsDialog("agent")
+				if dialog and dialog.reveal then dialog.reveal("agent", "agent.requestTimeout") end
+			end })
+		local button = P.rowButton(group, { name = "DeadlineHelp", vertical = true,
+			size = UDim2.new(1, 0, 0, 0), auto = "Y", layoutOrder = 3,
 			bg = theme.color.warnSurface, bgHover = theme.color.surfaceHover,
 			stroke = true, strokeColor = theme.color.warn, radius = theme.radius.md,
 			padding = theme.space.sm, gap = theme.space.xxs,
@@ -31,6 +41,7 @@ return function(env)
 		P.text(button.row, { name = "DeadlineHelpAction", text = "Open the official Project UAI invite",
 			role = "caption", color = theme.color.textSecondary, wrap = true, auto = "Y",
 			size = UDim2.new(1, 0, 0, 0), layoutOrder = 2 })
+		button.container = group
 		return button
 	end
 

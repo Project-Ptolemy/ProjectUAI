@@ -281,6 +281,8 @@ return function(env)
 	local tools = {
 		{
 			name = "todo_write",
+			examples = { { title = "Track a script change", arguments = { items = { { text = "Inspect the existing script", status = "active" }, { text = "Implement and review the change", status = "pending" }, { text = "Compile and verify the result", status = "pending" } } },
+				note = "For substantial script authoring, script_workflow also keeps acceptance criteria and check receipts." } },
 			risk = "write",
 			description = "Replace the full task list. Use when substantial work benefits from a tracked plan; keep one item active while work remains. Routine tool sequences need no list.",
 			parameters = {
@@ -734,6 +736,7 @@ return function(env)
 					-- feed under the row the user is already looking at.
 					callId = ctx and ctx.callId or nil,
 					task = args.task,
+					requestToolNames = ctx and ctx.requestToolNames or nil,
 					-- The default preset is a setting, so it can be widened or narrowed once
 					-- for every dispatch rather than only when the model names one. Permission
 					-- mode still gates what actually runs, and a prompt raised inside a child
@@ -793,6 +796,7 @@ return function(env)
 					callId = ctx and ctx.callId or nil,
 					id = args.agent,
 					task = args.message,
+					requestToolNames = ctx and ctx.requestToolNames or nil,
 					turns = args.turns,
 				})
 				if not result then return H.fail(err) end

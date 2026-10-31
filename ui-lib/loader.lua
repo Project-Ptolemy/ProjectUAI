@@ -18,6 +18,7 @@ function environment.require(id)
 	local ok, result = pcall(__UI_MODULES[id], environment)
 	loading[id] = nil
 	if not ok then error(result, 0) end
+	assert(type(result) == "table", "UI LIB: module " .. tostring(id) .. " must return a table")
 	cache[id] = result
 	return result
 end

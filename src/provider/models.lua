@@ -18,9 +18,11 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local urls = env.require("net/url")
 	local modelCatalog = env.require("provider/model_catalog")
+	local modelId = env.require("provider/model_id")
 	local communityKey = env.require("provider/community_key")
 	local support = env.require("runtime/support")
 	local providerKeys = env.require("runtime/provider_keys")
+	local config = env.require("runtime/config")
 
 	local CACHE_MS = 10 * 60 * 1000
 
@@ -88,27 +90,52 @@ return function(env)
 
 	-- Manual entry. The id is stored on the record, so it survives a restart and is
 	-- offered first from then on.
+	local function mutationProblem(opts)
+		if opts.persist == false then return nil end
+		local access = config.accessProblem()
+		if access then return access end
+		local vault = config.vaultStatus()
+		if vault.locked or vault.busy then return "Unlock the credential vault and finish any vault operation before editing models." end
+	end
+	local function commitModels(record, known, selected, opts)
+		local previous, previousModel = record.models, record.model
+		record.models, record.model = known, selected
+		if opts.persist ~= false then
+			local ok, why = registry.save(record, { force = true })
+			if not ok then
+				record.models, record.model = previous, previousModel
+				return false, type(why) == "table" and table.concat(why, "; ") or why
+			end
+			if selected ~= previousModel and util.trim(selected) ~= "" then env.require("provider/model_preferences").remember(record, selected) end
+		end
+		M.changed:fire(record.id, known)
+		return true
+	end
 	function M.add(record, id, opts)
 		opts = opts or {}
-		local clean = util.trim(id)
-		if clean == "" then return false, "type a model id" end
-		if #clean > 160 then return false, "that does not look like a model id" end
-		record.models = record.models or {}
-		for _, existing in ipairs(record.models) do
+		local problem = mutationProblem(opts)
+		if problem then return false, problem end
+		local clean, why = modelId.parse(id)
+		if not clean then return false, why end
+		local known = util.deepCopy(record.models or {})
+		for _, existing in ipairs(known) do
 			if existing == clean then
-				if opts.select then record.model = clean end
+				if opts.select and record.model ~= clean then
+					local ok, problem = commitModels(record, known, clean, opts)
+					return ok, ok and clean or problem
+				end
 				return false, "already in the list"
 			end
 		end
-		table.insert(record.models, 1, clean)
-		if opts.select ~= false then record.model = clean end
-		if opts.persist ~= false then registry.save(record, { force = true }) end
-		M.changed:fire(record.id, record.models)
-		return true, clean
+		table.insert(known, 1, clean)
+		local ok, problem = commitModels(record, known, opts.select ~= false and clean or record.model, opts)
+		return ok, ok and clean or problem
 	end
 
 	function M.remove(record, id, opts)
 		opts = opts or {}
+		local problem = mutationProblem(opts)
+		if problem then return false, problem end
 		local kept = {}
 		local removed = false
 		for _, existing in ipairs(record.models or {}) do
@@ -118,11 +145,8 @@ return function(env)
 				kept[#kept + 1] = existing
 			end
 		end
-		record.models = kept
-		if record.model == id then record.model = kept[1] or "" end
 		if removed then
-			if opts.persist ~= false then registry.save(record, { force = true }) end
-			M.changed:fire(record.id, kept)
+			return commitModels(record, kept, record.model == id and (kept[1] or "") or record.model, opts)
 		end
 		return removed
 	end
@@ -166,7 +190,7 @@ return function(env)
 		end
 		local url = registry.endpoint(snapshot, "/models")
 		local headers = env.require("provider/chat").headers(snapshot)
-		local deadline = clock.ms() + math.max(1, math.min(300, tonumber(opts.timeout) or 120)) * 1000
+		local deadline = env.require("net/deadline").at(opts.timeout, opts.deadlineMs)
 		local recovery = proxy.new(record, { aborted = opts.aborted, onRetry = opts.onRetry, deadlineMs = deadline })
 		local function fetch()
 			return http.send({
@@ -244,9 +268,10 @@ return function(env)
 		-- The documented shape is { data = { { id = ... } } }. Some servers answer
 		-- with a bare array, and Ollama answers with { models = { { name = ... } } }.
 		local rows = decoded.data or decoded.models or decoded
-		local found, seen, excluded = {}, {}, 0
+		local found, seen, excluded, invalid = {}, {}, 0, 0
 		if type(rows) == "table" then
-			for _, row in ipairs(rows) do
+			for index, row in ipairs(rows) do
+				if index > 10000 then partial = true; break end
 				local id
 				if type(row) == "string" then
 					id = row
@@ -265,6 +290,11 @@ return function(env)
 						if not generates then id = "" end
 					end
 				end
+				if id ~= "" then
+					local clean = modelId.parse(id)
+					if not clean then invalid = invalid + 1 end
+					id = clean or ""
+				end
 				if id ~= "" and not seen[id] then
 					seen[id] = true
 					found[#found + 1] = id
@@ -273,17 +303,19 @@ return function(env)
 		end
 
 		table.sort(found)
-		M.cache[key] = { at = clock.ms(), models = found, scope = scope }
-		M.changed:fire(record.id, found)
-
 		if #found == 0 then
+			M.cache[key] = nil
+			if invalid > 0 then return {}, support.error("the catalog returned invalid model ids -- enter an exact valid id manually") end
 			if excluded > 0 then return {}, support.error("the catalog has no compatible chat models -- check the provider's API documentation or add an id manually") end
 			return {}, support.error("the endpoint returned an empty list -- add a model by hand")
 		end
+		M.cache[key] = { at = clock.ms(), models = found, scope = scope }
+		M.changed:fire(record.id, found)
 		local note = string.format("%d model%s from %s", #found, #found == 1 and "" or "s",
 			cli == "cline" and "Cline through Project UAI Bridge" or cli and "OpenCode CLI through Project UAI Bridge" or urls.display(url))
 		if partial then note = note .. "; catalog page limit reached, additional IDs may be entered manually" end
 		if excluded > 0 then note = note .. string.format("; %d non-chat entries hidden", excluded) end
+		if invalid > 0 then note = note .. string.format("; %d invalid model ids hidden", invalid) end
 		if registry.isOpencodeGo(record) then note = note .. "; public list -- subscription access is checked when you send" end
 		return found, note
 	end

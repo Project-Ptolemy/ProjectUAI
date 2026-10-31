@@ -181,7 +181,9 @@ return function(env)
 	end
 	function M.copy(text)
 		if not caps.clipboard then overlay.code({ title = "Select and copy", text = text, code = text }); return end
-		local ok, why = pcall(caps.fn.clipboard, text); if not ok then overlay.toast(tostring(why), "bad") end
+		local ok, why = env.require("runtime/clipboard").write(text)
+		if not ok then overlay.toast(why, "bad") end
+		return ok
 	end
 	function M.menu(target, title, options, onSelect)
 		local anchor = target

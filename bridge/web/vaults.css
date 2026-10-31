@@ -1,0 +1,25 @@
+/* Vault controls use Cowork's shared palette and adapt inside Settings. */
+.vault-connections, .vault-explorer, .vault-editor { display: grid; gap: 12px; min-width: 0; }
+.vault-connection { display: grid; gap: 4px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); }
+.vault-folder { overflow-wrap: anywhere; font: 12px/1.6 var(--mono); color: var(--textSecondary); }
+.vault-setup { margin: 16px 0 24px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); }
+.vault-setup summary { cursor: pointer; font-weight: 600; }
+.vault-setup form { margin-top: 14px; }
+.vault-field { display: grid; gap: 6px; min-width: 0; }
+.vault-field > input, .vault-field > select { width: 100%; min-width: 0; }
+.vault-check { display: flex; align-items: center; gap: 8px; }
+.vault-check input { width: auto; }
+.vault-search { display: flex; gap: 8px; align-items: end; }
+.vault-search .vault-field { flex: 1; }
+.vault-results { display: grid; gap: 4px; max-height: 300px; overflow: auto; }
+.vault-note { display: grid; gap: 3px; width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 10px 12px; }
+.vault-note small { color: var(--textSecondary); font-weight: 400; }
+.vault-editor { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+#modalBody .vault-note-text { resize: vertical; min-height: 260px; max-height: 65dvh; width: 100%; font: 13px/1.7 var(--mono); tab-size: 2; white-space: pre; overflow: auto; }
+.vault-status:empty { display: none; }
+.vault-status { overflow-wrap: anywhere; }
+.vault-connection .row, .vault-editor .row { flex-wrap: wrap; }
+@media (max-width: 480px) {
+  .vault-search { align-items: stretch; flex-direction: column; }
+  #modalBody .vault-note-text { min-height: 220px; font-size: 16px; }
+}

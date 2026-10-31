@@ -30,6 +30,8 @@ return function(env)
 	local tools = {
 		{
 			name = "remotes_list",
+			examples = { { title = "Find relevant remotes", arguments = { root = "ReplicatedStorage", name = "Interact", limit = 5 },
+				note = "A discovered remote is not a verified argument contract. Inspect before firing." } },
 			risk = "read",
 			description = "Find remotes in the place, with how many client-side listeners each has when the host can tell.",
 			parameters = {

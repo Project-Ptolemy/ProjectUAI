@@ -171,6 +171,11 @@ case("startup failures drain runtime cleanup with and without a mounted app", fu
 		h.settle(7)
 		check("failed startup returns no published handle", client == nil and h.sandbox.UAI == nil)
 		check("failed startup drains registered cleanup", drained == 1)
+		if ui then
+			check("visible startup failure retains only its safe notice", liveScreens(h) == 1 and h.coreGui:FindFirstChild("UAI_Boot")
+				and h.byName("BootTitle").Text == "Could not finish startup")
+			h.click(assert(h.byName("DismissBootError"))); h.settle(0.2)
+		end
 		check("failed startup releases screen trees", liveScreens(h) == 0)
 		check("failed startup callbacks settle cleanly", #h.errors() == 0)
 		if not ui then check("hidden failure creates only the password app screen", h.screensCreated == 1) end

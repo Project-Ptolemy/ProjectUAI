@@ -11,7 +11,7 @@ local function fixture(options)
 	f.now = 1767268800000 -- 20:00 UTC+8, when included access opens.
 	f.env.require("runtime/clock").ms = function() return f.now + f.h.sched.now * 1000 end
 	local registry = f.env.require("provider/registry")
-	local record = registry.blank("hcnsec"); registry.save(record); registry.setActive(record.id)
+	local record = registry.blank("projectuai-free"); registry.save(record); registry.setActive(record.id)
 	f.record, f.registry, f.posts = record, registry, {}
 	f.env.require("runtime/config").set("agent.maxTokens", 1024)
 	if options.disabled then f.env.require("runtime/config").set("agent.autoFreeRouting", false) end
@@ -87,12 +87,25 @@ case("the model picker explains closed free hours without probing", function()
 	-- 16:00 UTC+8: closed, four hours before the evening opening.
 	f.now = 1767225600000 + 8 * 3600000
 	f.env.require("runtime/clock").ms = function() return f.now + f.h.sched.now * 1000 end
-	local record = registry.blank("hcnsec"); registry.save(record); registry.setActive(record.id)
+	local record = registry.blank("projectuai-free"); registry.save(record); registry.setActive(record.id)
 	local picker = f.env.require("ui/panels/modelpicker").open(); f.h.settle(0.2)
 	local text = f.h.textOf()
 	check("closed Auto names the wait until opening", text:find("Auto (outside free hours)", 1, true)
 		and text:find("Free | opens in ", 1, true))
 	check("opening the picker outside free hours dispatches no probes", f.h.http.requestCount == 0)
+	picker.close(); f.healthy(); f.close()
+end)
+
+case("paused community access is not described as closed hours", function()
+	local f = F.ui(390, 760); local registry = f.env.require("provider/registry")
+	f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end
+	local record = registry.blank("projectuai-free"); assert(registry.save(record)); assert(registry.setActive(record.id))
+	assert(f.env.require("runtime/provider_keys").setPaused(record, 1, true))
+	local picker = f.env.require("ui/panels/modelpicker").open(); f.h.settle(0.2)
+	local text = f.h.textOf()
+	check("open hours with a paused key explains how to resume", text:find("Auto (unavailable)", 1, true)
+		and text:find("Resume an API key", 1, true) and not text:find("Auto (outside free hours)", 1, true))
+	check("paused browsing dispatches no probes", f.h.http.requestCount == 0)
 	picker.close(); f.healthy(); f.close()
 end)
 

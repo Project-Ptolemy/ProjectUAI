@@ -82,9 +82,9 @@ return function(env)
 	function Scope:Delay(seconds, callback)
 		local release, finished
 		local thread = task.delay(seconds, function()
+			if self.alive then M.reclaim(); callback() end
 			finished = true
 			if release then release(false) end
-			if self.alive then M.reclaim(); callback() end
 		end)
 		if not finished then release = self:Add(thread) end
 		return function() if release then release(); release = nil end end
@@ -127,16 +127,22 @@ return function(env)
 		end
 		return value:sub(1, cut - 1)
 	end
-	function M.copy(value)
+	function M.copy(value, seen)
 		if typeof(value) ~= "table" then return value end
+		seen = seen or {}
+		if seen[value] then return seen[value] end
 		local result = {}
-		for key, item in pairs(value) do result[key] = M.copy(item) end
+		seen[value] = result
+		for key, item in pairs(value) do result[key] = M.copy(item, seen) end
 		return result
 	end
-	function M.equal(a, b)
+	function M.equal(a, b, seen)
 		if a == b then return true end
 		if typeof(a) ~= "table" or typeof(b) ~= "table" then return false end
-		for key, value in pairs(a) do if not M.equal(value, b[key]) then return false end end
+		seen = seen or {}
+		if seen[a] and seen[a][b] then return true end
+		seen[a] = seen[a] or {}; seen[a][b] = true
+		for key, value in pairs(a) do if not M.equal(value, b[key], seen) then return false end end
 		for key in pairs(b) do if a[key] == nil then return false end end
 		return true
 	end
@@ -182,6 +188,9 @@ return function(env)
 			if class == "TextButton" then instance.Text = "" end
 		end
 		for key, value in pairs(props or {}) do instance[key] = value end
+		if class == "TextBox" then
+			env.require("typography").attach(M, owner, instance, "Body", props and props.Font == Enum.Font.Code)
+		end
 		if colors then M.bind(owner, instance, colors) end
 		instance.Parent = parent
 		return instance
@@ -253,13 +262,13 @@ return function(env)
 		node.Parent = parent
 		return node
 	end
-	local font, strong, display = Enum.Font.Gotham, Enum.Font.GothamMedium, Enum.Font.GothamBold
-	pcall(function() font, strong, display = Enum.Font.BuilderSans, Enum.Font.BuilderSansMedium, Enum.Font.BuilderSansBold end)
+	local typography = env.require("typography")
+	local font = typography.font("Sans", "Body")
 	M.Font = font
 	function M.text(owner, parent, text, role, color, props)
 		local config = {
 			BackgroundTransparency = 1, Text = tostring(text or ""), RichText = false,
-			Font = role == "Display" and display or (role == "Title" or role == "Heading" or role == "Eyebrow") and strong or font,
+			Font = typography.font(owner._window.Typography, role),
 			TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
 			TextWrapped = true, TextSize = tokens.Type[role or "Body"] or tokens.Type.Body,
 			Size = UDim2.new(1, 0, 0, 20),
@@ -269,10 +278,7 @@ return function(env)
 			TextColor3 = color or "Text",
 			TextSize = function() return math.floor((tokens.Type[role or "Body"] or tokens.Type.Body) * owner._window.TextScale + 0.5) end,
 		})
-		pcall(function()
-			local base = Font.fromEnum(config.Font)
-			node.FontFace = Font.new(base.Family, role == "Display" and Enum.FontWeight.Bold or (role == "Title" or role == "Heading" or role == "Eyebrow") and Enum.FontWeight.Medium or Enum.FontWeight.Regular)
-		end)
+		typography.attach(M, owner, node, role, props and props.Font == Enum.Font.Code)
 		return node
 	end
 	function M.measure(text, size, width, textFont)

@@ -160,7 +160,9 @@ test('offline release failure leaves the running bridge and token usable', async
   const original = live.supervisor.worker.child.pid, token = live.supervisor.token;
   await live.supervisor.checkUpdates();
   assert.equal(live.supervisor.status.state, 'error'); assert.equal(live.supervisor.worker.child.pid, original);
-  const hello = await (await live.call('/api/hello')).json();
+  let hello;
+  await until(async () => { hello = await (await live.call('/api/hello')).json(); return hello.update.state === 'error'; },
+    'worker did not receive the supervised offline failure status');
   assert.equal(hello.update.state, 'error'); assert.equal(live.supervisor.token, token);
   assert.equal(fs.existsSync(live.cacheDir), false);
 });

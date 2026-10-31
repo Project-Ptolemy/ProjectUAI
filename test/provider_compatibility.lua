@@ -9,7 +9,7 @@ local function recordFor(f, preset)
 	record.id, record.label, record.model = "fixture-" .. (preset or "custom"), "Fixture provider", "fixture/model:instruct"
 	record.models = { record.model }
 	if record.baseUrl == "" then record.baseUrl = "https://fixture.test/proxy/v1" end
-	record.apiKey = record.authStyle == "none" and "" or "fixture-key"
+	if preset ~= "projectuai-free" then record.apiKey = record.authStyle == "none" and "" or "fixture-key" end
 	return record
 end
 local function jsonReply(f, text)
@@ -26,6 +26,7 @@ local TOOLS = { { type = "function", ["function"] = { name = "fixture_tool", des
 local MATRIX = {
 	{ "agentrouter", "https://agentrouter.org/v1", "anthropic", "x-api-key" },
 	{ "hcnsec", "https://api.hcnsec.cn/v1", "openai", "bearer" },
+	{ "projectuai-free", "https://api.hcnsec.cn/v1", "openai", "bearer" },
 	{ "kilo", "https://api.kilo.ai/api/gateway", "openai", "none" },
 	{ "vercel", "https://ai-gateway.vercel.sh/v1", "openai", "bearer" },
 	{ "perplexity", "https://api.perplexity.ai/orchestrator/v1", "openai", "bearer" },
@@ -117,6 +118,9 @@ end)
 for _, row in ipairs(MATRIX) do
 	case(row[1] .. " discovers, calls tools and replays results over JSON/SSE", function()
 		local f = F.new(); local record = recordFor(f, row[1]); local native = row[3] == "anthropic"
+		if row[1] == "projectuai-free" then
+			f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end
+		end
 		local gemini = row[3] == "gemini"
 		if gemini then record.model = "fixture-model" end
 		local posts, seenBodies = 0, {}
@@ -125,7 +129,7 @@ for _, row in ipairs(MATRIX) do
 			local header = f.env.require("net/headers").get
 			if row[4] == "none" then
 				check("no unsolicited local credentials/identity", not header(entry.headers, "Authorization") and not header(entry.headers, "x-api-key") and not header(entry.headers, "x-app"))
-			elseif row[4] == "bearer" then check("Bearer auth", header(entry.headers, "Authorization") == "Bearer fixture-key")
+			elseif row[4] == "bearer" then check("Bearer auth", header(entry.headers, "Authorization") == "Bearer " .. record.apiKey)
 			else check("named auth header", header(entry.headers, row[4]) == "fixture-key") end
 			if native then check("Messages version header", header(entry.headers, "anthropic-version") == "2023-06-01") end
 			if entry.method == "GET" then

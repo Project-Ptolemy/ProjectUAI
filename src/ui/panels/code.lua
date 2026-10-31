@@ -81,6 +81,23 @@ return function(env)
 				clock.delay(0, function() if editor() then common.message(editor().find(data.query)) end end); return true
 			end, { key = "code-find", submit = "Find" })
 		end
+		local function workspaceSearch(contents)
+			env.require("ui/code/search").open(contents, navigate)
+		end
+		local function position()
+			forms.form("Go to position", { { key = "line", label = "Line number", type = "number", min = 1, required = true },
+				{ key = "column", label = "Column (Unicode characters)", type = "number", min = 1, default = 1 } }, function(data)
+				local doc = store.active(); if not doc then return nil, "Open a script first" end
+				local at, why = env.require("runtime/code_text").position(doc.source, data.line, data.column)
+				if not at then return nil, why end
+				local revision = doc.revision
+				clock.delay(0, function() if panel.alive and editor() and store.active() == doc and doc.revision == revision then editor().gotoLine(data.line, data.column) end end); return true
+			end, { submit = "Go", key = "code-position" })
+		end
+		local function transform(action)
+			if store.workspace.sourceId or not editor() then common.message(nil, "Open an editable script first"); return end
+			common.message(editor().transform(action))
+		end
 		local function run()
 			if store.workspace.sourceId then common.message(nil, "Extract a selection into an editable script before running."); return end
 			local id, why = runner.start(store.activeId())
@@ -91,11 +108,20 @@ return function(env)
 		end
 		local function more(button)
 			local options = {
+				{ label = "Script-making goal", value = "scriptGoal" },
+				{ label = "Create script project", value = "project" },
+				{ label = "Quick open script · Ctrl+P", value = "quickOpen" }, { label = "Search workspace source · Ctrl+Shift+F", value = "workspaceSearch" },
+				{ label = "Reopen closed script · Ctrl+Shift+T", value = "reopen" },
 				{ label = "Switch script", value = "documents" }, { label = "New script", value = "new" },
 				{ label = "Open workspace files", value = "file" }, { label = "Save file · Ctrl+S", value = "save" },
 				{ label = "Save file as…", value = "saveAs" }, { label = "Save named version", value = "version" },
 				{ label = "Rename script", value = "rename" }, { label = "Close script", value = "close" },
-				{ label = "Find · Ctrl+F", value = "find" }, { label = "Go to line…", value = "line" },
+				{ label = "Find · Ctrl+F", value = "find" }, { label = "Go to line and column · Ctrl+G", value = "line" },
+				{ label = "Toggle line comments", value = "comment" }, { label = "Duplicate selected lines", value = "duplicate" },
+				{ label = "Delete selected lines", value = "deleteLines" }, { label = "Trim trailing spaces", value = "trim" },
+				{ label = "Indentation to four spaces", value = "spaces" }, { label = "Indentation to tabs", value = "tabs" },
+				{ label = "Document details", value = "documentDetails" },
+				{ label = "Reload unchanged draft from disk", value = "reloadFile" },
 				{ label = "Indent", value = "indent" }, { label = "Outdent", value = "outdent" },
 				{ label = "Undo source", value = "undo" }, { label = "Redo source", value = "redo" },
 				{ label = "Copy source", value = "copy" }, { label = "Save as action…", value = "action" },
@@ -107,6 +133,11 @@ return function(env)
 			common.menu(button or moreButton, "Editor actions", options, function(action)
 				local doc = store.active()
 				if action == "documents" then chooseDocument(button or moreButton)
+				elseif action == "scriptGoal" then env.require("ui/code/workflow").open()
+				elseif action == "project" then env.require("ui/code/project").create(navigate)
+				elseif action == "quickOpen" then workspaceSearch(false)
+				elseif action == "workspaceSearch" then workspaceSearch(true)
+				elseif action == "reopen" then if common.message(store.reopen()) then navigate("Editor") end
 				elseif action == "new" then newDocument()
 				elseif action == "file" then navigate("Files")
 				elseif action == "filesPane" then store.workspace.filesVisible = store.workspace.filesVisible == false; layout()
@@ -134,6 +165,7 @@ return function(env)
 				elseif action == "extract" then common.message(nil, "Use the large source menu to extract the visible page or selection.")
 				elseif not doc then common.message(nil, "Open or create a script first.")
 				elseif action == "save" or action == "saveAs" then save(action == "saveAs")
+				elseif action == "reloadFile" then if common.message(files.reload(doc.id)) then overlay.toast("Reloaded from disk", "good") end
 				elseif action == "version" then namedVersion()
 				elseif action == "rename" then forms.form("Rename script", { { key = "name", label = "Name", required = true, default = doc.name } }, function(data) return store.rename(doc.id, data.name) end)
 				elseif action == "close" then common.message(store.close(doc.id))
@@ -145,7 +177,11 @@ return function(env)
 						common.message(store.delete(doc.id))
 					end })
 				elseif action == "find" then find()
-				elseif action == "line" then forms.form("Go to line", { { key = "line", label = "Line number", type = "number", min = 1, required = true } }, function(data) clock.delay(0, function() if panel.alive and editor() then editor().gotoLine(data.line) end end); return true end)
+				elseif action == "line" then position()
+				elseif action == "documentDetails" then
+					local view = store.view(doc.id)
+					overlay.code({ title = doc.name, code = env.require("runtime/code_summary").label(doc.source, view.cursor, view.selection) .. "\nRevision " .. doc.revision .. "\n" .. (doc.provenance or "Workspace draft") })
+				elseif action == "comment" or action == "duplicate" or action == "trim" or action == "spaces" or action == "tabs" or action == "deleteLines" then transform(action == "deleteLines" and "delete" or action)
 				elseif action == "indent" or action == "outdent" then if editor() then editor().indent(action == "outdent") end
 				elseif action == "undo" then common.message(store.undoSource(doc.id))
 				elseif action == "redo" then common.message(store.redoSource(doc.id))
@@ -158,7 +194,17 @@ return function(env)
 				if id == "new" then newDocument(); return end
 				store.workspace.sourceId = nil; common.message(store.select(id)); navigate("Editor")
 			end,
-			onClose = function(id) if id ~= "new" then common.message(store.close(id)); sync() end end })
+			onClose = function(id) if id ~= "new" then common.message(store.close(id)); sync() end end,
+			onContextMenu = function(id, _, button)
+				if id == "new" then return end
+				common.menu(button, "Script tab", { { label = "Close view", value = "close" }, { label = "Close other views", value = "others" }, { label = "Copy script name", value = "name" } }, function(action)
+					local doc = store.resolve(id); if not doc then return end
+					if action == "name" then common.copy(doc.name)
+					elseif action == "close" then common.message(store.close(id))
+					else for _, other in ipairs(store.openIds()) do if other ~= id then store.close(other) end end; store.select(id) end
+					sync()
+				end)
+			end })
 		runButton = actionBar.add("Run", run, { variant = "primary", name = "RunCode", tight = true, minWidth = common.pixels(52) })
 		saveButton = actionBar.add("Save", function() save(false) end, { name = "SaveCodeFile", tight = true, minWidth = common.pixels(56) })
 		stopButton = actionBar.add("", function() runner.stop() end, { icon = "stop", iconOnly = true, name = "StopCode" })
@@ -294,8 +340,14 @@ return function(env)
 				local editing = store.workspace.destination == "Editor"
 				if key.KeyCode == Enum.KeyCode.Return and store.workspace.destination == "Editor" then run()
 				elseif key.KeyCode == Enum.KeyCode.S and editing then save(held("LeftShift") or held("RightShift"))
+				elseif key.KeyCode == Enum.KeyCode.F and (held("LeftShift") or held("RightShift")) then workspaceSearch(true)
 				elseif key.KeyCode == Enum.KeyCode.F and editing then find()
-				elseif key.KeyCode == Enum.KeyCode.O or key.KeyCode == Enum.KeyCode.P then navigate("Files")
+				elseif key.KeyCode == Enum.KeyCode.P then workspaceSearch(false)
+				elseif key.KeyCode == Enum.KeyCode.O then navigate("Files")
+				elseif key.KeyCode == Enum.KeyCode.G and editing then position()
+				elseif key.KeyCode == Enum.KeyCode.T and (held("LeftShift") or held("RightShift")) then if common.message(store.reopen()) then navigate("Editor") end
+				elseif key.KeyCode == Enum.KeyCode.Tab then common.message(store.cycle((held("LeftShift") or held("RightShift")) and -1 or 1)); navigate("Editor")
+				elseif key.KeyCode == Enum.KeyCode.Slash and editing then transform("comment")
 				elseif key.KeyCode == Enum.KeyCode.N then newDocument()
 				elseif key.KeyCode == Enum.KeyCode.Z and editing and not focused and not store.workspace.sourceId then if held("LeftShift") or held("RightShift") then common.message(store.redoSource()) else common.message(store.undoSource()) end end
 			elseif focused and key.KeyCode == Enum.KeyCode.Tab then editor().indent(held("LeftShift") or held("RightShift"))
@@ -304,6 +356,10 @@ return function(env)
 				if view and view.list then
 					if key.KeyCode == Enum.KeyCode.Up or key.KeyCode == Enum.KeyCode.DPadUp then view.list.move(-1)
 					elseif key.KeyCode == Enum.KeyCode.Down or key.KeyCode == Enum.KeyCode.DPadDown then view.list.move(1)
+					elseif key.KeyCode == Enum.KeyCode.PageUp then view.list.page(-1)
+					elseif key.KeyCode == Enum.KeyCode.PageDown then view.list.page(1)
+					elseif key.KeyCode == Enum.KeyCode.Home then view.list.edge(false)
+					elseif key.KeyCode == Enum.KeyCode.End then view.list.edge(true)
 					elseif key.KeyCode == Enum.KeyCode.Left and view.list.toggle then view.list.toggle(false)
 					elseif key.KeyCode == Enum.KeyCode.Right and view.list.toggle then view.list.toggle(true)
 					elseif key.KeyCode == Enum.KeyCode.Return then view.list.activate() end

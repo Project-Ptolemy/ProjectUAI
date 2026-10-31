@@ -67,6 +67,8 @@ return function(env)
 		},
 		{
 			name = "iy_cmds",
+			examples = { { title = "Discover command syntax", arguments = { filter = "walkspeed", limit = 10 },
+				note = "Inspect aliases and argument signatures before invoking an Infinite Yield command." } },
 			risk = "read",
 			timeout = 120,
 			description = "List Infinite Yield commands, optionally filtered by a keyword or limited to "

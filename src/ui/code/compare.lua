@@ -5,9 +5,9 @@ return function(env)
 	local diff = env.require("runtime/code_diff")
 	local overlay = env.require("ui/overlay")
 	local M = {}
-	function M.open(before, after, title, apply)
+	function M.open(before, after, title, apply, onCancel)
 		local comparison = diff.compare(before, after)
-		local modal = overlay.modal({ title = title or "Compare source", description = "+" .. comparison.added .. " / −" .. comparison.removed .. (comparison.replacement and " · Full replacement" or ""), width = theme.size.modalWide })
+		local modal = overlay.modal({ title = title or "Compare source", description = "+" .. comparison.added .. " / −" .. comparison.removed .. (comparison.replacement and " · Full replacement" or ""), width = theme.size.modalWide, onClose = onCancel })
 		if not modal then return end
 		env.require("ui/code/forms").stopControl(modal)
 		local host = P.frame(modal.content, { size = UDim2.new(1, 0, 0, theme.size.codeOutput * 2), name = "SourceComparison" })
@@ -35,17 +35,23 @@ return function(env)
 		local nav = common.toolbar(modal.content); nav.root.LayoutOrder = 2
 		local function nextHunk(delta)
 			if #comparison.hunks == 0 then return end
-			current = ((current + delta - 1) % #comparison.hunks) + 1
+			current = diff.nextHunk(current, delta, #comparison.hunks)
 			list.selected = comparison.hunks[current].first; list.move(0)
 			beforeList.selected, afterList.selected = list.selected, list.selected; beforeList.move(0); afterList.move(0)
 		end
 		nav.add("Previous", function() nextHunk(-1) end, { icon = "arrowLeft" })
 		nav.add("Next change", function() nextHunk(1) end, { icon = "arrowRight" })
+		nav.add("Copy changes", function() common.copy(diff.describe(comparison)) end, { name = "CopySourceChanges" })
 		nav.add("View", function(button) common.menu(button, "Complete source", { { label = "Before", value = "before" }, { label = "After", value = "after" } }, function(value) overlay.code({ title = value == "before" and "Before" or "After", code = value == "before" and before or after }) end) end, { flex = true })
 		local errorLabel = P.text(modal.content, { text = "", color = theme.color.warn, wrap = true, auto = "Y", layoutOrder = 3 })
 		common.button(modal.footer, { text = "Cancel", size = "sm", variant = "ghost", onClick = function() modal.close() end })
-		if apply then common.button(modal.footer, { text = "Apply", size = "sm", variant = "primary", layoutOrder = 2, onClick = function()
-			local result, why = apply(); if not result then errorLabel.Text = tostring(why); return end
+		local applying = false
+		if apply then common.button(modal.footer, { text = "Apply", size = "sm", variant = "primary", layoutOrder = 2, onClick = function(button)
+			if applying or modal.closed then return end
+			applying = true; button.setEnabled(false)
+			local ok, result, why = pcall(apply)
+			if modal.closed then return end
+			if not ok or not result then applying = false; button.setEnabled(true); errorLabel.Text = tostring(ok and why or result); return end
 			modal.close(true)
 		end }) end
 		return modal

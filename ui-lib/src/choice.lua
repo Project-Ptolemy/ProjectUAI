@@ -97,6 +97,8 @@ return function(env)
 			if value.empty == true then return self._normalize(nil) end
 			return self._normalize(value.value)
 		end
+		function self:GetOptions() return C.copy(self.Options) end
+		function self:Clear(silent) return self:Set(self.Multi and {} or nil, silent) end
 		function self:SetOptions(values, silent)
 			assert(self.Alive, "Control is destroyed")
 			local parsed = parseOptions(values)
@@ -206,7 +208,7 @@ return function(env)
 					item.label.TextWrapped = self._window.Touch
 					local height = self._window.Target
 					if self._window.Touch then
-						height = math.max(height, math.min(height * 3, C.measure(item.option.Label, 14 * self._window.TextScale, panel.Width - 40 - item.labelLeft - reserve) + 16))
+						height = math.max(height, math.min(height * 3, C.measure(item.option.Label, 14 * self._window.TextScale, panel.Width - 40 - item.labelLeft - reserve, item.label.Font) + 16))
 					end
 					item.row.Size = UDim2.new(1, 0, 0, height)
 				end

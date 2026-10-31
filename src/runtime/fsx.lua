@@ -101,12 +101,22 @@ return function(env)
 		local ok, result = pcall(caps.fn.isfolder, full)
 		return ok and result == true
 	end
+	-- Mutating callers distinguish a missing file from an unavailable probe.
+	function M.probe(path, opts)
+		if not M.enabled or type(caps.fn.isfile) ~= "function" then return nil, "This host cannot verify whether the file exists" end
+		local full, why = M.resolve(path, opts); if not full then return nil, why end
+		local ok, result = pcall(caps.fn.isfile, full)
+		if not ok or type(result) ~= "boolean" then return nil, "File existence could not be verified" end
+		return result
+	end
 
 	function M.read(path, opts)
 		if not M.enabled then return nil, caps.reason("fs") end
 		local full, err = M.resolve(path, opts)
 		if not full then return nil, err end
-		if not M.exists(path, opts) then return nil, "no such file: " .. full end
+		local exists, why = M.probe(path, opts)
+		if exists == nil then return nil, why end
+		if not exists then return nil, "no such file: " .. full end
 		local ok, content = pcall(caps.fn.readfile, full)
 		if not ok then return nil, tostring(content) end
 		if type(content) ~= "string" then return nil, "host returned no file contents: " .. full end

@@ -44,6 +44,8 @@ return function(env)
 	return {
 		{
 			name = "players_list",
+			examples = { { title = "Inspect nearby players", arguments = { limit = 10 },
+				note = "Reuse returned player identities; restart pages when players move or leave." } },
 			risk = "read",
 			description = "Page players by distance, with username/display-name filter and deterministic ties. Distances are captured once per call. Continue with offset; restart if players move or leave.",
 			parameters = {

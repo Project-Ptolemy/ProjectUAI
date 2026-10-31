@@ -8,6 +8,9 @@ const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const check = process.argv.includes('--check');
 const bundleOnly = process.argv.includes('--bundle-only');
+for (const argument of process.argv.slice(2)) {
+  if (!['--check', '--bundle-only'].includes(argument)) throw new Error('Unknown site build option: ' + argument);
+}
 const luajit = process.env.LUAJIT || 'luajit';
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const normalize = text => text.replace(/\r\n/g, '\n').trimEnd();
@@ -23,7 +26,7 @@ function verifyBundle() {
         const id = file.slice(4, -4);
         const wrapped = '__UAI_MODULES["' + id + '"] = (function()\n' +
           normalize(read(file)) + '\nend)()';
-        if (!bundle.includes(wrapped)) throw new Error('Bundle is stale at ' + file + '; run luajit tools/bundle.lua.');
+        if (!bundle.includes(wrapped)) throw new Error('Bundle is stale at ' + file + '; run luajit tools/bundle.lua --native.');
         count++;
       }
     }
@@ -31,7 +34,7 @@ function verifyBundle() {
   walk('src');
   if (count !== [...bundle.matchAll(/^__UAI_MODULES\["[^"]+"\] = \(function\(\)$/gm)].length ||
       !bundle.endsWith(normalize(read('init.lua')))) {
-    throw new Error('Bundle does not match the source tree; run luajit tools/bundle.lua.');
+    throw new Error('Bundle does not match the source tree; run luajit tools/bundle.lua --native.');
   }
 }
 

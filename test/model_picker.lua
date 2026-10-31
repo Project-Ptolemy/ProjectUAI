@@ -1,12 +1,12 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
 local h = envMock.new()
-local app = assert(h.boot()); h.settle(1)
+local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(1)
 local passed = 0
 local function check(label, condition) assert(condition, label); passed = passed + 1 end
 local providers = app.providers
 local record = providers.blank("custom")
-record.id, record.label, record.baseUrl, record.key = "picker-test", "Test endpoint", "https://test.invalid/v1", "test-key"
+record.id, record.label, record.baseUrl, record.apiKey = "picker-test", "Test endpoint", "https://test.invalid/v1", "test-key"
 record.model = "claude-opus-5"
 record.models = { "claude-opus-5", "vendor/free:free", "vendor/paid", "vendor/second:free" }
 assert(providers.save(record, { force = true }))

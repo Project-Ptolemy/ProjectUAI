@@ -113,6 +113,17 @@ return function(env)
 		return active
 	end
 
+	-- Counts never expose secrets and do not consume a rotation slot.
+	function M.summary(record)
+		local pool, active = M.keys(record), 0
+		for index in ipairs(pool) do if not M.paused(record, index) then active = active + 1 end end
+		local single, selected = M.mode(record) == "single", M.selected(record)
+		local selectedActive = validIndex(selected, #pool) and not M.paused(record, selected)
+		return { total = #pool, active = active, paused = #pool - active, mode = M.mode(record),
+			available = single and (selectedActive and 1 or 0) or active,
+			selected = single and validIndex(selected, #pool) and selected or nil }
+	end
+
 	function M.validate(record)
 		if type(record) ~= "table" then return false, "provider must be an object" end
 		local count = #M.keys(record)
@@ -201,6 +212,27 @@ return function(env)
 		end
 		write(record, keys, names, M.mode(record), M.selected(record), paused)
 		return true, added
+	end
+
+	-- Replacing a pasted pool retains names, pauses and accounting identities for
+	-- exact surviving keys. A removed pinned key returns the connection to rotation.
+	function M.setPool(record, text)
+		if type(text) ~= "string" then return false, "API keys must be pasted as text." end
+		local valid, why = M.validate(record)
+		if not valid then return false, why end
+		local incoming, old, names, paused = M.keys({ apiKey = text }), {}, {}, {}
+		local original = M.keys(record)
+		local selectedSecret = original[M.selected(record)]
+		for _, entry in ipairs(M.entries(record)) do old[entry.key] = entry end
+		local selected
+		for index, key in ipairs(incoming) do
+			local prior = old[key]
+			names[index], paused[index] = prior and prior.name or "", prior and prior.paused or false
+			if key == selectedSecret then selected = index end
+		end
+		local mode = M.mode(record)
+		if mode == "single" and not selected then mode = "rotate" end
+		return write(record, incoming, names, mode, selected or 1, paused)
 	end
 
 	function M.replace(record, index, text)

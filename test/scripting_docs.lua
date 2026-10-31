@@ -3,6 +3,7 @@ package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local h = require("env").new()
 local client, why = h.boot("dist/uai.lua")
 assert(client, why)
+require("password_fixture")(h, client)
 h.settle(0.5)
 local passed = 0
 local function check(label, value) assert(value, label); passed = passed + 1; print("ok " .. label) end

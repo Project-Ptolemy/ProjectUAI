@@ -24,9 +24,8 @@
 return function(env)
 	local M = {}
 
-	-- Order is the order the gallery shows. AgentRouter leads the free tier by
-	-- request; Project UAI Free follows because it is the one route that needs no
-	-- account at all, and the rest are ranked by how little setup they need.
+	-- Included access is an explicit library choice. Quick picks are independent
+	-- from the gallery and never install an included provider on first run.
 	M.tiers = {
 		{
 			id = "free",
@@ -56,22 +55,20 @@ return function(env)
 	M.presets = {
 		-- Free to start -------------------------------------------------------
 		{
-			id = "hcnsec",
+			id = "projectuai-free",
 			label = "Project UAI Free",
 			tier = "free",
 			order = 1,
-			description = "Included with UAI daily 20:00-12:00 UTC+8 (Beijing/Singapore). No account, payment or personal key.",
+			description = "Optional community access, daily 20:00-12:00 UTC+8 (Beijing/Singapore). No account, payment or personal key.",
 			cost = "Included \194\183 no key needed",
 			tags = { "free", "included", "auto", "community", "hcnsec" },
 			baseUrl = "https://api.hcnsec.cn/v1",
 			authStyle = "bearer",
-			keyHint = "Included daily 20:00-12:00 UTC+8; your own HCNSEC key is optional",
+			keyHint = "Community access only. Choose the separate HCNSEC provider for a personal key.",
 			docs = "https://discord.gg/9xYyyYuKap",
 			free = true,
 			defaultModel = "auto",
-			featured = true,
-			featuredOrder = 1,
-			note = "Free AI for the Project UAI community, powered by HCNSEC. No account, payment or personal API key is needed. Included access is scheduled daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Outside these hours, choose another provider or return at 20:00 UTC+8. This schedule applies to included community access, not personal HCNSEC keys. Thank you for your continued use and support of Project UAI. During scheduled hours, Auto measures tool-capable models in the background and prefers a verified route below ten seconds. Real response times vary with your prompt and shared capacity. More free providers may become available soon. Join us for updates and help: https://discord.gg/9xYyyYuKap",
+			note = "Optional access for the Project UAI community. No account, payment or personal API key is needed. Add this provider from the library and save to opt in. Available daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Outside these hours, choose another provider or return at 20:00 UTC+8. Auto prefers recently verified tool-capable models; response times and shared capacity vary. Personal HCNSEC accounts use the separate HCNSEC provider. Help and availability updates: https://discord.gg/9xYyyYuKap",
 			noteHighlight = "No account, payment or personal API key is needed.",
 			badge = "Included",
 			badgeTone = "good",
@@ -381,6 +378,22 @@ return function(env)
 		},
 
 		-- Paid ----------------------------------------------------------------
+		{
+			id = "hcnsec",
+			label = "HCNSEC",
+			tier = "paid",
+			order = 45,
+			description = "Use your own HCNSEC account and API key. Models and charges depend on that account.",
+			cost = "Personal account and API key",
+			tags = { "hcnsec", "personal", "gateway", "account" },
+			baseUrl = "https://api.hcnsec.cn/v1",
+			authStyle = "bearer",
+			keyHint = "Your personal HCNSEC API key",
+			docs = "https://api.hcnsec.cn",
+			note = "Enter your personal HCNSEC key and fetch the models available to your account, or enter an exact model ID. Account quotas, availability and pricing come from HCNSEC. This provider has no Project UAI community credential or daily community schedule. Optional Project UAI Free access is a separate provider in the library.",
+			badge = "Personal key",
+			badgeTone = "neutral",
+		},
 		{
 			id = "openai",
 			label = "OpenAI",

@@ -288,6 +288,8 @@ return function(env)
 	return {
 		{
 			name = "key_press",
+			examples = { { title = "Tap an interaction key", arguments = { key = "E", action = "press", duration = 0.05 },
+				note = "Use only for an intended interaction. An uncertain press must not be automatically repeated." } },
 			risk = "write",
 			description = "Press, hold or release a keyboard key. Holds belong to this conversation and release on up, cancellation or unload. Accepted/uncertain presses are never repeated through a fallback; after a release failure, use only action=up.",
 			parameters = {

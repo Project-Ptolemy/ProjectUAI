@@ -41,6 +41,8 @@ return function(env)
 	local tools = {
 		{
 			name = "http_get",
+			examples = { { title = "Read the published UI LIB guide", arguments = { url = "https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/docs/UI_LIBRARY.md", limit = 4000 },
+				note = "The offline ui_library_docs reference is usually faster; this example is an explicit network read." } },
 			risk = "read",
 			needs = { "http" },
 			description = "GET a URL. HTTP errors fail the call. Large bodies retain a five-minute result reference for http_result_read without another request.",

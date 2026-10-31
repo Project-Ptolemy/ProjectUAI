@@ -228,6 +228,8 @@ return function(env)
 		},
 		{
 			name = "file_search", risk = "read", needs = { "fs" },
+			examples = { { title = "Find a callback in source", arguments = { path = "files/MyProject", query = "OnDestroy", glob = "*.lua", limit = 10 },
+				note = "Use your known project path; then read the returned matching slices before editing." } },
 			description = "Find literal text in a known file or directory before reading relevant slices with file_read_many. Returns reusable files/ paths, matching lines, byte offsets and a continuation cursor. Searches subfolders; skips binary/files over 2 MB. Narrow path to the current game or known source directory to avoid unrelated games/dumps.",
 			parameters = { type = "object", properties = {
 				query = { type = "string", minLength = 1, maxLength = 256, description = "Single-line literal; not a regex." },

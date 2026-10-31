@@ -2,6 +2,7 @@
 -- Its values reflect the window appearance; configuration stores that one source.
 return function(env)
 	local C = env.require("core")
+	local T = env.require("theme")
 	local M = {}
 	local prefix = "__uai_appearance_"
 	function M.mount(window)
@@ -18,6 +19,19 @@ return function(env)
 		local mode = options("theme", "Color mode", appearance.Theme, function(value) window:SetAppearance({ Theme = value }) end)
 		mode.Options = { "Dark", "Light" }
 		controls.Theme = personalize:Segmented(mode)
+		local choices = T.options()
+		local function preference(section, key, id, text, description)
+			local choice = options(id, text, appearance[key], function(value)
+				local patch = { [key] = value }
+				if key == "Palette" then patch.Accent, patch.Colors = false, {} end
+				window:SetAppearance(patch)
+			end)
+			choice.Description, choice.Options = description, C.copy(choices[key])
+			if key == "Shape" then choice.Options[#choice.Options + 1] = { Label = "Custom radius", Value = "Custom", Disabled = true } end
+			controls[key] = section:Dropdown(choice)
+		end
+		preference(personalize, "Palette", "palette", "Palette", "Coordinated neutral, warm, blue, green, or rose surfaces.")
+		preference(personalize, "Contrast", "contrast", "Contrast", "High contrast strengthens text, borders, and status colors.")
 		controls.Accent = personalize:ColorPicker(options("accent", "Accent color", window.Theme.Accent, function(value)
 			local overrides = window:GetAppearance().Colors
 			overrides.Accent = nil
@@ -29,12 +43,16 @@ return function(env)
 			Callback = function() window:SetAppearance({ Accent = false, Colors = {} }) end,
 		})
 		local comfort = tab:Section({ Title = "Shape and comfort" })
+		preference(comfort, "Density", "density", "Spacing", "Compact, comfortable, or spacious. Touch targets stay at least 44 pixels.")
+		preference(comfort, "Shape", "shape", "Shape", "Choose a corner style, or use a custom radius below.")
 		local radius = options("corner_radius", "Corner radius", appearance.CornerRadius, function(value) window:SetAppearance({ CornerRadius = value }) end)
 		radius.Min, radius.Max, radius.Step, radius.Suffix = 0, 16, 1, " px"
 		controls.CornerRadius = comfort:Slider(radius)
 		local scale = options("text_scale", "Text size", appearance.TextScale * 100, function(value) window:SetAppearance({ TextScale = value / 100 }) end)
 		scale.Min, scale.Max, scale.Step, scale.Suffix = 85, 150, 1, "%"
 		controls.TextScale = comfort:Slider(scale)
+		preference(comfort, "Typography", "typography", "Typeface", "Use built-in sans, system, or monospace type.")
+		preference(comfort, "TabHeader", "tab_header", "Tab headings", "Simple titles, detailed introductions, or content only.")
 		local reduced = options("reduced_motion", "Reduced motion", appearance.ReducedMotion, function(value) window:SetAppearance({ ReducedMotion = value }) end)
 		reduced.Description = "Keep transitions still and immediate."
 		controls.ReducedMotion = comfort:Toggle(reduced)
@@ -70,7 +88,7 @@ return function(env)
 		local reset = tab:Section({ Title = "Restore appearance" })
 		reset:Button({
 			Id = prefix .. "reset", Text = "Original appearance", ActionText = "Reset all", Persist = false,
-			Description = "Restore this window's starting palette, corners, text size, and motion preference.",
+			Description = "Restore this window's starting colors, spacing, shape, type, headings, and motion.",
 			Callback = function() window:ResetAppearance() end,
 		})
 		local function reflect(control, value)
@@ -84,6 +102,7 @@ return function(env)
 			reflect(controls.CornerRadius, current.CornerRadius)
 			reflect(controls.TextScale, current.TextScale * 100)
 			reflect(controls.ReducedMotion, current.ReducedMotion)
+			for _, key in ipairs({ "Palette", "Contrast", "Density", "Shape", "Typography", "TabHeader" }) do reflect(controls[key], current[key]) end
 			for token, control in pairs(colors) do reflect(control, window.Theme[token]) end
 		end
 		window:OnDestroy(function() window._appearanceSync, window._appearanceTab = nil, nil end)

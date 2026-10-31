@@ -310,12 +310,26 @@ return function(env)
 			restoring = false
 			checkSyntax()
 		end
-		function handle.gotoLine(line)
+		function handle.gotoLine(line, column)
 			if not cache then return end
 			line = math.max(1, math.min(#cache.lines, math.floor(tonumber(line) or 1)))
+			local position, why = codeText.position(box.Text, line, column)
+			if not position then return nil, why end
 			pcall(function() box:CaptureFocus() end)
-			box.CursorPosition, box.SelectionStart = cache.starts[line], -1
+			box.CursorPosition, box.SelectionStart = position, -1
 			scroll.instance.CanvasPosition = Vector2.new(0, math.max(0, (line - 1) * lineHeight))
+			return true
+		end
+		function handle.transform(action)
+			if not document or document.readOnly then return nil, "Open an editable script first" end
+			local target = document
+			local source, cursor, anchor = env.require("runtime/code_transform").apply(document.source, action, box.CursorPosition, box.SelectionStart)
+			if not source then return nil, cursor end
+			local updated, why = store.update(document.id, source, { origin = "editor_action", expected_revision = document.revision, label = "Before " .. action })
+			if not updated then return nil, why end
+			if document ~= target or document.source ~= source then return true end
+			box.CursorPosition, box.SelectionStart = cursor, anchor
+			pcall(function() box:CaptureFocus() end); queue(); return true
 		end
 		function handle.find(query, backwards, options)
 			if not document or type(query) ~= "string" or query == "" then return nil, "Enter a search" end

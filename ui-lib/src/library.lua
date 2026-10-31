@@ -3,21 +3,29 @@ return function(env)
 	local C, T = env.require("core"), env.require("theme")
 	local appearance = env.require("appearance")
 	local methods = env.require("config")
+	for _, id in ipairs({ "values", "tasks", "profiles" }) do
+		for name, method in pairs(env.require(id)) do if name:match("^%u") then methods[name] = method end end
+	end
 	function methods.GetAppearance(self)
 		return { Theme = self._themeName, Accent = self._accent, Colors = C.copy(self._colors or {}),
-			CornerRadius = self.CornerRadius or T.Size.Radius, TextScale = self.TextScale, ReducedMotion = self.ReducedMotion }
+			CornerRadius = self.CornerRadius or T.Size.Radius, TextScale = self.TextScale, ReducedMotion = self.ReducedMotion,
+			Palette = self.Palette, Contrast = self.Contrast, Density = self.Density, Shape = self.Shape,
+			Typography = self.Typography, TabHeader = self.TabHeader }
 	end
 	function methods.SetAppearance(self, options)
 		assert(self.Alive, "Window is destroyed")
 		local value = T.normalizeAppearance(options, self:GetAppearance())
-		local palette = T.resolve(value.Theme, value.Accent, value.Colors)
+		local palette = T.resolve(value.Theme, value.Accent, value.Colors, value.Palette, value.Contrast)
 		self.Theme, self._themeName, self._accent, self._colors = palette, value.Theme, value.Accent, value.Colors
 		self.CornerRadius, self.TextScale = value.CornerRadius, value.TextScale
+		self.Palette, self.Contrast, self.Density, self.Shape = value.Palette, value.Contrast, value.Density, value.Shape
+		self.Typography, self.TabHeader = value.Typography, value.TabHeader
 		if options.ReducedMotion ~= nil then self._motionOverride = value.ReducedMotion end
 		self.ReducedMotion = value.ReducedMotion
 		if self._themeIcon then self._themeIcon(value.Theme == "Light") end
 		self:_Refresh()
 		self:_Layout()
+		self:_Filter()
 		if self._appearanceSync then self._appearanceSync() end
 		return self
 	end
@@ -53,12 +61,7 @@ return function(env)
 	local UI = { Version = env.metadata.version, URL = env.metadata.url, Repository = env.metadata.repository }
 	function UI:CreateWindow(options)
 		options = options or {}
-		-- Validate new options before replacing a live window with the same Id.
-		local initial = T.normalizeAppearance({ Colors = options.Colors, CornerRadius = options.CornerRadius })
 		local window = Window.new(options)
-		window.CornerRadius, window._colors = initial.CornerRadius, initial.Colors
-		window.Theme = T.resolve(window._themeName, window._accent, initial.Colors)
-		window:_Refresh()
 		window._appearanceDefaults = window:GetAppearance()
 		window._appearanceMotionOverride = window._motionOverride
 		window._mountingAppearance = true
@@ -67,6 +70,10 @@ return function(env)
 		return window
 	end
 	function UI:GetWindow(id) return env.windows[id] end
+	function UI:GetAppearanceOptions() return T.options() end
+	function UI:GetPalette(name, mode)
+		return T.resolve(mode, nil, nil, name)
+	end
 	function UI:DestroyAll()
 		local windows = {}
 		for _, window in pairs(env.windows) do windows[#windows + 1] = window end

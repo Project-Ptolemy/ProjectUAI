@@ -61,7 +61,8 @@ const { navigation } = require('./helpers/browser-ui');
     await page.locator('#settings-tab-agent').click();
     const routing = page.locator('[data-setting="agent.autoFreeRouting"]');
     assert.equal(await routing.isChecked(), true);
-    assert.match(await routing.locator('..').textContent(), /^Automatic free routing.*HCNSEC.*provider Auto/s);
+    assert.match(await routing.locator('..').textContent(), /^Automatic free routing.*Project UAI Free.*Providers library.*HCNSEC uses its own connection and key.*provider Auto/s);
+    assert.doesNotMatch(await routing.locator('..').textContent(), /included HCNSEC/);
     for (const enabled of [false, true]) {
       const routeSettingRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().path === 'agent.autoFreeRouting');
       await routing.setChecked(enabled); assert.equal((await routeSettingRequest).postDataJSON().value, enabled);

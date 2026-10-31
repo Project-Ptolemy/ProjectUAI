@@ -47,6 +47,8 @@ return function(env)
 	return {
 		{
 			name = "web_search",
+			examples = { { title = "Find an official API reference", arguments = { query = "Roblox Creator Hub CollectionService GetTagged", limit = 3 },
+				note = "Prefer the official API documentation and inspect live host availability separately." } },
 			risk = "read",
 			needs = { "http" },
 			description = "Search the web and return titles, URLs and snippets. Use when the answer depends on something current or outside the game.",

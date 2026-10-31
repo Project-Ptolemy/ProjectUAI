@@ -1,5 +1,178 @@
 # Changelog
 
+## 3.8.0 - October 31, 2026 - Everyday work, easier
+
+Client, bridge, browser workspace and Windows desktop: **3.8.0**.
+UI LIB: **1.6.0**. Embedding SDK: **1.1.0**. Android companion: unchanged **3.7.1**.
+
+### Script goals and tool discovery
+
+- New installations use the Focused tool profile: available actions fit into at most nine families plus seven direct workflow tools. Saved profiles remain selected.
+- Each family lists exact action names and supplies full schemas on demand. Calls retain the original action's validation, approvals, hooks, deadlines and conversation/request scope.
+- All, Lean and task-specific profiles remain available. Hidden permitted actions can still be reached through tool_search.
+- On-demand tool help includes validated, copyable examples for 25 core workflows without executing them or adding their full detail to every request.
+- Script goals persist with the conversation and follow Define, Inspect, Plan, Build, Validate and Review stages.
+- Goals contain 1–16 acceptance criteria, stage evidence and explicit block, resume and rewind actions. Code shows the saved goal and copyable progress.
+- Validation records actual compiler and test receipts. Source changes invalidate prior checks; checks that began before an edit or a replacement goal cannot validate the new work.
+- A failed final check reopens validation. Completion requires current successful syntax checks and evidence for every acceptance criterion.
+- Typing invalidates goal state immediately and coalesces its save after a short pause; explicit goal actions save immediately.
+
+### Code workspace and project creation
+
+- Create a basic project or a UI LIB interface starter from Code, with a manifest, settings and tests. The interface starter separates its view from a testable domain model and owns cleanup.
+- Review every proposed new file before applying a project. Existing files and unsaved bound Code drafts are protected.
+- Project setup drafts survive cancelled previews. Untouched proposals are discarded, while applied or partial checkpoints remain available for recovery.
+- Cancelled or stale previews cannot resume writes after a yielded read; opening another turn, clearing a conversation or unloading invalidates the captured operation.
+- Quick-open scripts with Ctrl+P and search retained workspace source with Ctrl+Shift+F. Results show source lines and reject stale revision locations.
+- Jump to a line and Unicode column with Ctrl+G. Navigation is guarded against a document changing before the delayed focus operation.
+- Toggle comments, duplicate or delete selected lines, trim trailing spaces and convert indentation between tabs and four spaces as undoable source changes.
+- Reopen recently closed script views with Ctrl+Shift+T, cycle open tabs with Ctrl+Tab, close other views and copy a script's name from its tab menu.
+- Reload a clean draft from disk while preserving edits or bindings changed during the read. An unavailable existence probe cannot be treated as a missing file.
+- Document details show lines, bytes, line-ending style and selection size. Library, file and history search support words, phrases and excluded terms.
+- Source comparisons copy bounded change summaries and identify the current change region. Previous change starts at the final region correctly.
+- Clear completed run output while retaining running work. Empty output and omitted printed lines are described explicitly.
+- Typed forms retain detached drafts, validate required and whole-number values, focus invalid fields, support Enter submission and reject repeated in-flight submissions.
+- Virtual lists support page and edge navigation and handle empty selections safely.
+
+### Obsidian vaults
+
+- Connect up to 16 local Obsidian or Markdown vault folders through the bridge. Connections start read-only; disconnecting preserves notes.
+- Vault paths reject traversal, hidden entries, symbolic links or junctions, hard-linked notes and non-Markdown files. Replaced roots become unavailable.
+- Read UTF-8 Markdown notes up to 1 MiB in explicit bounded pages. Native full-note assembly verifies one revision, byte count and advancing offset throughout.
+- Create, replace or append notes with revision checks. Stale revisions and uncertain writes require reading current state before another explicit save.
+- Search paths and note content with bounded traversal and visible incomplete-coverage notices.
+- Inspect titles, headings, inline tags, raw frontmatter and supported scalar properties. Frontmatter inspection does not claim complete YAML parsing.
+- Explore wiki links, local Markdown links and backlinks with explicit resolved paths and ambiguous matches; code examples are excluded from backlinks.
+- Browser vault controls include connection management, vault selection, paginated browse/search, new-note drafts, editing, copy and download.
+- Native Settings opens the note browser, editor, metadata and link navigation directly, including folder/text filters and pagination.
+- Native saves preserve existing CRLF style and verify the returned path, revision and size. Unconfirmed saves cannot be blindly repeated.
+- Conflict review offers Keep draft or Use file after reading the current note. Neither review action writes.
+- Closing an editor keeps up to eight unsaved or uncertain note drafts in memory. A ninth is refused without evicting edits; recovery clears on unload.
+- Agent vault tools retain UAI permissions and each vault's read-only policy. Models cannot connect arbitrary folders or enable editing; listings omit absolute folder paths.
+- Damaged vault configuration is preserved for recovery, filesystem errors are sanitized and bridge packages include the required vault modules.
+
+### Conversation organization and recovery
+
+- Pin conversations within folders. Pinned histories also receive priority when restoring the bounded set of loaded conversations.
+- Unread reply and failure counts follow actual background output. Viewing or marking a conversation read clears them; minimized windows do not silently mark output read.
+- Browse All, Pinned, Unread or failed, Running and Has draft views, with title, folder and recent-transcript search.
+- Conversation browsing and transcript results fill the dialog width, wrap long titles and size to their contents. Blank searches retain all conversations, and closing the browser releases its filter menu.
+- Find in conversation supports words, quoted phrases, exclusions, message/reply/error filters and older-result continuation, then opens the stable transcript event.
+- Composer drafts recover from existing conversation storage after a typing pause. Oversized updates preserve the previous complete recovery, and restoring never sends.
+- Draft recovery follows the conversation's existing storage choice and adds no separate recovery file. Draft details show word/byte counts and offer Copy text.
+- New file references retain SHA-256 fingerprints where supported, detecting same-size edits before sending restored follow-ups. Older references retain their size checks.
+- Large attachment fingerprints check cancellation in bounded batches and yield by elapsed CPU time, keeping other work responsive without forcing frame delays on fast hashes.
+- Attachment details show paths, sizes and validation state, copy paths and remove references without deleting files.
+- Task plans and bounded notes persist per conversation. Active tasks restore as pending; completed and dropped tasks retain their state.
+- Queued follow-up messages and plan details can be copied. Home continuation cards show retained messages, pending work and draft state without switching the worker.
+- Markdown export previews retained dialogue before copying or saving, excludes tool internals and hidden reasoning, and verifies saved output.
+- Conversation search offers further result pages and preserves Unicode excerpts instead of presenting system/tool context as an ordinary reply.
+
+### Conversation and delegated-work lifetime
+
+- Conversation checkpoints serialize overlapping writes and retain newer dirty revisions.
+- Burst creation of background conversations coalesces sidebar refreshes into one owned update, avoiding repeated full-list layouts.
+- Deleting a conversation or choosing Not saved cleans up an already-running old checkpoint and reserves its ID until that write finishes.
+- Stale callbacks cannot change the storage choice of a removed conversation or recreate deleted history.
+- Delegated workers intersect the parent's available original actions and request-local exclusions. Full presets and later follow-ups cannot widen an earlier child's scope.
+- Stopped or replaced tool contexts remain cancelled even when a later send clears the conversation's ordinary abort flag.
+
+### Provider setup and key management
+
+- Project UAI Free is an optional Providers library preset. Fresh, reset and empty imported configurations no longer insert a provider automatically.
+- HCNSEC remains separate for personal keys. Community authentication is restricted to the official Free endpoint and historical mixed setups migrate separately.
+- Preset transitions remove incompatible community authentication while preserving supported user settings and labels.
+- Free availability distinguishes schedule closure, paused keys and locked access. Countdown refreshes preserve the favorite label and actionable status.
+- Exact model IDs share trimmed UTF-8 validation, a 160-byte limit and rejection of control characters.
+- Catalog parsing deduplicates IDs, bounds processing and reports invalid, non-chat or partial results without caching an unusable empty catalog.
+- Model selections and list edits restore the previous in-memory state when saving fails.
+- Model lists support search, favorites-only filtering, up to 100 favorites and the last 12 unique successful selections per provider.
+- Favorite and recent-model changes reorder existing controls, preserving focused search and scrolling instead of rebuilding the catalog.
+- Public configuration transfers retain model shortcuts without keys, validate provider buckets and limits, and detach applied preference snapshots.
+- Key management searches names and status without searching secrets, and refreshes preserve focused edits.
+- Replacing a key pool preserves surviving key names, pause state, accounting identities and selected-key position; removing a pinned key restores rotation.
+- Provider cards expose sanitized health, availability, paused-key counts and effective API/transport explanations.
+- Duplicate setup opens an unsaved draft with safe connection/model settings and omits credentials and custom header/body maps.
+- Reset learned compatibility clears inferred API/output behavior while preserving quota cooldowns, health and accepted request ownership.
+- Browser provider forms validate model IDs, headers and preset transitions. Stale forms cannot recreate removed providers.
+
+### Network and model compatibility
+
+- A shared deadline begins before WebSocket setup. HTTP fallback, provider retries and proxy recovery spend the original remaining request budget.
+- Deadline parsing rejects invalid or nonfinite inputs while retaining the explicit unlimited relay policy.
+- Retry-After accepts bounded numeric seconds and GMT HTTP dates for cooldown scheduling.
+- Custom HTTP header names, values and counts, plus URL and User-Agent input, are bounded and validated before dispatch.
+- Vendor pricing requires the documented HTTPS vendor route; arbitrary paths and stacked API suffixes no longer inherit vendor pricing.
+- Bearer authorization matching is case-insensitive for per-key accounting without treating unrelated header formats as Bearer credentials.
+- OpenCode, Cline and Kilo capabilities require supported schemas and coherent states; malformed or stale snapshots show unavailable.
+- Model refreshes and bridge callbacks reject results from replaced provider settings or obsolete connection generations.
+
+### UI LIB 1.6 appearance
+
+- Neutral is the default palette, with Graphite, Ocean, Forest and Rose alternatives across Dark and Light themes.
+- Built-in Appearance offers Standard/High contrast, Comfortable/Compact/Spacious density, Rounded/Soft/Square shape and Sans/System/Mono typography.
+- Simple tab headings are the default. Detailed shows section/control counts; Hidden removes the introduction and remains hidden during search.
+- Appearance changes preserve field drafts, focus and validation, and remeasure text using the selected font.
+- The library retains fixed Project UAI | UI LIB. attribution, text-only navigation/actions and its frame-drawn brand and window controls.
+
+### UI LIB controls and script workflow
+
+- NumberInput combines typed finite values, bounds, step quantization, Less/More actions and form validation.
+- TextView supplies selectable read-only text, bounded append, scroll-to-end and honest clipboard failure results.
+- ItemList provides stable item IDs, search and explicit pages for up to 500 entries, retaining only a still-valid selection after replacement.
+- ActionGroup exposes one to eight named actions with independent busy states and owned asynchronous work.
+- Callout presents a semantic message with an optional owned action. KeyValue displays up to 64 ordered responsive facts with copied snapshots.
+- Complete-form GetValues/SetValues, per-field drafts, required/pattern/custom validation, commit and reset support larger script forms.
+- Named profiles store values and appearance through supplied storage callbacks and validate the full data before application.
+- Window-owned tasks, delayed work and debounce are cancelled during cleanup, including same-ID window replacement.
+- Stable-ID Reveal and search open the correct tab/section, expand collapsed content and scroll to a control without activating it.
+- Seven runnable examples and focused appearance, forms, lifecycle, profiles, collections and readout guides accompany the generated bundle and embedded reference.
+
+### Native settings, focus and everyday controls
+
+- Both settings surfaces search public labels, categories and exact paths, then reveal the matched control. Saved values and credentials never enter the index.
+- Settings search/category changes preserve field instances, unfinished drafts and reading position where the pane remains valid.
+- Sliders support keyboard/controller steps, Home/End and Page Up/Down with a single commit; hidden controls and text-entry focus suppress slider shortcuts.
+- Disabled switches, rows and buttons ignore activation. Busy buttons remain unavailable across enable refreshes, and read-only fields support select-all.
+- Hiding the main window releases text/gamepad focus while retaining drafts. Quick Chat preserves caret/selection across appearance rebuilds and keeps rejected sends.
+- Password setup Enter advances to confirmation, Show/Hide preserves selection and leaving the app remasks visible passwords.
+- What's new searches release notes and copies the entire latest release even with an active filter.
+- Failed invite copies select the existing read-only link for manual copying. Cached ready headshots avoid repeated resolution during view rebuilds.
+- Timeout messages explain uncertain completion and link directly to request-wait settings.
+- Find a command reaches actions, settings and conversation titles. Ctrl+K, Ctrl+Shift+P, Ctrl+comma and Ctrl+L provide common navigation and focus shortcuts.
+- Shared clipboard workflows report host refusals instead of claiming a successful copy.
+
+### Script loading screen
+
+- A responsive branded startup card replaces the plain loading pill.
+- Prepare, Restore and Open stages follow real startup boundaries. Actual loaded-component counts remain separate from stage progress.
+- Elapsed time and a hint after eight seconds without progress explain slow startup without inventing an overall percentage.
+- Failures retain a readable failed stage until dismissed; full exceptions remain in the console.
+- Successful completion waits until the bridge, embedding SDK and final initialization finish. Pulse, listeners and delayed exit work are owned and cleaned up.
+- The native reduced-motion setting remains retired.
+
+### Desktop 3.8.0 and embedding SDK 1.1.0
+
+- The standalone Windows app packages the 3.8.0 client, bridge and required Obsidian browser assets, retaining extraction manifests and hash validation.
+- Desktop capability parsing matches native rules, clears stale details on disconnect and ignores delayed update callbacks from an obsolete bridge generation.
+- Ctrl+1 through Ctrl+5 navigate Workspace, Connections, Updates, Settings and Tunnels through the existing commands.
+- SDK request events, completion data, snapshots and await results are detached from internal state.
+- SDK scopes own delayed callbacks, cancel them on destruction, release completed resources and expose active resource counts.
+- SDK tool registration bounds descriptions and schema depth/size while preserving validated union argument types.
+- The Android companion remains unchanged at 3.7.1.
+
+### Website, guides and release preparation
+
+- Website tool filters have shareable query/group/risk URLs, restore on load and update browser history without adding unrelated parameters.
+- Website setup distinguishes optional Project UAI Free from personal-key HCNSEC and links Obsidian and getting-started guidance.
+- The README is a short introduction with focused setup, conversation, provider, Code, UI LIB and troubleshooting guides.
+- Startup and settings/accessibility guides explain the new native controls; SDK documentation clarifies authentication, reruns and resource lifetime.
+- Release notes include a file-by-file change ledger that separates authored source, regression tests, examples and generated outputs.
+- Client, bridge, browser workspace and desktop target 3.8.0, with independently versioned UI LIB 1.6.0 and SDK 1.1.0. Local preparation does not publish a release.
+
+See the [file-by-file ledger and verification record](docs/POLISH_2026_10.md)
+and [release artifact notes](docs/RELEASE_3_8_0.md).
+
 ## 3.7.2 - October 29, 2026 - Password vault and scheduled free access
 
 - Offer password protection by default and a red **Continue without encryption**

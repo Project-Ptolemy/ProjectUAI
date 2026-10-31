@@ -6,7 +6,7 @@ function icon(name){const n=document.createElementNS('http://www.w3.org/2000/svg
 const uuid=()=>crypto.randomUUID();
 function stored(storage,key){try{return window[storage].getItem(key);}catch{return null;}}
 const fromHash=location.hash.match(/(?:#|&)t=([a-f0-9]{64})(?:$|&)/i);
-let requestedSettings=new URLSearchParams(location.search).get('settings')==='mcp'?'mcp':null;
+let requestedSettings=['mcp','obsidian'].includes(new URLSearchParams(location.search).get('settings'))?new URLSearchParams(location.search).get('settings'):null;
 let token=fromHash?.[1]?.toLowerCase()||stored('sessionStorage','uai.token')||stored('localStorage','uai.token')||'';
 if(fromHash||requestedSettings)history.replaceState(null,'',location.pathname);
 let state={},bridgeUpdate={},kiloStatus={},clineStatus={},openCodeStatus={},page='chat',stream,busy=false,connected=false,sending=false,stopping=false,sessionId=null,events=[],uploads=[],instance=stored('sessionStorage','uai.instance');
@@ -72,6 +72,7 @@ function action(type,fields){return command(type,fields).catch(err=>toast(err.me
 let modalContext=null,modalCloseTimer,modalBackdropStart=false;
 function modal(title,build,options={}){
   const dialog=$('modal'),previous=modalContext;
+  if(previous?.canClose&&!previous.canClose())return;
   previous?.cleanup?.();
   clearTimeout(modalCloseTimer);dialog.classList.remove('closing');
   // Replacing a dialog retains the original invoker, never a removed child.
@@ -86,6 +87,7 @@ function modal(title,build,options={}){
 }
 function closeModal(immediate=false,restore=true){
   const dialog=$('modal'),context=modalContext;if(!dialog.open)return;
+  if(context?.canClose&&!context.canClose())return;
   if(context){context.closing=true;context.restore=restore;}modalRefresh=null;clearTimeout(modalCloseTimer);
   const finish=()=>{if(modalContext===context){dialog.classList.remove('closing');dialog.close();}};
   if(immediate||matchMedia('(prefers-reduced-motion: reduce)').matches)finish();
@@ -1226,12 +1228,16 @@ const SETTING_RANGES={'ui.fontScale':[.85,1.4,.05],'agent.temperature':[0,2,.1],
 function openSettings(initial='general'){
   modal('Settings',root=>{
     root.className='settings-layout';const nav=el('nav','settings-nav'),content=el('div','settings-content');nav.setAttribute('aria-label','Settings sections');root.append(nav,content);
-    const panels=new Map(),tabs=new Map(),choices=[['general','General'],['appearance','Appearance'],['agent','Agent'],['mcp','MCP'],['advanced','Advanced'],['data','Data']];
+    const panels=new Map(),tabs=new Map(),choices=[['general','General'],['appearance','Appearance'],['agent','Agent'],['obsidian','Obsidian'],['mcp','MCP'],['advanced','Advanced'],['data','Data']];
     for(const [id,title]of choices){
       const panel=el('section','settings-page');panel.id='settings-'+id;panel.hidden=true;panel.setAttribute('aria-labelledby','settings-tab-'+id);content.append(panel);panels.set(id,panel);
       const tab=button(title,()=>activate(id),'settings-tab');tab.id='settings-tab-'+id;tab.setAttribute('aria-controls',panel.id);nav.append(tab);tabs.set(id,tab);
     }
-    function activate(id){for(const [key,panel]of panels){panel.hidden=key!==id;const tab=tabs.get(key);tab.classList.toggle('selected',key===id);if(key===id)tab.setAttribute('aria-current','true');else tab.removeAttribute('aria-current');}content.scrollTop=0;if(id==='mcp')loadMcp();}
+    function activate(id){for(const [key,panel]of panels){panel.hidden=key!==id;const tab=tabs.get(key);tab.classList.toggle('selected',key===id);if(key===id)tab.setAttribute('aria-current','true');else tab.removeAttribute('aria-current');}content.scrollTop=0;const activeTab=tabs.get(id);queueMicrotask(()=>{if(activeTab?.isConnected)activeTab.scrollIntoView({block:'nearest',inline:'nearest'});});if(id==='mcp')loadMcp();if(id==='obsidian')vaultPanel.load();}
+    const vaultPanel=UAI.vaults.mount(panels.get('obsidian'),{request:api,copyText,download});
+    const navigationSize=new ResizeObserver(()=>{nav.querySelector('[aria-current="true"]')?.scrollIntoView({block:'nearest',inline:'nearest'});});navigationSize.observe(nav);
+    modalContext.cleanup=()=>{navigationSize.disconnect();vaultPanel.dispose();};
+    modalContext.canClose=()=>!vaultPanel.dirty()||confirm('Discard the unsaved note changes? Download or copy the draft first if you want to keep it.');
     const general=panels.get('general');general.append(el('h3',null,'Make yourself at home'),el('p','settings-intro','Your browser, your workspace. Changes save as you go.'));
     const appearance=card(general,'Browser theme'),themeChoices=el('div','theme-choices');appearance.append(themeChoices);
     for(const [id,title]of [['light','Light'],['dark','Dark'],['system','System'],['game','Roblox']]){const choice=button('',()=>{UAI.theme.set(id);sync();},'theme-choice');choice.dataset.themeChoice=id;const preview=el('span','theme-preview');preview.setAttribute('aria-hidden','true');preview.append(el('i'),el('i'),el('i'));choice.append(preview,el('span',null,title));themeChoices.append(choice);}
@@ -1268,7 +1274,7 @@ function renderSettingFields(details,section,values){
     for(const [key,value]of Object.entries(values)){
       if(['lastSeenVersion','lastSeenChangelog','panel'].includes(key)||(section==='ui'&&key==='reduceMotion')||(section==='bridge'&&key==='requestTimeout')||typeof value==='object')continue;
       const path=section+'.'+key,row=el('label','setting'),caption=el('span',null,path==='agent.autoFreeRouting'?'Automatic free routing':key.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())),status=el('small','save-status');status.setAttribute('aria-live','polite');
-      if(path==='agent.autoFreeRouting')caption.append(el('small','field-help','Choose a recently verified free model for included HCNSEC access when its model is Auto. Off keeps provider Auto and stops new local routing probes; an active request continues.'));
+      if(path==='agent.autoFreeRouting')caption.append(el('small','field-help','Choose a recently verified model when Project UAI Free uses Auto. Add this optional route from the Providers library. HCNSEC uses its own connection and key. Off keeps provider Auto and stops new local routing probes; an active request continues.'));
       caption.append(status);row.append(caption);
       let input;
       if(typeof value==='boolean'){input=el('input');input.type='checkbox';input.checked=value;}

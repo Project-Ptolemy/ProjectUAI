@@ -1,6 +1,7 @@
 # Native client features and limits
 
-Current native feature contract for **3.3.5**, October 18, 2026.
+Current native feature reference for **3.7.2**, including the October 31 working-tree
+polish. For a shorter introduction, start with [Getting started](GETTING_STARTED.md).
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -8,6 +9,29 @@ Internal APIs are described in
 In-game release notes are under **App menu → What's new**, also available from
 **About → What's new**. Reload the updated native bundle to see the latest notes.
 Revised notes restore the unread marker even when the client version stays the same.
+
+## Everyday navigation and notes
+
+**Find a command** in the app/profile menu searches actions, settings and loaded
+conversation titles. Ctrl+K opens it while the UAI window is visible and no text
+field or dialog owns input. Ctrl+Shift+P searches dialogue; Ctrl+L focuses the
+composer; Ctrl+, opens settings. [Keyboard navigation](SHORTCUTS.md) explains
+selection, modifier handling and touch alternatives.
+
+Conversation search includes **Show more** for matches beyond the first 12.
+It preserves Unicode excerpts and searches user/assistant text, excluding system
+and tool context. **Export conversation** freezes a Markdown snapshot, previews it,
+and offers clipboard or verified file output. See [Conversations](CONVERSATIONS.md)
+for retention limits and what an export includes.
+
+New, reset and empty imported configurations start without a provider. Add
+Project UAI Free explicitly through the Providers library if desired; personal-key
+HCNSEC is a separate preset. [Provider guides](providers/README.md) cover both.
+
+**Settings → Obsidian** connects local bridge-computer vaults and controls their
+read/write policy. The bridge browser browses and edits notes; native tools read,
+search, follow links, create and update notes through normal permissions.
+See [Obsidian](OBSIDIAN.md) for setup, limits and stale-write handling.
 
 Version 3.3.5 strengthens main and worker tool-use instructions and preserves
 access to tools beyond provider declaration limits. Pending follow-ups can be

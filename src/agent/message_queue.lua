@@ -176,7 +176,8 @@ return function(env)
 					if type(file) ~= "table" or type(file.path) ~= "string" or #file.path == 0 or #file.path > 1000
 						or type(file.bytes) ~= "number" or file.bytes ~= file.bytes or file.bytes < 0 or file.bytes % 1 ~= 0
 						or file.bytes > 10 * 1024 * 1024 then return false, "invalid saved file attachment" end
-					files[#files + 1] = { path = file.path, bytes = file.bytes }
+					if file.sha256 ~= nil and not env.require("runtime/attachment_identity").valid(file.sha256) then return false, "invalid saved attachment digest" end
+					files[#files + 1] = { path = file.path, bytes = file.bytes, sha256 = file.sha256 }
 				end
 				bytes = bytes + #entry.text; if bytes > M.BYTES then return false, "saved follow-up queue exceeds text limit" end
 				seen[entry.id] = true

@@ -28,7 +28,7 @@ return function(env)
 				if not oldest then return nil, "Close an open form before creating another draft" end
 				M.discardDraft(oldest)
 			end
-			store.workspace.forms[key] = initial or {}
+			store.workspace.forms[key] = util.deepCopy(initial or {})
 		end
 		draftMeta[key] = draftMeta[key] or {}; draftMeta[key].at = now
 		return store.workspace.forms[key]
@@ -54,6 +54,11 @@ return function(env)
 		M.stopControl(modal)
 		local column = P.column(modal.content, { auto = "Y", size = UDim2.new(1, 0, 0, 0), gap = theme.space.sm })
 		local errorLabel = P.text(column, { text = "", color = theme.color.danger, wrap = true, auto = "Y", layoutOrder = 10000 })
+		local fields, submit, submitButton, submitting = {}, nil, nil, false
+		local function invalid(def, message)
+			errorLabel.Text = message
+			local field = fields[def.key]; if field then field.focus() end
+		end
 		for index, def in ipairs(definitions) do
 			if draft[def.key] == nil and def.default ~= nil then draft[def.key] = def.default end
 			local holder = P.column(column, { auto = "Y", size = UDim2.new(1, 0, 0, 0), gap = theme.space.xs, layoutOrder = index })
@@ -77,7 +82,9 @@ return function(env)
 				P.text(holder, { text = def.label or def.key, role = "small", auto = "Y", wrap = true, layoutOrder = 1 })
 				local field = P.field(holder, { text = draft[def.key] ~= nil and tostring(draft[def.key]) or "", placeholder = def.placeholder,
 					multiline = def.multiline, height = def.multiline and theme.size.control * 3 or nil, layoutOrder = 2,
-					onChange = function(value) draft[def.key] = value end })
+					onChange = function(value) draft[def.key] = value end,
+					onSubmit = not def.multiline and function() if submit then submit() end end or nil })
+				fields[def.key] = field
 				if def.optional and def.type == "string" then
 					local supplied = draft[def.key] ~= nil; field.shell.Visible = supplied
 					common.choice(holder, "Include " .. (def.label or def.key), { "No", "Yes" }, supplied and "Yes" or "No", function(value)
@@ -93,23 +100,30 @@ return function(env)
 			end
 		end
 		common.button(modal.footer, { text = "Cancel", variant = "ghost", size = "sm", layoutOrder = 1, onClick = function() modal.close() end })
-		common.button(modal.footer, { text = options.submit or "Apply", variant = options.danger and "danger" or "primary", size = "sm", layoutOrder = 2, onClick = function()
+		submit = function()
+			if submitting or modal.closed then return end
 			local data = {}
 			for _, def in ipairs(definitions) do
 				local value = draft[def.key]
 				if def.type == "number" then
-					if value == nil or value == "" then if def.required then errorLabel.Text = "Enter " .. (def.label or def.key); return end; value = nil
-					else value = tonumber(value); if not values.finite(value) or (def.min and value < def.min) or (def.max and value > def.max) then errorLabel.Text = "Enter a valid number for " .. (def.label or def.key); return end end
+					if value == nil or value == "" then if def.required then invalid(def, "Enter " .. (def.label or def.key)); return end; value = nil
+					else value = tonumber(value); if not values.finite(value) or (def.min and value < def.min) or (def.max and value > def.max) or (def.integer and value ~= math.floor(value)) then invalid(def, "Enter a valid " .. (def.integer and "whole " or "") .. "number for " .. (def.label or def.key)); return end end
 				elseif def.type == "boolean" then if value ~= nil or not def.optional then value = value == true or value == "true" end
 				elseif value == nil and not def.optional then value = "" end
-				if def.required and type(value) == "string" and value == "" then errorLabel.Text = "Enter " .. (def.label or def.key); return end
+				if def.required and type(value) == "string" and util.trim(value) == "" then invalid(def, "Enter " .. (def.label or def.key)); return end
 				data[def.key] = value
 			end
+			submitting = true; if submitButton then submitButton.setEnabled(false) end
 			local ok, result, why = pcall(onSubmit, data)
-			if not ok or result == false or result == nil then errorLabel.Text = tostring(ok and why or result); return end
-			if options.key then M.discardDraft(options.key) end
+			if modal.closed then return end
+			if not ok or result == false or result == nil then
+				submitting = false; if submitButton then submitButton.setEnabled(true) end
+				errorLabel.Text = tostring(ok and (why or "The action did not complete. Your draft is kept.") or result); return
+			end
+			if options.key and not options.keepDraft then M.discardDraft(options.key) end
 			modal.close(true)
-		end })
+		end
+		submitButton = common.button(modal.footer, { text = options.submit or "Apply", variant = options.danger and "danger" or "primary", size = "sm", layoutOrder = 2, onClick = submit })
 		return { modal = modal, draft = draft }
 	end
 	local labels = { Vector2 = { "X", "Y" }, Vector3 = { "X", "Y", "Z" }, Color3 = { "Red (0–1)", "Green (0–1)", "Blue (0–1)" },

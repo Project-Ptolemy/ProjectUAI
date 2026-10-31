@@ -21,25 +21,9 @@ return function(env)
 			padding.PaddingLeft, padding.PaddingRight = UDim.new(0, window._contentPad), UDim.new(0, window._contentPad)
 			padding.PaddingTop, padding.PaddingBottom = UDim.new(0, window._contentPad), UDim.new(0, window._contentPad)
 		end)
-		C.list(tab.Frame, false, 20)
-		local intro = C.node(tab, "Frame", tab.Frame, {
-			Name = "TabHeading", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 76), LayoutOrder = 0,
-		})
-		tab._intro = intro
-		local eyebrow = C.text(tab, intro, "WORKSPACE", "Eyebrow", "Accent", { Size = UDim2.new(1, 0, 0, 14), TextWrapped = false })
-		local heading = C.text(tab, intro, title, "Display", "Text", { Position = UDim2.fromOffset(0, 20), TextYAlignment = Enum.TextYAlignment.Top })
-		tab._summary = C.text(tab, intro, "", "Caption", "Muted", { TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		C.reflow(tab, function()
-			local width = math.max(1, window._contentWidth - window._contentPad * 2)
-			local titleTop = math.ceil(20 * window.TextScale)
-			local titleHeight = C.measure(title, math.floor(C.tokens.Type.Display * window.TextScale + 0.5), width, heading.Font)
-			local detailHeight = math.ceil(18 * window.TextScale)
-			eyebrow.Size = UDim2.new(1, 0, 0, math.ceil(14 * window.TextScale))
-			heading.Position, heading.Size = UDim2.fromOffset(0, titleTop), UDim2.new(1, 0, 0, titleHeight)
-			tab._summary.Position = UDim2.fromOffset(0, titleTop + titleHeight + 6)
-			tab._summary.Size = UDim2.new(1, 0, 0, detailHeight)
-			intro.Size = UDim2.new(1, 0, 0, titleTop + titleHeight + detailHeight + 8)
-		end)
+		local layout = C.list(tab.Frame, false, 20)
+		C.reflow(tab, function() layout.Padding = UDim.new(0, (window._metrics or C.tokens.Size).SectionGap or 20) end)
+		local heading = env.require("tab_header").mount(tab)
 		tab._button = C.node(tab, "TextButton", window._nav, { Name = "Tab_" .. id, LayoutOrder = #window.Tabs + 1 })
 		C.corner(tab._button)
 		local selected, hovered = false, false
@@ -54,6 +38,7 @@ return function(env)
 		C.corner(indicator, 1)
 		-- Legacy Icon options are ignored. Navigation is always readable text.
 		local label = C.text(tab, tab._button, title, "Body", textColor, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		tab._heading, tab._label = heading, label
 		C.bind(tab, tab._button, { BackgroundColor3 = background })
 		tab._refresh = function()
 			motion.to(tab, tab._button, { BackgroundColor3 = background(window.Theme) })
@@ -80,7 +65,15 @@ return function(env)
 		return tab
 	end
 	function Tab:Select() self._window:SelectTab(self); return self end
+	function Tab:SetTitle(title)
+		assert(self.Alive, "Tab is destroyed")
+		self.Title = tostring(title)
+		self._heading.Text, self._label.Text = self.Title, self.Title
+		self._window:_Layout()
+		return self
+	end
 	function Tab:SetVisible(visible)
+		assert(self.Alive, "Tab is destroyed")
 		self.Visible, self._button.Visible = visible == true, visible == true
 		self.Frame.Visible = self.Visible and self._window._activeTab == self
 		if not self.Visible and self._window._activeTab == self then
@@ -135,7 +128,7 @@ return function(env)
 			local width = math.max(1, window._contentWidth - window._contentPad * 2)
 			local reserve = options.Collapsible and 72 or 0
 			local headingHeight = C.measure(section.Title, math.floor(15 * window.TextScale + 0.5), width - reserve, section._heading.Font)
-			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - reserve) or 0
+			local descriptionHeight = section.Description ~= "" and C.measure(section.Description, 12 * window.TextScale, width - reserve, section._description.Font) or 0
 			section._header.Visible = section.Title ~= "" or section.Description ~= ""
 			section._header.Size = UDim2.new(1, 0, 0, math.max(options.Collapsible and window.Target or 0, headingHeight + (descriptionHeight > 0 and descriptionHeight + 4 or 0)))
 			section._heading.Size = UDim2.new(1, -reserve, 0, headingHeight)
@@ -149,6 +142,7 @@ return function(env)
 		return section
 	end
 	function Section:SetCollapsed(collapsed)
+		assert(self.Alive, "Section is destroyed")
 		self.Collapsed = collapsed == true
 		if self._collapseLabel then self._collapseLabel.Text = self.Collapsed and "Show" or "Hide" end
 		self._window:_Filter()
@@ -156,8 +150,23 @@ return function(env)
 		return self
 	end
 	function Section:SetVisible(visible)
+		assert(self.Alive, "Section is destroyed")
 		self.Visible = visible == true
 		self._window:_Filter()
+		return self
+	end
+	function Section:SetTitle(title)
+		assert(self.Alive, "Section is destroyed")
+		self.Title = tostring(title)
+		self._heading.Text = self.Title
+		self._window:_Layout(); self._window:_Filter()
+		return self
+	end
+	function Section:SetDescription(description)
+		assert(self.Alive, "Section is destroyed")
+		self.Description = tostring(description)
+		self._description.Text = self.Description
+		self._window:_Layout()
 		return self
 	end
 	function Section:Destroy()
@@ -169,7 +178,8 @@ return function(env)
 		self.Frame:Destroy()
 		if self._window.Alive then self._window:_Filter() end
 	end
-	for _, kind in ipairs({ "Button", "Toggle", "Checkbox", "Slider", "Input", "Dropdown", "Segmented", "Keybind", "ColorPicker", "Label", "Paragraph", "Divider", "Badge", "Progress" }) do
+	for _, kind in ipairs({ "Button", "Toggle", "Checkbox", "Slider", "Input", "Dropdown", "Segmented", "Keybind", "ColorPicker", "Label", "Paragraph", "Divider", "Badge", "Progress",
+		"NumberInput", "TextView", "ItemList", "ActionGroup", "Callout", "KeyValue" }) do
 		Section[kind] = function(section, options)
 			return env.require("controls").create(section, kind, options)
 		end

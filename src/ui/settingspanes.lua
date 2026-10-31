@@ -913,7 +913,7 @@ return function(env)
 						overlay.toast("Could not encode the export", "warn", 2)
 						return
 					end
-					local ok = pcall(caps.fn.clipboard, body)
+					local ok = env.require("runtime/clipboard").write(body)
 					overlay.toast(ok and "Copied" or "Could not reach the clipboard",
 						ok and "good" or "warn", 2)
 				end,
@@ -1119,7 +1119,7 @@ return function(env)
 						log.export(),
 					}, "\n")
 					if caps.clipboard then
-						local ok = pcall(caps.fn.clipboard, report)
+						local ok = env.require("runtime/clipboard").write(report)
 						overlay.toast(ok and "Diagnostics copied" or "Could not reach the clipboard",
 							ok and "good" or "warn", 2)
 					else
@@ -1393,7 +1393,7 @@ return function(env)
 					provider = record and record.label or nil,
 				})
 				if caps.clipboard then
-					local ok = pcall(caps.fn.clipboard, body)
+					local ok = env.require("runtime/clipboard").write(body)
 					overlay.toast(ok and "System prompt copied" or "Could not reach the clipboard",
 						ok and "good" or "warn", 2)
 				else
@@ -1825,6 +1825,7 @@ return function(env)
 		{ id = "developer", section = "Desktop app", label = "Developer", icon = "terminal", build = paneDeveloper },
 		{ id = "skills", section = "Customize", label = "Skills", icon = "book", build = paneSkills },
 		{ id = "connectors", section = "Customize", label = "Connectors", icon = "branch", build = paneConnectors },
+		{ id = "obsidian", section = "Customize", label = "Obsidian", icon = "book", build = function(container) env.require("ui/obsidian").build(container) end },
 		{ id = "infinite_yield", section = "Customize", label = "Infinite Yield", icon = "terminal", build = paneInfiniteYield },
 		{ id = "plugins", section = "Customize", label = "Plugins", icon = "worktree", build = panePlugins },
 	}

@@ -2,6 +2,24 @@
 return function(env)
 	local lexer = env.require("runtime/code_lexer")
 	local M = { CELLS = 100000 }
+	function M.nextHunk(current, direction, count)
+		if count < 1 then return 0 end
+		if not current or current < 1 then return direction < 0 and count or 1 end
+		return (current - 1 + (direction < 0 and -1 or 1)) % count + 1
+	end
+	function M.describe(comparison)
+		local lines = { "+" .. comparison.added .. " / -" .. comparison.removed .. " lines; " .. #comparison.hunks .. " change regions" }
+		local shown = 0
+		for _, row in ipairs(comparison.rows) do
+			if row.kind ~= "same" then
+				if shown >= 200 then lines[#lines + 1] = "Additional changed lines omitted; inspect the full comparison."; break end
+				lines[#lines + 1] = (row.kind == "add" and "+ " or "- ") .. tostring(row.newLine or row.oldLine) .. ": " .. env.require("runtime/util").ellipsis(row.text, 240)
+				shown = shown + 1
+			end
+		end
+		if shown == 0 then lines[#lines + 1] = "Source is unchanged." end
+		return table.concat(lines, "\n")
+	end
 	function M.compare(before, after)
 		local result = { before = before, after = after, rows = {}, hunks = {}, added = 0, removed = 0, replacement = false }
 		if before == after then return result end

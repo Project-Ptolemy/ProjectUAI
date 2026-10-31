@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 
 namespace ProjectUai.Bridge;
@@ -64,6 +65,18 @@ internal static class DesktopWindowTest
                 if (!start.IsEnabled || stop.IsEnabled || !startCommand.CanExecute(start.CommandParameter))
                     throw new IOException("Idle command availability does not match the bridge state.");
                 checks.Add("Native WPF start, stop, and update actions bind to their commands");
+
+                var shortcuts = window.InputBindings.OfType<KeyBinding>().Where(binding => binding.Modifiers == ModifierKeys.Control).ToArray();
+                for (int page = 0; page < 5; page++)
+                {
+                    var binding = shortcuts.SingleOrDefault(item => item.Key == (Key)((int)Key.D1 + page))
+                        ?? throw new IOException("A desktop page shortcut is missing.");
+                    if (!ReferenceEquals(binding.Command, window.Model.NavigateCommand)) throw new IOException("A page shortcut is detached from navigation.");
+                    binding.Command.Execute(binding.CommandParameter);
+                    if (window.Model.SelectedPage != page) throw new IOException("A page shortcut opened the wrong destination.");
+                }
+                window.Model.SelectedPage = 0;
+                checks.Add("Ctrl+1 through Ctrl+5 use the same page navigation commands as the sidebar");
 
                 Named<ToggleButton>(window, "OpenCodeToggle").SetCurrentValue(ToggleButton.IsCheckedProperty, false);
                 Named<ToggleButton>(window, "McpToggle").SetCurrentValue(ToggleButton.IsCheckedProperty, false);

@@ -1,6 +1,6 @@
 -- Export UI instances from the shipped bundle under Lune for offline image QA.
 -- This is a layout preview, not a substitute for Roblox's native text renderer.
--- lune run test/lune_runner.luau test/mobile_snapshots.lua [bundle] [output directory]
+-- lune run test/lune_runner.luau test/mobile_snapshots.lua [bundle] [output directory] [boot|changelog|conversations]
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
 local bundle, directory = arg[1] or "dist/uai.lua", arg[2] or "refer/mobile-20260921/current"
@@ -57,6 +57,94 @@ local function write(h, app, name, width, height, keyboard)
 		window = tree(app.app.window.root), root = tree(app.app.screen) }))
 	file:close()
 	print("snapshot " .. name)
+end
+
+if arg[3] == "boot" then
+	for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } }) do
+		local width, height = size[1], size[2]
+		local h = envMock.new(); h.setViewport(width, height)
+		local app = assert(h.boot(bundle)); h.settle(2)
+		-- Preview time follows the virtual scheduler for elapsed/slow-state scenes.
+		h.sandbox.os = setmetatable({ clock = function() return h.sched.now end }, { __index = os })
+		local boot = app.env.require("ui/boot").show()
+		local surface = { app = { screen = boot.screen, window = { root = boot.card } } }
+		local prefix = "boot-" .. width .. "x" .. height
+		boot.step("runtime/config", 24, app.env.moduleTotal)
+		write(h, surface, prefix .. "-prepare", width, height)
+		boot.stage("restore"); boot.step("agent/session", 88, app.env.moduleTotal)
+		write(h, surface, prefix .. "-restore", width, height)
+		boot.stage("interface"); boot.step("ui/app", app.env.moduleCount, app.env.moduleTotal)
+		write(h, surface, prefix .. "-interface", width, height)
+		h.frame(8.2)
+		write(h, surface, prefix .. "-slow", width, height)
+		boot.fail("synthetic startup failure")
+		write(h, surface, prefix .. "-failed", width, height)
+		boot.destroy(); app.destroy()
+	end
+	return
+end
+
+if arg[3] == "changelog" then
+	for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 1280, 720 } }) do
+		local width, height = size[1], size[2]
+		local h = envMock.new(); h.setViewport(width, height)
+		h.services.UserInputService.TouchEnabled = width < 600
+		local app = assert(h.boot(bundle))
+		app.config.set("ui.tutorial.seen", true, { quiet = true })
+		require("password_fixture")(h, app); h.settle(2)
+		local modal = assert(app.app.showChangelog())
+		local prefix = "changelog-" .. width .. "x" .. height
+		write(h, app, prefix .. "-top", width, height)
+		local search = assert(h.byName("ReleaseSearch", modal.content):FindFirstChildWhichIsA("TextBox"))
+		search.Text = app.env.require("runtime/changelog").latest().version
+		modal.scroll.instance.CanvasPosition = h.dt.Vector2.new(0, 2200)
+		write(h, app, prefix .. "-latest-middle", width, height)
+		-- Chromium clamps this to the measured bottom of the filtered content.
+		modal.scroll.instance.CanvasPosition = h.dt.Vector2.new(0, 1000000)
+		write(h, app, prefix .. "-latest-bottom", width, height)
+		search.Text = ""
+		modal.scroll.instance.CanvasPosition = h.dt.Vector2.new(0, 1000000)
+		write(h, app, prefix .. "-history-bottom", width, height)
+		modal.close(); app.destroy()
+	end
+	return
+end
+
+if arg[3] == "conversations" then
+	for _, size in ipairs({ { 320, 568 }, { 390, 844 }, { 844, 390 }, { 1280, 720 } }) do
+		local width, height = size[1], size[2]
+		local h = envMock.new(); h.setViewport(width, height)
+		h.services.UserInputService.TouchEnabled = width < 900
+		local app = assert(h.boot(bundle))
+		app.config.set("ui.tutorial.seen", true, { quiet = true })
+		require("password_fixture")(h, app); h.settle(2)
+		local first
+		for index = 1, 12 do
+			local session = assert(app.sessions.newThread({ id = "browser-preview-" .. index, activate = false }))
+			session.rename(index == 1 and "Island planning: a long conversation title about paths, lighting and the shoreline" or "Island project " .. index)
+			session.emit("user", { text = "Review the shoreline and lighting before adding the lighthouse and dock." })
+			if index == 1 then first = session; session.setPinned(true) end
+		end
+		local modal = assert(app.env.require("ui/conversations").browse(app.app))
+		local prefix = "conversations-" .. width .. "x" .. height
+		write(h, app, prefix .. "-top", width, height)
+		modal.scroll.instance.CanvasPosition = h.dt.Vector2.new(0, 1000000)
+		write(h, app, prefix .. "-bottom", width, height)
+		modal.scroll.instance.CanvasPosition = h.dt.Vector2.new(0, 0)
+		local search = assert(h.byName("ConversationSearch", modal.content):FindFirstChildWhichIsA("TextBox"))
+		search.Text = "shoreline"
+		write(h, app, prefix .. "-search", width, height)
+		search.Text = "planning"
+		write(h, app, prefix .. "-one", width, height)
+		search.Text = "no-matching-conversation"
+		write(h, app, prefix .. "-empty", width, height)
+		modal.close(); h.settle(0.4)
+		local transcript = assert(app.env.require("ui/chat/search").open(first))
+		h.byName("TranscriptSearch", transcript.content):FindFirstChildWhichIsA("TextBox").Text = "shoreline"
+		write(h, app, prefix .. "-transcript", width, height)
+		transcript.close(); app.destroy()
+	end
+	return
 end
 
 for _, size in ipairs({ { 844, 390 }, { 932, 430 }, { 1194, 834 }, { 390, 844 }, { 1280, 720, true }, { 1920, 1080, true } }) do

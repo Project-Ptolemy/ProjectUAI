@@ -18,18 +18,7 @@ return function(env)
 	end
 	local function result(value, why) return value and N.result(value, why or value.status or "Completed") or N.fail(why) end
 	local function bindPatch(args, ctx) return patch.get(args.patch_id, ctx) end
-	local function draftGuard(plan)
-		local files, store = env.require("runtime/code_files"), env.require("runtime/code_store")
-		for _, item in ipairs(plan.items) do
-			for id, binding in pairs(files.bindings) do
-				if binding.path:lower() == ("files/" .. item.path):lower() then
-					local doc = store.resolve(id)
-					if doc and doc.source ~= binding.base then return false, "Unsaved Code draft exists for files/" .. item.path .. "; save or edit that document first" end
-				end
-			end
-		end
-		return true
-	end
+	local draftGuard = env.require("runtime/project_guard").check
 	local function load(args, ctx) return project.load(args.manifest, ctx) end
 	local function ready(value, ctx)
 		local analysis = project.analyze(value, ctx)
@@ -91,19 +80,12 @@ return function(env)
 		end, bindPatch)
 	add("project_patch_discard", "write", "Release a staged proposal or recovery checkpoint. Does not change files; discarded recovery source is no longer available.",
 		{ patch_id = str }, { "patch_id" }, function(args, ctx) local value, why = patch.discard(args.patch_id, ctx); return result(value, why) end)
-	add("project_scaffold", "write", "Stage a working modular script project: uai.project.json, main.lua, settings.lua and tests/settings.lua. All destinations must be new. Returns a proposal for review/apply; nothing runs. Generated require uses declared project IDs. Add interfaces through Project UAI UI LIB.",
-		{ directory = str }, { "directory" }, function(args, ctx)
-			local directory, why = project.path(args.directory); if not directory then return N.fail(why) end
-			local manifest = util.encode({ version = 1, entry = "main", modules = { main = "main.lua", settings = "settings.lua", ["tests/settings"] = "tests/settings.lua" }, tests = { "tests/settings" } })
-			local files = {
-				{ path = directory .. "/uai.project.json", content = manifest },
-				{ path = directory .. "/main.lua", content = 'local settings = require("settings")\nreturn { name = settings.name, enabled = settings.enabled }\n' },
-				{ path = directory .. "/settings.lua", content = 'return { name = "My script", enabled = true }\n' },
-				{ path = directory .. "/tests/settings.lua", content = 'local settings = require("settings")\nreturn {\n\tdefaults = function(t)\n\t\tt.equal(settings.name, "My script")\n\t\tt.truthy(settings.enabled)\n\tend,\n}\n' },
-			}
-			for _, file in ipairs(files) do file.create = true end
+	add("project_scaffold", "write", "Stage a tested modular starter with manifest, entry, settings and tests. kind=interface adds a UI LIB view, separate domain model and lifecycle tests. Every destination must be new. Review the proposal, apply, analyze, build and test; nothing runs during scaffolding.",
+		{ directory = str, kind = { type = "string", enum = { "basic", "interface" }, description = "Default basic; interface declares a UI LIB app with owned cleanup." } }, { "directory" }, function(args, ctx)
+			local files, manifest = env.require("runtime/project_scaffold").files(args.directory, args.kind)
+			if not files then return N.fail(manifest) end
 			local plan, err = patch.stage(files, ctx); if not plan then return N.fail(err) end
-			local value = patch.describe(plan); value.manifest = "files/" .. directory .. "/uai.project.json"
+			local value = patch.describe(plan); value.manifest = "files/" .. manifest
 			return result(value, "Staged starter project; review source, then project_patch_apply")
 		end)
 	add("script_analyze", "read", "Compile saved source without executing it and return hashes, lexical outlines and structured diagnostics. Supply path for one file or manifest for project-wide syntax and literal require checks. Explicitly reports compiler availability; does NOT claim Luau type checking or Roblox API validation.",

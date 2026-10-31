@@ -10,11 +10,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const root = path.resolve(__dirname, '..');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'dist/uai.manifest.json'), 'utf8')).buildId.split('-')[0];
-const desktopVersion = fs.readFileSync(path.join(root, 'desktop/src/UaiBridge/UaiBridge.csproj'), 'utf8').match(/<Version>(\d+\.\d+\.\d+)<\/Version>/)?.[1];
+// Public download versions are independent of future source-tree candidates.
+const publishedDesktopVersion = '3.8.0';
 const relayVersion = fs.readFileSync(path.join(root, 'companion/app/build.gradle.kts'), 'utf8').match(/\bversionName\s*=\s*"(\d+\.\d+\.\d+)"/)?.[1];
-assert.ok(desktopVersion && relayVersion, 'desktop and relay release versions are declared');
+assert.ok(relayVersion, 'relay release version is declared');
 const downloadAssets = new Map([
-  ['UAI-Bridge-' + desktopVersion + '-win-x64.exe', desktopVersion],
+  ['UAI-Bridge-' + publishedDesktopVersion + '-win-x64.exe', publishedDesktopVersion],
   ['UAI-Relay-' + relayVersion + '.apk', relayVersion],
 ]);
 const loader = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"))()';
@@ -118,6 +119,32 @@ async function catalog(page) {
   assert.equal(await search.evaluate(node => node === document.activeElement), true);
   await search.fill('files'); await page.keyboard.press('Escape');
   assert.equal(await search.inputValue(), '', 'Escape clears search');
+  await page.locator('#toolCategory').selectOption('fs');
+  await page.locator('#riskFilters [data-risk="read"]').click();
+  await search.fill('read');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('toolQuery') === 'read');
+  await page.locator('#catalogShare summary').click();
+  await page.locator('#copyCatalogLink').click();
+  const shared = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+  assert.equal(shared.searchParams.get('toolQuery'), 'read');
+  assert.equal(shared.searchParams.get('toolGroup'), 'fs');
+  assert.equal(shared.searchParams.get('toolRisk'), 'read');
+  assert.equal(shared.hash, '#tools');
+  await clear.click();
+  await page.goto(shared.href);
+  assert.equal(await search.inputValue(), 'read', 'shared links restore search');
+  assert.equal(await page.locator('#toolCategory').inputValue(), 'fs', 'shared links restore category');
+  assert.equal(await page.locator('#riskFilters [data-risk="read"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('[data-tool-name="file_read_many"]').isVisible(), true);
+  await clear.click();
+  assert.equal(new URL(page.url()).search, '', 'clearing filters removes only the catalog parameters');
+  const invalid = new URL(page.url());
+  invalid.search = '?toolGroup=unknown&toolRisk=invalid&ref=kept';
+  await page.goto(invalid.href);
+  assert.equal(await page.locator('#toolCategory').inputValue(), '');
+  assert.equal(await page.locator('#riskAll').getAttribute('aria-pressed'), 'true');
+  assert.equal(new URL(page.url()).search, '?ref=kept', 'invalid filters are ignored and unrelated URL state is preserved');
+  assert.equal(new URL(await page.locator('#catalogLink').textContent()).search, '', 'shared links omit unrelated query parameters');
 }
 
 async function copyAndDownloads(page) {
@@ -131,7 +158,8 @@ async function copyAndDownloads(page) {
   assert.equal(await page.evaluate(() => getSelection().toString()), loader, 'clipboard denial selects the exact text for manual copy');
   assert.match(await page.locator('#copyStatus').textContent(), /selected|manually/i);
 
-  const links = await page.locator('a[href*="/releases/"]').evaluateAll(nodes => nodes.map(node => ({ href: node.href, name: node.textContent.trim() })));
+  const links = await page.locator('a[href*="/releases/"]').evaluateAll(nodes => nodes.map(node => ({ href: node.href, name: node.textContent.trim(),
+    card: node.closest('.download-card')?.textContent || '' })));
   assert.ok(links.length, 'official release links are present');
   for (const link of links) {
     const url = new URL(link.href);
@@ -140,8 +168,9 @@ async function copyAndDownloads(page) {
     if (/\/releases\/tag\//.test(url.pathname)) assert.equal(url.pathname.split('/')[5], 'v' + version, 'release link matches the published client version');
     if (/\/releases\/download\//.test(url.pathname)) {
       const asset = url.pathname.split('/').at(-1);
-      assert.ok(downloadAssets.has(asset), 'download names a current desktop or relay asset');
+      assert.ok(downloadAssets.has(asset), 'download names a verified published desktop or relay asset');
       assert.equal(url.pathname.split('/')[5], 'v' + downloadAssets.get(asset), 'download tag matches its component release version');
+      assert.ok(link.card.includes('v' + downloadAssets.get(asset)), 'download card labels the actual published asset version');
     }
     assert.ok(link.name, 'download links have accessible text');
   }
@@ -219,6 +248,10 @@ async function stillCanvas(page, label) {
     const stopped = await motion.evaluate(() => window.__siteDraws);
     await motion.waitForFunction(count => window.__siteDraws > count, stopped);
     await motion.locator('#quickstart').scrollIntoViewIfNeeded();
+    // Smooth scrolling and observer delivery may continue after the scroll request.
+    // Establish the actual offscreen state before measuring stopped animation.
+    await motion.waitForFunction(() => document.getElementById('heroStage').getBoundingClientRect().bottom <= 0);
+    await motion.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await stillCanvas(motion, 'offscreen hero stops canvas work');
     console.log('PASS canvas animation, pause/resume, offscreen lifecycle and reduced motion');
 

@@ -3,8 +3,8 @@
 Use UAI in your browser while Roblox runs your tools and keeps the conversation.
 Run both on the same computer. The [Windows desktop app](../desktop/README.md)
 detects installed Node.js and offers a verified download if needed. Open the
-single [UAI-Bridge-3.7.0-win-x64.exe](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v3.7.0/UAI-Bridge-3.7.0-win-x64.exe)
-download, complete Node setup, click **Start
+single Windows executable from the [latest release](https://github.com/Project-Ptolemy/ProjectUAI/releases/latest),
+complete Node setup, click **Start
 Cowork**, and load the updated UAI script. The browser opens and Roblox connects
 automatically on dedicated port **28791**. No terminal or token copying is needed.
 
@@ -12,8 +12,17 @@ The terminal workflow below needs **Node.js 18 or newer** and has no production
 npm dependencies. It retains port 8790 and manual pairing.
 
 Join the [Project UAI Discord](https://discord.gg/9xYyyYuKap) for help, provider
-availability updates and new free options. Project UAI Free is the default for
-users without a provider; thank you for continuing to use and support Project UAI.
+availability updates and new free options. Add Project UAI Free explicitly from
+the Providers library if you want that route. HCNSEC is a separate provider.
+
+## Obsidian notes
+
+Open **Settings → Obsidian** to connect a vault folder on this computer. Browse,
+search, copy and download Markdown notes in the browser, or let the agent use
+the `obsidian` tools. Connections start read-only; enable editing explicitly to
+create or change notes. Revision checks protect against overwriting observed
+external edits, and disconnecting keeps your files.
+See [Obsidian setup](../docs/OBSIDIAN.md) for limits and conflict recovery.
 
 ## Free model tunnels
 
@@ -145,21 +154,22 @@ update state before any restart it causes. The cache keeps the active version
 and recent entries, and prunes stale predecessors and quarantine folders.
 
 Publish `dist/bridge-release.json` and `dist/uai-bridge-package.json` on the same
-official `v3.6.7` GitHub release together with the matching desktop assets; the
-client and Android companion continue from their own current releases. Generate
+official `v3.8.0` GitHub release together with the matching desktop and client
+assets. The Android companion remains on 3.7.1. Generate
 the bundles with
 `node tools/build_bridge.js` after reviewing final bridge/web inputs, inspect
 the outputs, then run `node tools/build_bridge.js --check` and focused tests.
 Later releases must bump `bridge/release.js` and use the matching release tag.
 The release builder embeds OpenCode, MCP and support helpers into the original
-permitted root filenames so installed 3.1 updaters can verify and activate 3.6.7. Checkout,
+permitted root filenames so installed 3.1 updaters can verify and activate 3.8.0. Checkout,
 executor downloads and desktop payloads retain the separate source modules.
 
-The 3.6.7 release supplies the matching bridge, web and Windows app versions;
-the Roblox client remains 3.6.6. Existing compatible installs receive bridge and web updates while idle.
+The 3.8.0 release supplies matching client, bridge, web and Windows app versions.
+Existing compatible installs receive bridge and web updates while idle.
 Refresh an open browser page to load changed web assets. The desktop's **Copy
 client script** uses its embedded client; update the desktop app to refresh that
-copy. See [3.6.5 verification](../docs/TESTING_3.6.5.md) and the earlier
+copy. See the [3.8.0 verification record](../docs/POLISH_2026_10.md),
+[3.6.5 verification](../docs/TESTING_3.6.5.md) and the earlier
 [bridge 3.6.2 record](../docs/TESTING_3.6.2.md).
 
 The [desktop app](../desktop/README.md) independently downloads its own release

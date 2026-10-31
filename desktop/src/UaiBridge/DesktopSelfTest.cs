@@ -23,6 +23,7 @@ internal static class DesktopSelfTest
         }
         try
         {
+            await DesktopCapabilityTest.RunAsync(Check);
             string preferencesPath = Path.Combine(root, "preferences.json");
             Check("Missing preferences preserve enabled integrations and manual startup", DesktopPreferences.Load(preferencesPath) == new DesktopPreferences());
             var savedPreferences = new DesktopPreferences(false, false, false, false, true, KiloEnabled: true, ClineEnabled: false); savedPreferences.Save(preferencesPath);

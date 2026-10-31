@@ -64,8 +64,10 @@ return function(env)
 			local sent = headers == nil
 			for name, value in pairs(headers or {}) do
 				local lower = tostring(name):lower()
+				local bearer = type(value) == "string" and value:match("^%s*[Bb][Ee][Aa][Rr][Ee][Rr]%s+(.+)%s*$")
+				if bearer then bearer = bearer:gsub("%s+$", "") end
 				if (lower == "authorization" or lower == "x-api-key" or lower == "api-key" or lower == "x-goog-api-key")
-					and (value == secret or value == "Bearer " .. tostring(secret)) then sent = true end
+					and (value == secret or lower == "authorization" and bearer == secret) then sent = true end
 			end
 			if sent and secret and secret ~= "" and authenticated then keyId = identities[secret] end
 			local reference = { providerId = providerId, keyId = keyId, conversationId = conversationId, at = clock.ms() }

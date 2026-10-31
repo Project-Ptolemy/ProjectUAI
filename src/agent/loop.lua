@@ -378,6 +378,11 @@ return function(env)
 				exclude.conversation_rename = true
 			end
 			local profile = session.toolProfile or config.get("agent.toolProfile", "all")
+			local requestToolNames = {}
+			for _, tool in ipairs(registry.available({ only = session.toolFilter, groups = session.toolGroups,
+				exclude = exclude })) do
+				requestToolNames[tool.name] = true
+			end
 			local definitions = registry.definitions({
 				only = session.toolFilter,
 				groups = session.toolGroups,
@@ -547,7 +552,9 @@ return function(env)
 							session.emit("tool:error", results[index])
 						end
 					else
-						results = toolCatalog.runAll(executionCalls, immediate, session.toolContext(), registry, function(outcome)
+						local toolContext = session.toolContext()
+						toolContext.requestToolNames = requestToolNames
+						results = toolCatalog.runAll(executionCalls, immediate, toolContext, registry, function(outcome)
 							session.emit(outcome.ok and "tool:result" or "tool:error", outcome)
 						end)
 					end

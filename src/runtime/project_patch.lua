@@ -19,9 +19,14 @@ return function(env)
 	local function stopped(ctx) return ctx and ctx.aborted and ctx.aborted() end
 	local function read(path)
 		if fs.isDir(path, scope) then return nil, "Target is a directory: " .. path end
+		local exists, probeWhy = fs.probe(path, scope); if exists == nil then return nil, probeWhy end
 		local content, why = fs.read(path, scope)
-		if content == nil and fs.exists(path, scope) then return nil, why end
-		if content == nil then return false end
+		if content == nil and exists then return nil, why end
+		if content == nil then
+			local stillMissing, probeWhy = fs.probe(path, scope)
+			if stillMissing ~= false then return nil, probeWhy or why or "File existence changed while reading" end
+			return false
+		end
 		return content
 	end
 	local function edit(text, edits)
@@ -126,6 +131,9 @@ return function(env)
 				if current == nil then failure = err; break end
 				if current ~= target then
 					if current ~= expected then failure = "File changed during operation: " .. item.path; break end
+					if stopped(ctx) then failure = "Cancelled before writing"; break end
+					if guard then local valid, err = guard(plan); if not valid then failure = err; break end end
+					if stopped(ctx) then failure = "Cancelled before writing"; break end
 					-- Mark before entering a host call: a failed write can still have effects.
 					plan.status = "partial"
 					local wrote, writeErr

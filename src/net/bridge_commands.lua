@@ -84,19 +84,44 @@ return function(env)
 		elseif kind == "provider:save" then
 			local providers = env.require("provider/registry")
 			local fields = command.provider or {}
-			local record = fields.id and providers.get(fields.id) or providers.blank(fields.preset or "custom")
-			if not record then error("Unknown provider", 0) end
+			if type(fields) ~= "table" then error("Provider setup must be an object", 0) end
+			local record
+			if fields.id ~= nil then
+				if type(fields.id) ~= "string" or fields.id == "" then error("Provider id must identify a saved connection", 0) end
+				record = providers.get(fields.id)
+				if not record then error("This provider was removed; reopen provider setup", 0) end
+			else record = providers.blank(fields.preset or "custom") end
 			record = util.deepCopy(record)
-			for _, name in ipairs({ "label", "baseUrl", "api", "authStyle", "apiKey", "model", "wsUrl" }) do
-				if fields[name] ~= nil then record[name] = tostring(fields[name]) end
+			if fields.preset ~= nil and fields.preset ~= record.preset then
+				local ok, why = env.require("provider/preset").apply(record, fields.preset)
+				if not ok then error(why, 0) end
 			end
-			for _, name in ipairs({ "models", "headers", "params", "query", "apiKeys" }) do
-				if type(fields[name]) == "table" then record[name] = fields[name] end
+			for _, name in ipairs({ "label", "baseUrl", "api", "authStyle", "model", "wsUrl" }) do
+				if fields[name] ~= nil then
+					if type(fields[name]) ~= "string" then error("Provider text fields must contain text", 0) end
+					record[name] = fields[name]
+				end
+			end
+			for _, name in ipairs({ "models", "headers", "params", "query" }) do
+				if fields[name] ~= nil then
+					if type(fields[name]) ~= "table" then error("Provider lists and overrides must be objects or arrays", 0) end
+					record[name] = util.deepCopy(fields[name])
+				end
+			end
+			if fields.apiKey ~= nil then
+				local ok, why = env.require("runtime/provider_keys").setPool(record, fields.apiKey)
+				if not ok then error(why, 0) end
+				if record.preset == "projectuai-free" and not env.require("provider/community_key").isApplied(record) and util.trim(record.apiKey) ~= "" then
+					ok, why = env.require("provider/preset").apply(record, "hcnsec")
+					if not ok then error(why, 0) end
+				end
 			end
 			if fields.enabled ~= nil then record.enabled = fields.enabled == true end
 			local ok, errors = providers.save(record)
 			if not ok then error(table.concat(errors or {}, "; "), 0) end
-		elseif kind == "provider:remove" then env.require("provider/registry").remove(command.id)
+		elseif kind == "provider:remove" then
+			local ok, why = env.require("provider/registry").remove(command.id)
+			if not ok then error(why, 0) end
 		elseif kind == "provider:test" then
 			local record = env.require("provider/registry").get(command.id)
 			if not record then error("Unknown provider", 0) end

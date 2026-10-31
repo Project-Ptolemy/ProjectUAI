@@ -100,7 +100,7 @@ end)
 
 case("included access clears personal aliases and request policy", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("hcnsec")
+	local record = registry.blank("projectuai-free")
 	record.apiKey, record.keyNames, record.keyMode, record.selectedKey = "alpha\nbeta", { "Personal", "Backup" }, "single", 2
 	assert(f.env.require("provider/community_key").apply(record))
 	local keys = f.env.require("runtime/provider_keys")

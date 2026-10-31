@@ -1,7 +1,7 @@
-UAI BRIDGE 3.7.0 - WINDOWS 10/11 (64-BIT)
+UAI BRIDGE 3.8.0 - WINDOWS 10/11 (64-BIT)
 
-1. Download UAI-Bridge-3.7.0-win-x64.exe and open it directly.
-   https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v3.7.0/UAI-Bridge-3.7.0-win-x64.exe
+1. Open UAI-Bridge-3.8.0-win-x64.exe directly. Official published downloads:
+   https://github.com/Project-Ptolemy/ProjectUAI/releases/latest
 2. On Workspace, if Node.js is missing, choose Get Node.js or Manual setup,
    then Check again. Click Start Cowork.
 3. Load the updated Project UAI script in Roblox. It connects automatically.
@@ -16,6 +16,12 @@ sign-in and model readiness. Set up Node.js first if the status says Not checked
 Updates shows app and bridge checks, downloads, and updates ready to restart.
 Settings saves browser, launch, and automatic app update preferences. Navigation
 adapts to smaller windows, and page content scrolls to keep actions reachable.
+Ctrl+1 through Ctrl+5 switch desktop pages from Workspace through Tunnels.
+Use Tab and Shift+Tab to move between controls, then Space to activate one.
+
+The client starts without a provider. Add a provider from its Providers library
+and save it. Project UAI Free is optional community access; HCNSEC is the separate
+personal-key choice. Provider setup does not require changing desktop settings.
 
 Chat opens in the existing Cowork browser workspace. There is no embedded chat
 in the desktop window. The browser opens automatically unless you turn off

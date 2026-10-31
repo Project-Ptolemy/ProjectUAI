@@ -486,9 +486,7 @@ return function(env)
 		local relayUnlimited = handoff.relayUnlimited
 		if relayUnlimited == nil then relayUnlimited = env.require("net/transport").unlimited(request) end
 		if handoff.deadlineMs and handoff.deadlineMs < math.huge then relayUnlimited = false end
-		local deadline = handoff.deadlineMs or (relayUnlimited and math.huge
-			or math.min(tonumber(request.deadlineMs) or math.huge,
-				started + math.max(1, math.min(300, tonumber(requestTimeout(request)) or 120)) * 1000))
+		local deadline = handoff.deadlineMs or env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
 		local scope = registry.compatibilityKey(record)
 		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local attemptsAllowed = request.attempts or config.get("agent.retries", 3)

@@ -23,9 +23,8 @@ return function(env)
 		local socket, messageConn, closeConn, mode
 		local frames, bytes, messages = {}, 0, 0
 		local accepting, finished, failure, sawFinish, released, dispatched = true, false, nil, false, false, false
-		local timeout = tonumber(spec.timeout) or 120
-		if timeout ~= timeout then timeout = 120 end
-		local deadline = clock.ms() + math.max(1, math.min(300, timeout)) * 1000
+		local deadline = env.require("net/deadline").at(spec.timeout, spec.deadlineMs)
+		if clock.ms() >= deadline then return nil, "deadline: socket request budget expired before dispatch" end
 		local function aborted()
 			if not alive then return true end
 			if not spec.aborted then return false end

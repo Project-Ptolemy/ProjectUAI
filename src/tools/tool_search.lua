@@ -32,7 +32,7 @@ return function(env)
 				type = "object",
 				properties = {
 					action = { type = "string", enum = { "list", "describe", "call" } },
-					query = { type = "string", maxLength = 256, description = "Words matched across tool name, description and group; exact names rank first." },
+					query = { type = "string", maxLength = 256, description = "Words, quoted phrases and -excluded terms across name, description and group; exact names rank first." },
 					group = { type = "string", description = "Exact tool group for list." },
 					name = { type = "string", description = "Exact tool name for describe or call." },
 					arguments = { type = "object", description = "The target tool's exact arguments for call." },
@@ -62,7 +62,7 @@ return function(env)
 					end) end
 					local page = H.page(rows, { offset = args.offset, limit = args.limit }, "Toolbox",
 						function(row) return string.format("%s [%s/%s] %s", row.name, tostring(row.group), tostring(row.risk), row.description) end, 20, 100)
-					page.data.tools = page.data.count
+					if page.data then page.data.tools = page.data.count end
 					return page
 				elseif args.action == "describe" then
 					local name = tostring(args.name or "")
@@ -70,9 +70,9 @@ return function(env)
 					local tool = byName[name]
 					if not tool then return H.fail("No tool named '" .. name .. "' is available in this conversation.") end
 					local schema = util.encode({ name = tool.name, group = tool.group, risk = tool.risk,
-						description = tool.description, parameters = registry.definition(tool)["function"].parameters })
+						description = tool.description, examples = env.require("agent/tool_examples").read(tool), parameters = registry.definition(tool)["function"].parameters })
 					local page = H.readSlice("Tool schema " .. name, schema, { offset = args.offset, limit = args.limit }, 6000)
-					page.data.tool = { name = tool.name, group = tool.group, risk = tool.risk, bytes = #schema }
+					if page.data then page.data.tool = { name = tool.name, group = tool.group, risk = tool.risk, bytes = #schema } end
 					return page
 				elseif args.action == "call" then
 					local name = tostring(args.name or "")

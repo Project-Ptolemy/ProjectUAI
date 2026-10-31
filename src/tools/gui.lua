@@ -65,6 +65,8 @@ return function(env)
 	return {
 		{
 			name = "ui_library_docs",
+			examples = { { title = "Read UI LIB setup", arguments = { section = "quickstart", limit = 4000 },
+				note = "Follow nextOffset, then read controls and lifecycle for the interface you need." } },
 			risk = "read",
 			description = "Read the bundled Project UAI UI LIB reference before creating a script UI. Covers responsive windows, controls, configuration, cleanup, embedding, application patterns, runtime integration and extending the shared library. Start with quickstart, controls and lifecycle; follow continuation offsets. No network or execution required.",
 			parameters = {

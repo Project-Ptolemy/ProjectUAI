@@ -43,6 +43,8 @@ return function(env)
 				trigger = { type = "string", minLength = 1, maxLength = 800 }, response = { type = "string", minLength = 1, maxLength = 800 }, exact = { type = "boolean", description = "Match the whole message instead of a substring." },
 			}, required = { "trigger", "response" } } } }, { "rules" }), run = start("reply") },
 		{ name = "chat_loop_status", risk = "read", description = "List managed chat loops and chat agents, progress, failures, and quiz scores.",
+			examples = { { title = "Inspect managed chat work", arguments = {},
+				note = "Use an exact returned loop ID to inspect one loop before changing it." } },
 			parameters = { type = "object", properties = { id = { type = "string", minLength = 1, description = "Exact loop ID from a start receipt; omit to inspect the bounded recent loop history." } }, required = {} },
 			run = function(args)
 				local lines, records = {}, {}

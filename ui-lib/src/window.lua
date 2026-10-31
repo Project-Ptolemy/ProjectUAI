@@ -23,6 +23,38 @@ return function(env)
 	function Window:Give(resource) return self._scope:Add(resource) end
 	function Window:OnDestroy(callback) return self:Give(callback) end
 	function Window:Get(id) return self.Controls[id] end
+	function Window:GetActiveTab() return self._activeTab end
+	function Window:GetSearch() return self._search and self._search.Text or "" end
+	function Window:SetSearch(query)
+		assert(self.Alive, "Window is destroyed")
+		assert(type(query) == "string", "Search must be a string")
+		assert(self._search or query == "", "Window search is disabled")
+		if self._search then self._search.Text = C.truncate(query, 256) end
+		self:_Filter()
+		return self
+	end
+	function Window:Reveal(id)
+		assert(self.Alive, "Window is destroyed")
+		local control = self.Controls[id]
+		assert(control and control.Alive, "Unknown control Id: " .. tostring(id))
+		local section, tab = control._section, control._section._tab
+		self:Show()
+		tab:SetVisible(true); section:SetVisible(true); section:SetCollapsed(false); control:SetVisible(true)
+		self:SetSearch(""); self:SelectTab(tab)
+		local function reveal()
+			if not self.Alive or not control.Alive or self._activeTab ~= tab then return end
+			local top = control.Frame.AbsolutePosition.Y - tab.Frame.AbsolutePosition.Y
+			local height, bottom = tab.Frame.AbsoluteSize.Y, top + control.Frame.AbsoluteSize.Y
+			local y = tab.Frame.CanvasPosition.Y
+			if top < 8 or control.Frame.AbsoluteSize.Y > height - 16 then y = y + top - 8
+			elseif bottom > height - 8 then y = y + bottom - height + 8 end
+			tab.Frame.CanvasPosition = Vector2.new(tab.Frame.CanvasPosition.X, math.max(0, y))
+		end
+		reveal()
+		-- AutomaticSize/list layout may settle after this public call returns.
+		self._scope:Delay(0, reveal)
+		return control
+	end
 	function Window:Tab(options) return env.require("containers").tab(self, options) end
 	function Window:Notify(options) return env.require("overlays").notify(self, options) end
 	function Window:Dialog(options) return env.require("overlays").dialog(self, options) end
@@ -56,6 +88,7 @@ return function(env)
 		end
 	end
 	function Window:SetReducedMotion(value)
+		assert(self.Alive, "Window is destroyed")
 		assert(type(value) == "boolean", "ReducedMotion must be a boolean")
 		self._motionOverride, self.ReducedMotion = value, value
 		motion.stopAll(self, true)
@@ -74,6 +107,7 @@ return function(env)
 		return self:SetTheme(self._themeName == "Dark" and "Light" or "Dark", self._accent)
 	end
 	function Window:SetTextScale(value)
+		assert(self.Alive, "Window is destroyed")
 		assert(C.finite(value), "TextScale must be a finite number")
 		self.TextScale = C.clamp(value, 0.85, 1.5)
 		self:_Refresh()
@@ -257,7 +291,8 @@ return function(env)
 			end
 			if tab == self._activeTab then count = tabCount end
 			if tab._summary then
-				tab._intro.Visible = query == "" or tabCount > 0
+				tab._introMatches = query == "" or tabCount > 0
+				tab._intro.Visible = self.TabHeader ~= "Hidden" and tab._introMatches
 				tab._summary.Text = query ~= "" and string.format("%d matching control%s", tabCount, tabCount == 1 and "" or "s")
 					or string.format("%d control%s  /  %d section%s", tabCount, tabCount == 1 and "" or "s", sectionCount, sectionCount == 1 and "" or "s")
 			end
@@ -281,7 +316,7 @@ return function(env)
 					local lineTop = 0
 					if focused.MultiLine and focused.CursorPosition > 0 then
 						local before = focused.Text:sub(1, focused.CursorPosition - 1)
-						lineTop = math.max(0, C.measure(before, focused.TextSize, focused.AbsoluteSize.X - 24) - focused.TextSize) + 10
+						lineTop = math.max(0, C.measure(before, focused.TextSize, focused.AbsoluteSize.X - 24, focused.Font) - focused.TextSize) + 10
 					end
 					local lineBottom = top + lineTop + focused.TextSize + 8
 					if top + lineTop < 8 then y = y + top + lineTop - 8
@@ -297,7 +332,8 @@ return function(env)
 		if not self.Alive then return end
 		local uis = env.services.UserInputService
 		self.Touch = uis.TouchEnabled == true
-		self.Target = math.max(self.Touch and T.Size.TouchTarget or T.Size.Target, math.ceil(36 * self.TextScale))
+		self._metrics = env.require("density").resolve(self.Density, self.Touch, self.TextScale)
+		self.Target = self._metrics.Target
 		local size, origin = self._viewport.AbsoluteSize, self._viewport.AbsolutePosition
 		if size.X < 1 or size.Y < 1 then
 			local camera = env.services.Workspace.CurrentCamera
@@ -335,7 +371,7 @@ return function(env)
 		self._width, self._height = width, height
 		local short = height < (self.Touch and 440 or 380)
 		self._compact = width < T.Size.Compact or short
-		self._contentPad = self.Touch and self._compact and T.Size.MobilePad or T.Size.Pad
+		self._contentPad = self.Touch and self._compact and self._metrics.MobilePad or self._metrics.Pad
 		local titleHeight = math.ceil(26 * self.TextScale)
 		local subtitleHeight = math.ceil(18 * self.TextScale)
 		local header = short and math.max(52, self.Target + 8) or math.max(T.Size.Header, 14 + titleHeight + 3 + subtitleHeight + 12)
@@ -458,7 +494,11 @@ return function(env)
 		options = options or {}
 		local id = options.Id or options.Title or "project-uai"
 		assert(type(id) == "string" and #id > 0 and #id <= 100, "Window Id must contain 1-100 characters")
-		local theme = T.resolve(options.Theme, options.Accent)
+		local appearance = T.normalizeAppearance({ Theme = options.Theme, Accent = options.Accent, Colors = options.Colors,
+			Palette = options.Palette, Contrast = options.Contrast, Density = options.Density, Shape = options.Shape,
+			Typography = options.Typography, TabHeader = options.TabHeader, CornerRadius = options.CornerRadius,
+			TextScale = options.TextScale, ReducedMotion = options.ReducedMotion })
+		local theme = T.resolve(appearance.Theme, appearance.Accent, appearance.Colors, appearance.Palette, appearance.Contrast)
 		if options.Parent ~= nil then assert(typeof(options.Parent) == "Instance", "Parent must be a Roblox instance") end
 		if options.ToggleKey ~= nil and options.ToggleKey ~= false then
 			assert(typeof(options.ToggleKey) == "EnumItem" and tostring(options.ToggleKey):find("Enum.KeyCode.", 1, true) == 1, "ToggleKey must be an Enum.KeyCode or false")
@@ -471,8 +511,10 @@ return function(env)
 		if env.windows[id] then env.windows[id]:Destroy() end
 		local self = setmetatable({
 			Id = id, Title = tostring(options.Title or "Project UAI"), Alive = true, Visible = true,
-			Theme = theme, TextScale = C.number(options.TextScale, 1, 0.85, 1.5),
-			_themeName = options.Theme or "Dark", _accent = options.Accent,
+			Theme = theme, TextScale = appearance.TextScale, CornerRadius = appearance.CornerRadius,
+			Palette = appearance.Palette, Contrast = appearance.Contrast, Density = appearance.Density, Shape = appearance.Shape,
+			Typography = appearance.Typography, TabHeader = appearance.TabHeader,
+			_themeName = appearance.Theme, _accent = appearance.Accent, _colors = appearance.Colors,
 			_scope = C.scope(), _paint = {}, _paintNodes = {}, _reflow = {}, _keys = {}, _motions = {}, _presses = {}, Controls = {}, Tabs = {}, _toasts = {},
 			ReducedMotion = options.ReducedMotion == true, _motionOverride = options.ReducedMotion,
 			_requestedWidth = C.number(options.Width, T.Size.Width, 280, 1600),

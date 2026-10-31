@@ -113,6 +113,14 @@ return function(env)
 		for _, run in ipairs(M.runs) do if (not key or run.id == key) and run.status == "running" then run.cancelled = true end end
 		M.changed:fire({ kind = "stopping", runId = key })
 	end
+	function M.clearCompleted()
+		local count = 0
+		for index = #M.runs, 1, -1 do
+			if M.runs[index].status ~= "running" then table.remove(M.runs, index); count = count + 1 end
+		end
+		if count > 0 then M.changed:fire({ kind = "cleared", count = count }) end
+		return count
+	end
 	env.require("runtime/dispose").add(function() alive = false; M.stop(); M.changed:clear() end, "code runner")
 	return M
 end

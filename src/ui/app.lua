@@ -135,7 +135,7 @@ return function(env)
 			onClick = function()
 				modal.close()
 				if caps.clipboard then
-					local ok = pcall(caps.fn.clipboard, KOFI_URL)
+					local ok = env.require("runtime/clipboard").write(KOFI_URL)
 					overlay.toast(ok and "Ko-fi link copied" or KOFI_URL, ok and "good" or "info", ok and 2 or 4)
 				else
 					overlay.toast(KOFI_URL, "info", 4)
@@ -261,19 +261,29 @@ return function(env)
 		end)
 		dispose.add(function() stopView(); cancelViewRebuild() end, "app.viewSettings")
 
-		-- Ctrl-comma opens the settings, which is the shortcut the profile menu
-		-- advertises. It is bound here because a menu that names a key it has not bound
-		-- is the same kind of decoration as a label that names a mode it is not in.
-		dispose.connection(env.uis.InputBegan:Connect(function(input, processed)
-			if processed then return end
-			if input.KeyCode ~= Enum.KeyCode.Comma then return end
-			local ok, held = pcall(function()
-				return env.uis:IsKeyDown(Enum.KeyCode.LeftControl)
-					or env.uis:IsKeyDown(Enum.KeyCode.RightControl)
+		-- One policy owns shortcuts; typing, other dialogs and hidden windows keep
+		-- their input. The connection belongs to this mounted application.
+		local stopShortcuts = dispose.connection(env.uis.InputBegan:Connect(function(input, processed)
+			if not M.window or not M.window.visible or not M.screen.Enabled then return end
+			local ok, modifiers, focused = pcall(function()
+				local function held(left, right) return env.uis:IsKeyDown(left) or env.uis:IsKeyDown(right) end
+				return {
+					control = held(Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl),
+					shift = held(Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift),
+					alt = held(Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt),
+				}, env.uis:GetFocusedTextBox() ~= nil
 			end)
-			if not ok or not held then return end
-			M.showSettingsDialog("general")
-		end), "app.settingsShortcut")
+			if not ok then return end
+			local action = env.require("runtime/shortcuts").resolve(input.KeyCode.Name, modifiers, {
+				focused = focused, processed = processed, overlay = #overlay.open > 0,
+				gated = credentialAccessRequired(), disposed = M.disposed or dispose.draining,
+			})
+			if action == "commands" then M.showCommands()
+			elseif action == "search" then M.showSearch()
+			elseif action == "settings" then M.showSettingsDialog("general")
+			elseif action == "focus" then M.focusComposer() end
+		end), "app.shortcuts")
+		screen.Destroying:Connect(stopShortcuts)
 
 		-- Any conversation working is worth the launcher's dot, not just the open one:
 		-- switching conversation does not stop the one you left. The list fires on every
@@ -1260,6 +1270,27 @@ return function(env)
 		return env.require("ui/conversations").manage(M)
 	end
 
+	function M.showCommands(query)
+		if not M.syncCredentialAccess() then return end
+		return env.require("ui/commands").open(M, query)
+	end
+
+	function M.showShortcuts()
+		if not M.syncCredentialAccess() then return end
+		return env.require("ui/shortcuts").open()
+	end
+
+	function M.exportConversation(session)
+		if not M.syncCredentialAccess() then return end
+		return env.require("ui/conversation_export").open(session or sessions.current())
+	end
+
+	function M.focusComposer()
+		if not M.syncCredentialAccess() then return end
+		M.show("chat")
+		if M.chatPanel and M.chatPanel.composer then M.chatPanel.composer.focus() end
+	end
+
 	function M.showSettingsDialog(category)
 		if not M.syncCredentialAccess() then return end
 		return env.require("ui/panels/settingsdialog").open(category)
@@ -1279,9 +1310,11 @@ return function(env)
 			}
 		end
 		options[#options + 1] = { divider = true }
+		options[#options + 1] = { label = "Find a command", value = "commands", shortcut = "Ctrl+K" }
 		options[#options + 1] = { label = "New conversation", value = "new", icon = "plus" }
 		options[#options + 1] = { label = "Search conversations", value = "search", icon = "search" }
 		options[#options + 1] = { label = "Conversation folders", value = "folders" }
+		options[#options + 1] = { label = "Export conversation", value = "export" }
 		-- The one thing a phone has no other road to: with no sidebar there is no
 		-- profile row, and Settings is several taps deeper. Unload is offered here
 		-- so every layout mode can reach the same exit.
@@ -1322,6 +1355,7 @@ return function(env)
 					{ label = "Open", value = "open", icon = "arrowRight" },
 					{ label = "Rename", value = "rename", icon = "document" },
 					{ label = "Move to folder", value = "move" },
+					{ label = "Export Markdown", value = "export" },
 					{ label = "Delete", value = "delete", icon = "trash", tone = "bad" },
 				},
 				onSelect = function(value)
@@ -1341,6 +1375,8 @@ return function(env)
 						})
 					elseif value == "move" then
 						M.moveConversation(session)
+					elseif value == "export" then
+						M.exportConversation(session)
 					elseif value == "delete" then
 						overlay.confirm({
 							title = "Delete this conversation?",
@@ -1368,6 +1404,10 @@ return function(env)
 					M.showSearch()
 				elseif value == "folders" then
 					M.manageFolders()
+				elseif value == "commands" then
+					M.showCommands()
+				elseif value == "export" then
+					M.exportConversation()
 				elseif value == "unload" then
 					overlay.confirm({
 						title = "Unload UAI?",
@@ -1419,6 +1459,8 @@ return function(env)
 				env.require("ui/profile").menuHeader(),
 				{ label = "Settings", value = "settings", icon = "gear", shortcut = "Ctrl ," },
 				{ label = "Providers & models", value = "providers", icon = "sliders" },
+				{ label = "Find a command", value = "commands", shortcut = "Ctrl+K" },
+				{ label = "Keyboard shortcuts", value = "shortcuts" },
 				{ divider = true },
 				{ label = env.require("ui/changelog").menuLabel(), value = "changelog", icon = "spark" },
 				{ label = "ProjectUAI", value = "project", icon = "brand" },
@@ -1434,6 +1476,10 @@ return function(env)
 					M.showSettingsDialog("general")
 				elseif value == "providers" then
 					M.show("providers")
+				elseif value == "commands" then
+					M.showCommands()
+				elseif value == "shortcuts" then
+					M.showShortcuts()
 				elseif value == "changelog" then
 					M.showChangelog()
 				elseif value == "project" then
@@ -1505,8 +1551,8 @@ return function(env)
 				onClick = function()
 					local lines = {}
 					for _, row in ipairs(rows) do lines[#lines + 1] = row.key .. ": " .. row.value end
-					pcall(caps.fn.clipboard, table.concat(lines, "\n"))
-					overlay.toast("Copied", "good", 2)
+					local ok, why = env.require("runtime/clipboard").write(table.concat(lines, "\n"))
+					overlay.toast(ok and "Copied" or why, ok and "good" or "warn", 2)
 				end,
 			})
 		end
@@ -1567,7 +1613,10 @@ return function(env)
 			layoutOrder = 2,
 		})
 
-		local function render(query)
+		local shown = 12
+		local function render(query, keepPage)
+			if modal.closed then return end
+			if not keepPage then shown = 12; modal.scroll.instance.CanvasPosition = Vector2.new(0, 0) end
 			for _, child in ipairs(results:GetChildren()) do
 				if child:IsA("GuiObject") then child:Destroy() end
 			end
@@ -1600,7 +1649,7 @@ return function(env)
 				return
 			end
 			for index, match in ipairs(matches) do
-				if index > 12 then break end
+				if index > shown then break end
 				local row = P.rowButton(results, {
 					name = "Result_" .. tostring(index),
 					vertical = true,
@@ -1633,16 +1682,14 @@ return function(env)
 					layoutOrder = 2,
 				})
 			end
-			if #matches > 12 then
-				local more = P.text(results, {
+			if #matches > shown then
+				P.button(results, {
 					name = "SearchMore",
-					text = string.format("%d more not shown.", #matches - 12),
-					role = "caption",
-					color = theme.color.textTertiary,
-					auto = "Y",
+					text = string.format("Show more (%d remaining)", #matches - shown),
+					variant = "ghost", size = "sm",
 					layoutOrder = 100,
+					onClick = function() shown = shown + 12; render(query, true) end,
 				})
-				more.Size = UDim2.new(1, 0, 0, 0)
 			end
 		end
 
@@ -1654,7 +1701,9 @@ return function(env)
 			onSubmit = function(text) render(text) end,
 		})
 		render("")
-		clock.delay(theme.motion.fast, function() field.focus() end)
+		local focusSoon, stopFocus = clock.debounce(function() if not modal.closed then field.focus() end end, theme.motion.fast)
+		focusSoon()
+		modal.scrim.Destroying:Connect(stopFocus)
 
 		P.button(modal.footer, {
 			text = "Close",

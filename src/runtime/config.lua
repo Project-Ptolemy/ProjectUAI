@@ -37,6 +37,8 @@ return function(env)
 			-- keyboard layout the character would not.
 			quickKey = "Semicolon",
 			showUsage = true,
+			modelFavorites = {},
+			recentModels = {},
 			-- Appearance choices that name a family or a palette rather than a number.
 			-- All four are read by ui/theme, so each one changes what is on screen.
 			interfaceFont = "builder",
@@ -163,7 +165,7 @@ return function(env)
 			-- Declared-tool profile. "all" keeps every tool declared; another
 			-- profile hides the long tail behind tool_search without changing
 			-- dispatch scope or permissions.
-			toolProfile = "all",
+			toolProfile = "focused",
 			-- Durable evidence policy. "large" copies only results at or above
 			-- evidenceMinBytes; source and file tools already have a durable home.
 			evidence = "large",

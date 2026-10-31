@@ -199,6 +199,9 @@ return function(env)
 				return "Provider credentials were not saved. Enter this session's API key or custom connection credentials, then save the provider. Settings > Privacy controls credential storage."
 			end
 		end
+		if record.preset == "projectuai-free" and not communityKey.isApplied(record) then
+			return "Project UAI Free uses community access at its official endpoint. Choose the separate HCNSEC provider for a personal key, or Custom endpoint for another server."
+		end
 		-- Pausing is a valid saved configuration, but must stop dispatch before a
 		-- missing effective key could become an anonymous HTTP request.
 		if not (opts and opts.configuration) and #M.requestKeys(record) == 0 then
@@ -603,10 +606,15 @@ return function(env)
 		end
 		local keysValid, keysProblem = providerKeys.validate(record)
 		if not keysValid then problems[#problems + 1] = keysProblem end
+		local headersValid, headersProblem = env.require("net/headers").validate(record.headers)
+		if not headersValid then problems[#problems + 1] = headersProblem end
 		-- Azure takes the model from the deployment in the URL; everyone else needs
 		-- one named, and nothing here will guess it.
 		if record.preset ~= "azure" and util.trim(record.model) == "" then
 			problems[#problems + 1] = "fetch the model list or add a model id"
+		elseif util.trim(record.model) ~= "" then
+			local clean, why = env.require("provider/model_id").parse(record.model)
+			if not clean then problems[#problems + 1] = why end
 		end
 		if M.needsExecutor(record) and caps.http ~= "executor" then
 			problems[#problems + 1] = "local/private endpoints need an executor HTTP function on the machine that can reach the server; this host has none"
@@ -676,14 +684,15 @@ return function(env)
 		local retired = string.gsub(RETIRED_REFERER, "/+$", "")
 		local changed = 0
 		for _, record in ipairs(stored) do
-			if type(record) == "table" and (communityKey.migrate(record) or communityKey.restore(record)) then changed = changed + 1 end
+			if type(record) == "table" then
+				local migrated = communityKey.migrate(record)
+				local restored = communityKey.restore(record)
+				local separated = communityKey.separate(record)
+				if migrated or restored or separated then changed = changed + 1 end
+			end
 			if type(record) == "table" and retiredOpencode(record.baseUrl) then
 				record.baseUrl = "https://opencode.ai/zen/v1"
 				record.wsUrl = ""
-				changed = changed + 1
-			end
-			if type(record) == "table" and record.preset == "hcnsec" and record.label == "HCNSEC" then
-				record.label = catalog.get("hcnsec").label
 				changed = changed + 1
 			end
 			local headers = type(record) == "table" and record.headers
@@ -718,6 +727,7 @@ return function(env)
 		if config.get("providers.active", "") == id then
 			config.set("providers.active", kept[1] and kept[1].id or "")
 		end
+		env.require("provider/model_preferences").forget(id)
 		M.changed:fire("remove", id)
 		return true
 	end
@@ -750,12 +760,19 @@ return function(env)
 		if vault.locked or vault.busy then return false, "Unlock the credential vault and finish any vault operation before editing providers." end
 		local record = M.get(id)
 		if not record then return false end
-		record.model = model
-		if not util.find(record.models or {}, function(item) return item == model end) then
-			record.models = record.models or {}
-			table.insert(record.models, 1, model)
+		local clean, why = env.require("provider/model_id").parse(model)
+		if not clean then return false, why end
+		local previousModel, previous = record.model, record.models
+		record.model, record.models = clean, util.deepCopy(record.models or {})
+		if not util.find(record.models, function(item) return item == clean end) then
+			table.insert(record.models, 1, clean)
 		end
-		M.save(record, { force = true })
+		local ok, problems = M.save(record, { force = true })
+		if not ok then
+			record.model, record.models = previousModel, previous
+			return false, type(problems) == "table" and table.concat(problems, "; ") or problems
+		end
+		env.require("provider/model_preferences").remember(record, clean)
 		M.changed:fire("model", record)
 		return true
 	end
@@ -783,7 +800,9 @@ return function(env)
 	-- Health -----------------------------------------------------------------
 
 	local function health(record)
-		record.health = record.health or { ok = 0, fail = 0, streak = 0, lastError = "", cooldownUntil = 0 }
+		local clean = env.require("provider/health").read(record)
+		record.health = type(record.health) == "table" and record.health or {}
+		for key, value in pairs(clean) do record.health[key] = value end
 		return record.health
 	end
 

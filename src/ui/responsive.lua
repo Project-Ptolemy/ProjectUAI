@@ -421,6 +421,29 @@ return function(env)
 			M.reduceMotion and "reduced-motion" or "")
 	end
 
+	-- Reveal one result without stealing text focus or changing other panels.
+	-- A tall row aligns its beginning so the label remains visible.
+	function M.reveal(target, scroll, margin)
+		if not target or not scroll or not target.Parent or not scroll.Parent
+			or not target:IsDescendantOf(scroll) then return false end
+		local node = target
+		while node and node ~= scroll do
+			if node:IsA("GuiObject") and not node.Visible then return false end
+			node = node.Parent
+		end
+		local height = scroll.AbsoluteWindowSize.Y
+		if height <= 0 then height = scroll.AbsoluteSize.Y end
+		if height <= 0 then return false end
+		margin = math.max(0, math.min(tonumber(margin) or 0, height / 4))
+		local top = target.AbsolutePosition.Y - scroll.AbsolutePosition.Y
+		local bottom = top + target.AbsoluteSize.Y
+		local delta = top < margin and top - margin
+			or (bottom > height - margin and math.min(top - margin, bottom - height + margin) or 0)
+		local maximum = math.max(0, scroll.AbsoluteCanvasSize.Y - height)
+		scroll.CanvasPosition = Vector2.new(scroll.CanvasPosition.X, util.clamp(scroll.CanvasPosition.Y + delta, 0, maximum))
+		return true
+	end
+
 	-- Reveal the active mobile field after the keyboard and its ancestors finish
 	-- resizing. Only its scrolling ancestors move; reading another panel stays put.
 	function M.revealFocused()

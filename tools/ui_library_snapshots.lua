@@ -48,22 +48,31 @@ for _, viewport in ipairs({ { 1280, 800, false }, { 390, 844, true }, { 844, 390
 	h.game.HttpGet = function() return library end
 	local window = assert(h.sandbox.loadstring(example, "showcase"))()
 	local prefix = (viewport[3] and "mobile-" or "desktop-") .. viewport[1] .. "x" .. viewport[2]
-	local function snapshot(name, keyboard)
+	local function snapshot(name, keyboard, revealName)
 		h.settle(0.3)
 		local file = assert(io.open(directory .. "/" .. prefix .. "-" .. name .. ".json", "wb"))
 		file:write(h.json.encode({ name = name, engine = "LuaJIT", width = viewport[1], height = viewport[2],
-			keyboard = keyboard or 0, root = tree(window.ScreenGui) }))
+			keyboard = keyboard or 0, revealName = revealName, root = tree(window.ScreenGui) }))
 		file:close()
 		print("snapshot " .. prefix .. "-" .. name)
 	end
 	snapshot("overview")
-	window:SelectTab("Controls"); snapshot("controls")
+	for _, palette in ipairs({ "Neutral", "Ocean", "Forest", "Rose" }) do
+		window:SetAppearance({ Palette = palette, Accent = false, Colors = {}, TabHeader = "Simple" })
+		snapshot("palette-" .. palette:lower())
+	end
+	window:SetAppearance({ Palette = "Neutral", Contrast = "High", Density = "Compact", Shape = "Square", Typography = "System" })
+	snapshot("high-contrast-compact")
+	window:SetAppearance({ Contrast = "Standard", Density = "Spacious", Shape = "Soft", Typography = "Mono" })
+	snapshot("spacious-mono")
+	window:ResetAppearance()
+	window:SelectTab("controls"); snapshot("controls")
 	window:Get("mode"):Open(); snapshot("dropdown"); window:_CloseOverlay()
 	window:SelectTab("__uai_appearance_tab"); snapshot("appearance")
 	window:Get("__uai_appearance_accent"):Open(); snapshot("color"); window:_CloseOverlay()
 	window:SetAppearance({ Colors = { Canvas = h.dt.Color3.fromRGB(19, 28, 34), Surface = h.dt.Color3.fromRGB(26, 38, 46) }, Accent = h.dt.Color3.fromRGB(122, 205, 191), CornerRadius = 4 })
 	snapshot("custom-appearance"); window:ResetAppearance()
-	window:SelectTab("Overview"); window:SetTheme("Light"); snapshot("light"); window:SetTheme("Dark")
+	window:SelectTab("overview"); window:SetTheme("Light"); snapshot("light"); window:SetTheme("Dark")
 	window:Dialog({ Title = "Reset session?", Content = "Your selection and progress will return to their defaults.", Buttons = {
 		{ Text = "Cancel" }, { Text = "Reset", Style = "Danger" },
 	} }); snapshot("dialog"); window:_CloseOverlay()
@@ -73,7 +82,7 @@ for _, viewport in ipairs({ { 1280, 800, false }, { 390, 844, true }, { 844, 390
 	window:Minimize(); snapshot("minimized"); window:Show()
 	window:SetTheme("Light"); window:Minimize(); snapshot("minimized-light"); window:Show(); window:SetTheme("Dark")
 	window:SetTextScale(1.5); window:Minimize(); snapshot("minimized-large-text"); window:Show(); window:SetTextScale(1)
-	window:SelectTab("Overview"); window:SetTextScale(1.5); snapshot("large-text"); window:SetTextScale(1)
+	window:SelectTab("overview"); window:SetTextScale(1.5); snapshot("large-text"); window:SetTextScale(1)
 	if viewport[3] then
 		local keyboard = math.floor(viewport[2] * 0.42)
 		h.services.UserInputService.OnScreenKeyboardVisible = true
@@ -82,4 +91,16 @@ for _, viewport in ipairs({ { 1280, 800, false }, { 390, 844, true }, { 844, 390
 		window:_Layout(); snapshot("keyboard", keyboard)
 	end
 	window:Destroy()
+	h.services.UserInputService.OnScreenKeyboardVisible = false
+	window = assert(h.sandbox.loadstring(read("ui-lib/examples/workspace.lua"), "workspace"))()
+	snapshot("workspace-list")
+	window:Get("tasks"):Set("lighting")
+	-- The mock does not resolve list positions/AutomaticSize. Let Chromium reveal
+	-- the same target after its approximate layout, without claiming native input QA.
+	window:Reveal("preview"); snapshot("workspace-readout", nil, "Control_preview")
+	window:Reveal("actions"); snapshot("workspace-actions", nil, "Control_actions")
+	window:SetAppearance({ Density = "Compact", Typography = "Mono", TextScale = 1.5 })
+	window:Reveal("actions"); snapshot("workspace-large-text", nil, "Control_actions")
+	window:Destroy(); h.settle(0.3)
+	assert(#h.errors() == 0 and #h.instanceState.typeErrors == 0, "Preview scenario reported a runtime/property error")
 end

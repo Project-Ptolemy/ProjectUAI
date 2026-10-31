@@ -45,6 +45,8 @@ const { createOpenCode } = require('./opencode');
 const { createKilo } = require('./kilo');
 const { createCline } = require('./cline');
 const { createMcp } = require('./mcp');
+const { createVaults } = require('./vaults');
+const { publicError: vaultError } = require('./vault-errors');
 
 const args = process.argv.slice(2);
 function flag(name, fallback) {
@@ -111,6 +113,7 @@ const pictures = LEGACY ? null : createPictureStore({ limits: PICTURE_LIMITS });
 const opencode = createOpenCode();
 const kilo = createKilo({ onChange: value => broadcast({ kind: 'kilo:state', kilo: value }) });
 const cline = createCline({ onChange: value => broadcast({ kind: 'cline:state', cline: value }) });
+const vaults = createVaults();
 const inference = createInference({ publish: broadcast, legacy: LEGACY,
   prepareBody: (body, sessionId) => pictures ? pictures.providerBody(body, sessionId) : body, opencode, kilo, cline });
 let gameInstance = null;
@@ -790,6 +793,19 @@ const server = http.createServer(async (req, res) => {
           args: [...(nativeCommand ? [] : [path.join(__dirname, 'server.js')]), '--mcp-stdio', '--url', `http://${HOST}:${PORT}`],
           tokenEnv: 'UAI_BRIDGE_TOKEN', discovery: DESKTOP },
       });
+    } else if (route === '/api/vaults/config' || route === '/api/vaults') {
+      try {
+        const configuration = route.endsWith('/config');
+        if (req.method === 'GET') sendJson(res, 200, vaults.list(configuration));
+        else if (post) {
+          const input = await readJson(req, configuration ? 65536 : 8 << 20);
+          sendJson(res, 200, configuration ? vaults.configure(input) : vaults.run(input));
+        } else sendJson(res, 405, { error: 'method not allowed' });
+      } catch (error) {
+        const result = vaultError(error);
+        if (result.status === 413) res.setHeader('Connection', 'close');
+        sendJson(res, result.status, { error: result.error });
+      }
     } else if (route === '/api/hello' && req.method === 'GET') {
       const capabilities = { browserStream: { schema: 1, replay: true }, agentInbox: { waitHeader: 'X-UAI-Poll-Wait-Ms', maxWaitMs: HOLD_MS } };
       capabilities.inferencePreview = { schema: 1 };
@@ -797,6 +813,7 @@ const server = http.createServer(async (req, res) => {
       capabilities.kilo = kilo.capability();
       capabilities.cline = cline.capability();
       capabilities.mcp = mcp.capability();
+      capabilities.obsidian = vaults.capability();
       if (!LEGACY) capabilities.pictures = { mode: 'provider-image-content', version: 2 };
       sendJson(res, 200, {
         ok: true, connected: state.connected, protocol: 2, instance: inference.instance,

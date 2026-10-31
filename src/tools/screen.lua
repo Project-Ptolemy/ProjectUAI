@@ -6,6 +6,8 @@ return function(env)
 	return {
 		{
 			name = "ray_target",
+			examples = { { title = "Inspect the crosshair target", arguments = { x = 0.5, y = 0.5, distance = 1000 },
+				note = "Returns a ray hit and instance identity, not a screenshot or server ownership proof." } },
 			risk = "read",
 			needs = { "gui" },
 			description = "Raycast from a viewport fraction and return exact instance identity, hit position, normal, distance and material. Defaults to the crosshair, 10,000 studs, excluding your character and water. Does not capture pixels or infer ownership.",

@@ -4,6 +4,7 @@ local h = require("env").new()
 h.services.UserInputService.TouchEnabled, h.services.UserInputService.MouseEnabled = true, false
 h.setViewport(390, 720)
 local app = assert(h.boot()); h.settle(0.5)
+require("password_fixture")(h, app)
 local checks = 0
 local function check(label, value) assert(value, label); checks = checks + 1; print("ok " .. label) end
 local helper = app.env.require("ui/deadline_help")

@@ -527,9 +527,7 @@ return function(env)
 
 		local started = clock.ms()
 		local relayUnlimited = env.require("net/transport").unlimited(request)
-		local deadline = relayUnlimited and math.huge
-			or math.min(tonumber(request.deadlineMs) or math.huge,
-				started + math.max(1, math.min(300, tonumber(requestTimeout(request)) or 120)) * 1000)
+		local deadline = env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
 		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local lastRequestMs = 0
 		local rotationsLeft = math.max(#pool - 1, 0)

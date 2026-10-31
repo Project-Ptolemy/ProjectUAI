@@ -31,6 +31,9 @@ return function(env)
 			log.warn("tools", "reserved tool name: " .. tool.name)
 			return false
 		end
+		if env.require("agent/tool_families").isFamily(tool.name) then
+			log.warn("tools", "reserved tool family name: " .. tool.name); return false
+		end
 		if M.tools[tool.name] then
 			log.warn("tools", "duplicate tool name: " .. tool.name)
 			return false
@@ -104,6 +107,7 @@ return function(env)
 		script = "Code",
 		coding = "Code workspace",
 		fs = "Files",
+		obsidian = "Obsidian vaults",
 		net = "HTTP",
 		web = "Web",
 		players = "Players",
@@ -253,8 +257,13 @@ return function(env)
 			parameters = normaliseSchema(tool.parameters),
 		} }
 	end
+	function M.examples(tool) return env.require("agent/tool_examples").text(tool) end
 
 	function M.definitions(opts)
+		if opts and opts.profile == "focused" then
+			local scope = util.copy(opts); scope.profile = nil
+			return env.require("agent/tool_families").definitions(M.available(scope), M.definition)
+		end
 		local out = {}
 		for _, tool in ipairs(M.available(opts)) do out[#out + 1] = M.definition(tool) end
 		return out
@@ -330,7 +339,7 @@ return function(env)
 	end
 
 	-- One call. Always returns a result table; never raises.
-	function M.dispatch(call, ctx)
+	local function dispatch(call, ctx)
 		local fn = call["function"] or {}
 		local name = fn.name or call.name or "unknown"
 		local started = clock.ms()
@@ -352,6 +361,7 @@ return function(env)
 			result.ms = clock.since(started)
 			return result
 		end
+		if env.require("agent/tool_families").isFamily(name) then return env.require("agent/tool_families").dispatch(call, ctx, M) end
 
 		local tool = M.tools[name]
 		local registration = registrations[name]
@@ -384,6 +394,8 @@ return function(env)
 				or (owner.toolGroups and not owner.toolGroups[tool.group])
 				or (owner.toolExclude and owner.toolExclude[name])) then
 				reason = "it is outside this conversation's tool scope"
+			elseif ctx and ctx.requestToolNames and not ctx.requestToolNames[name] then
+				reason = "it was not available for this request"
 			else
 				return false
 			end
@@ -605,6 +617,17 @@ return function(env)
 			if okEvidence and evidence and evidence.enabled then
 				result.evidenceId = evidence.record(ctx.session, tool.name, text, after.data, { ok = handlerOk, ms = result.ms })
 			end
+		end
+		return result
+	end
+	function M.dispatch(call, ctx)
+		local workflow = env.require("runtime/script_workflow")
+		local started = workflow.capture(ctx and ctx.session)
+		local result = dispatch(call, ctx)
+		-- Family calls already pass here once for their underlying action.
+		if ctx and ctx.session and ctx.session.id and not result.targetName then
+			local ok, why = pcall(function() workflow.observe(ctx.session, result.name, result, started) end)
+			if not ok then log.warn("workflow", "Could not retain tool verification state", why) end
 		end
 		return result
 	end

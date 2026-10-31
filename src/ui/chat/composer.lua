@@ -28,7 +28,8 @@ return function(env)
 	local traits = env.require("provider/traits")
 
 	local M = {}
-	-- UI-only drafts survive conversation switches and layout/theme rebuilds.
+	-- Live attachment identities survive layout rebuilds; bounded recovery snapshots
+	-- are saved by the session alongside its existing conversation history.
 	local drafts = {}
 	local draftViews = {}
 	local pendingSends = {}
@@ -78,6 +79,9 @@ return function(env)
 					-- advance it so a returning send cannot erase a newer question.
 					textVersion = (previous.textVersion or 0) + (previous.text ~= text and 1 or 0),
 				}
+				local saved, why = sessions.threads[draftId].setDraft(drafts[draftId])
+				if not saved and why ~= "Conversation is unavailable" and why ~= composer.draftWarning then overlay.toast(why, "warn", 5) end
+				composer.draftWarning = why
 			end
 		end
 		local surface = P.frame(shell, {
@@ -165,8 +169,8 @@ return function(env)
 				options = options,
 				onSelect = function(value)
 					if caps.clipboard then
-						pcall(caps.fn.clipboard, tostring(value))
-						overlay.toast("Copied", "good", 1.5)
+						local ok, why = env.require("runtime/clipboard").write(tostring(value))
+						overlay.toast(ok and "Copied" or why, ok and "good" or "warn", 1.5)
 					else
 						overlay.toast(tostring(value), "info", 3)
 					end
@@ -207,8 +211,8 @@ return function(env)
 							end)(),
 							onSelect = function(fact)
 								if caps.clipboard then
-									pcall(caps.fn.clipboard, tostring(fact))
-									overlay.toast("Copied", "good", 1.5)
+									local ok, why = env.require("runtime/clipboard").write(tostring(fact))
+									overlay.toast(ok and "Copied" or why, ok and "good" or "warn", 1.5)
 								else
 									overlay.toast(tostring(fact), "info", 3)
 								end
@@ -356,12 +360,17 @@ return function(env)
 					if not alive() then return end
 					local function attachFile(path)
 						if not alive() then return end
+						local target, owner = draftId, sessions.threads[draftId]
+						local function cancelled() return not alive() or not owner or owner.removed or draftId ~= target or sessions.threads[target] ~= owner end
 						local body, err, resolved = fsx.readUser(path)
+						if cancelled() then return end
 						if not body then
 							overlay.toast(tostring(err), "warn", 3)
 							return
 						end
-						local entry = attachments.describe(resolved, body, path)
+						local entry, why = attachments.describe(resolved, body, path, cancelled)
+						if cancelled() then return end
+						if not entry then overlay.toast(tostring(why), "warn", 3); return end
 						if #body <= attachments.INLINE_LIMIT then entry.file, entry.text = nil, body end
 						composer.attachments[#composer.attachments + 1] = entry
 						renderAttachments()
@@ -482,6 +491,7 @@ return function(env)
 					attachments = kept,
 					expanded = current.expanded and not (clearText and #kept == 0 and current.expanded == sent.expanded),
 				}
+				sessions.threads[id].setDraft(drafts[id])
 				if live then live.restore() end
 			end
 			pendingSends[id] = nil
@@ -547,7 +557,13 @@ return function(env)
 					previousText = text
 					if not inserted then return end
 					local target = draftId
-					local entry, err = attachments.save(inserted)
+					local owner, version = sessions.threads[target], drafts[target] and drafts[target].textVersion
+					local function cancelled()
+						return not alive() or not owner or owner.removed or draftId ~= target or sessions.threads[target] ~= owner
+							or composer.field.get() ~= text or not drafts[target] or drafts[target].textVersion ~= version
+					end
+					local entry, err = attachments.save(inserted, nil, cancelled)
+					if cancelled() then return end
 					if not entry then overlay.toast(tostring(err), "warn", 4); return end
 					-- A yielding host must not clear a newer draft or another chat.
 					if not alive() or draftId ~= target or composer.field.get() ~= text then return end
@@ -650,6 +666,8 @@ return function(env)
 			name = "ComposerOptions", icon = "ellipsis", variant = "ghost", diameter = theme.size.chip,
 			onClick = function(handle)
 				local options = {
+					{ label = "Find in conversation", detail = "Search messages, replies and errors", value = "search" },
+					{ label = "Draft details", detail = env.require("runtime/text_metrics").label(composer.field.get()), value = "draft" },
 					{ label = "Chat loops", detail = "Status, quiz scores, and stop controls", value = "loops", icon = "sliders" },
 					{ label = "Prompt library", detail = "Explore, create, or diagnose", value = "prompts", icon = "spark" },
 					{ label = "Model and effort", detail = modelLabel.Text, value = "model", icon = "spark" },
@@ -680,16 +698,18 @@ return function(env)
 				options[#options + 1] = { divider = true }
 				options[#options + 1] = { label = "Clear conversation", value = "clear", icon = "trash", tone = "bad" }
 				overlay.menu({ target = handle.instance, title = "Message options", options = options, onSelect = function(value)
-					if value == "prompts" then promptMenu(handle.instance)
+					if value == "search" then env.require("ui/chat/search").open(sessions.current())
+					elseif value == "draft" then env.require("ui/chat/draft").open(composer, sessions.current())
+					elseif value == "prompts" then promptMenu(handle.instance)
 					elseif value == "attachments" then
-						local attached = {}
-						for index, entry in ipairs(composer.attachments) do
-							attached[#attached + 1] = { label = entry.label, detail = "Tap to remove", value = index, icon = "document" }
-						end
-						overlay.menu({ target = handle.instance, title = "Attachments", options = attached, onSelect = function(index)
-							if not alive() or not composer.attachments[index] then return end
-							table.remove(composer.attachments, index); renderAttachments()
-						end })
+						local owner = draftId
+						env.require("ui/chat/attachment_details").open(copyAttachments(composer.attachments), function(wanted)
+							if not alive() or draftId ~= owner then return false end
+							for index, entry in ipairs(composer.attachments) do
+								if entry == wanted then table.remove(composer.attachments, index); renderAttachments(); return true end
+							end
+							return false
+						end)
 					elseif value == "loops" then env.require("ui/chat/loops").open(handle.instance)
 					elseif value == "model" then M.providerMenu(handle.instance, composer)
 					elseif value == "permissions" then
@@ -917,6 +937,10 @@ return function(env)
 			saveDraft()
 			if draftId and draftViews[draftId] == draftView then draftViews[draftId] = nil end
 			draftId = session.id
+			if not drafts[draftId] and session.draft then
+				drafts[draftId] = env.require("runtime/draft_store").restore(session.draft)
+				if drafts[draftId] then drafts[draftId].textVersion = 0 end
+			end
 			draftViews[draftId] = draftView
 			restoreDraft()
 			composer.syncQueue()

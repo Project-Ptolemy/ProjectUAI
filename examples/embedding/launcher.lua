@@ -20,6 +20,13 @@ assert(uai.sdk and uai.sdk.features.resourceScopes, "Update the client to a buil
 local UI = loadModule("dist/uai-ui.lua")()
 local installModel = loadModule("examples/embedding/host_tools.lua")()
 local createPanel = loadModule("examples/embedding/assistant_panel.lua")()
+local previousModel = uai.env.context.workbenchExample
 local model = installModel(uai)
-local window, session = createPanel(uai, UI, { Model = model })
+local ok, window, session = pcall(createPanel, uai, UI, { Model = model })
+if not ok then
+	local partial = UI:GetWindow("embedding-workbench")
+	if partial then partial:Destroy() end
+	if model ~= previousModel then model.destroy() end
+	error("Could not open the assistant workbench: " .. tostring(window))
+end
 return { client = uai, UI = UI, model = model, window = window, session = session }

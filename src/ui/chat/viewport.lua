@@ -214,6 +214,11 @@ return function(env)
 			local offset = top(anchor.root)
 			return offset and math.max(0, offset - anchor.offset) or nil
 		end
+		function manager.offset(root)
+			if not alive or not root or not root.Parent then return nil end
+			invalidate()
+			return top(root)
+		end
 		function manager.wake() invalidate(); queue() end
 		function manager.setVisible(value)
 			enabled = value == true

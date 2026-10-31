@@ -5,6 +5,7 @@ return function(env)
 	local dispose = env.require("runtime/dispose")
 	local tools = env.require("agent/registry")
 	local hooks = env.require("agent/hooks")
+	local clock = env.require("runtime/clock")
 	local M = {}
 	local owners = setmetatable({}, { __mode = "k" })
 	local TYPES = { object = true, array = true, string = true, number = true, integer = true, boolean = true, null = true }
@@ -33,7 +34,12 @@ return function(env)
 	local function copyData(value, ancestors, state, depth)
 		local kind = type(value)
 		if kind ~= "table" then
-			if kind == "string" or kind == "boolean" or (kind == "number" and finite(value)) then return value end
+			if kind == "string" then
+				state.bytes = state.bytes + #value
+				if state.bytes > 262144 or not util.validUtf8(value) then error("parameters exceed 256 KiB or contain invalid UTF-8", 0) end
+				return value
+			end
+			if kind == "boolean" or (kind == "number" and finite(value)) then return value end
 			error("parameters must contain only finite JSON data", 0)
 		end
 		if depth > 32 or state.nodes >= 8192 then error("parameters exceed the schema size/depth limit", 0) end
@@ -45,6 +51,10 @@ return function(env)
 			if state.nodes > 8192 then error("parameters exceed the schema size/depth limit", 0) end
 			if type(key) ~= "string" and not (finite(key) and key >= 1 and key == math.floor(key)) then
 				error("parameters contain an invalid table key", 0)
+			end
+			if type(key) == "string" then
+				state.bytes = state.bytes + #key
+				if state.bytes > 262144 or not util.validUtf8(key) then error("parameter names exceed the schema size limit or contain invalid UTF-8", 0) end
 			end
 			out[key] = copyData(child, ancestors, state, depth + 1)
 		end
@@ -65,6 +75,12 @@ return function(env)
 		for _, key in ipairs({ "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems" }) do
 			if schema[key] ~= nil and not finite(schema[key]) then return false, "schema " .. key .. " must be a finite number" end
 		end
+		for _, key in ipairs({ "minLength", "maxLength", "minItems", "maxItems" }) do
+			if schema[key] ~= nil and (schema[key] < 0 or schema[key] % 1 ~= 0) then return false, "schema " .. key .. " must be a nonnegative integer" end
+		end
+		for _, pair in ipairs({ { "minimum", "maximum" }, { "minLength", "maxLength" }, { "minItems", "maxItems" } }) do
+			if schema[pair[1]] ~= nil and schema[pair[2]] ~= nil and schema[pair[1]] > schema[pair[2]] then return false, "schema minimum exceeds its maximum" end
+		end
 		if schema.properties ~= nil then
 			if type(schema.properties) ~= "table" then return false, "schema properties must be a table" end
 			if not util.isEmptyObject(schema.properties) then
@@ -75,7 +91,23 @@ return function(env)
 				end
 			end
 		end
-		if schema.items ~= nil then return validateSchema(schema.items) end
+		if schema.items ~= nil then
+			local ok, why = validateSchema(schema.items)
+			if not ok then return false, why end
+		end
+		if schema.additionalProperties ~= nil and type(schema.additionalProperties) ~= "boolean" then
+			local ok, why = validateSchema(schema.additionalProperties)
+			if not ok then return false, why end
+		end
+		for _, key in ipairs({ "anyOf", "oneOf", "allOf" }) do
+			if schema[key] ~= nil then
+				if not array(schema[key]) or #schema[key] == 0 then return false, "schema " .. key .. " must be a nonempty schema array" end
+				for _, child in ipairs(schema[key]) do
+					local ok, why = validateSchema(child)
+					if not ok then return false, why end
+				end
+			end
+		end
 		return true
 	end
 
@@ -84,7 +116,9 @@ return function(env)
 		if not identifier(input.name) then return nil, "tool name must use 1-64 letters, digits, underscores or hyphens" end
 		if input.group ~= nil and not identifier(input.group) then return nil, "tool group must use 1-64 letters, digits, underscores or hyphens" end
 		if input.risk ~= nil and input.risk ~= "read" and input.risk ~= "write" and input.risk ~= "danger" then return nil, "tool risk must be read, write or danger" end
-		if type(input.description) ~= "string" or util.trim(input.description) == "" then return nil, "tool description must be a nonempty string" end
+		if type(input.description) ~= "string" or util.trim(input.description) == "" or #input.description > 16000 or not util.validUtf8(input.description) then
+			return nil, "tool description must be nonempty UTF-8 text of at most 16,000 bytes"
+		end
 		if type(input.run) ~= "function" then return nil, "tool run must be a function" end
 		if input.prepare ~= nil and type(input.prepare) ~= "function" then return nil, "tool prepare must be a function" end
 		if input.timeout ~= nil and type(input.timeout) ~= "function" and not (finite(input.timeout) and input.timeout > 0) then return nil, "tool timeout must be a positive finite number or function" end
@@ -92,7 +126,7 @@ return function(env)
 		local parameters = input.parameters
 		if parameters == nil then parameters = { type = "object", properties = {}, required = {} } end
 		if type(parameters) ~= "table" or parameters.type ~= "object" then return nil, "tool parameters must be an object schema" end
-		local copied, schema = pcall(copyData, parameters, {}, { nodes = 0 }, 0)
+		local copied, schema = pcall(copyData, parameters, {}, { nodes = 0, bytes = 0 }, 0)
 		if not copied then return nil, tostring(schema) end
 		local valid, why = validateSchema(schema)
 		if not valid then return nil, why end
@@ -114,6 +148,7 @@ return function(env)
 	function M.create(handle, id)
 		if type(handle) ~= "table" or handle.alive ~= true then return nil, "client is unloaded" end
 		if type(id) ~= "string" or util.trim(id) == "" or #id > 128 then return nil, "scope id must be a nonempty string of at most 128 bytes" end
+		if not util.validUtf8(id) or id:find("[%z\1-\31\127]") then return nil, "scope id must use valid UTF-8 without control characters" end
 		if dispose.draining then return nil, "client is unloading" end
 		local owned = owners[handle]
 		if not owned then owned = {}; owners[handle] = owned end
@@ -171,6 +206,25 @@ return function(env)
 			if not disconnect then callback = nil; return nil, "signal did not return an unsubscribe function or connection" end
 			return scope.give(function() callback = nil; disconnect() end)
 		end
+
+		function scope.delay(seconds, fn, ...)
+			if not active() then return nil, "scope is destroyed or client is unloaded" end
+			if not finite(seconds) or seconds < 0 then return nil, "delay must be a finite nonnegative number" end
+			if type(fn) ~= "function" then return nil, "delayed callback must be a function" end
+			local callback, args = fn, { n = select("#", ...), ... }
+			local release, why = scope.give(function() callback, args = nil, nil end)
+			if not release then return nil, why end
+			clock.delay(seconds, function()
+				if not active() or not callback then return end
+				local run, values = callback, args
+				release()
+				local ok, err = pcall(run, unpack(values, 1, values.n))
+				if not ok then log.warn("embedding", "scope " .. id .. " delayed callback failed", err) end
+			end)
+			return release
+		end
+
+		function scope.resourceCount() return #entries end
 
 		function scope.hook(kind, fn, opts)
 			if not active() then return nil, "scope is destroyed or client is unloaded" end

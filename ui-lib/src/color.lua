@@ -40,11 +40,6 @@ return function(env)
 		function self:Get() return self._value.Color, self._value.Alpha end
 		function self:GetAlpha() return self._value.Alpha end
 		function self:SetAlpha(alpha, silent) return self:Set({ Color = self._value.Color, Alpha = alpha }, silent) end
-		function self:_Emit()
-			C.call(self._window, options.Callback, self:Get())
-			if not self.Alive then return end
-			for callback in pairs(self._listeners) do C.call(self._window, callback, self:Get()); if not self.Alive then break end end
-		end
 		self._encode = function()
 			local color, alpha = self:Get()
 			return { rgb = { color.R, color.G, color.B }, alpha = alpha }
