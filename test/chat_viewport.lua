@@ -37,6 +37,60 @@ local function chunks(count, height)
 	return f, scroll, viewport, rows, built
 end
 
+-- Deliver a pending layout notification while the native geometry getter runs.
+-- The normal mock publishes geometry synchronously, so this ordering is explicit.
+local function onGeometryRead(node, callback)
+	local original, hooked = getmetatable(node), {}
+	for key, value in pairs(original) do hooked[key] = value end
+	hooked.__index = function(self, key)
+		if key == "AbsoluteSize" then callback() end
+		return original.__index(self, key)
+	end
+	setmetatable(node, hooked)
+	return function() setmetatable(node, original) end
+end
+
+case("layout invalidation during a sibling measurement preserves the reading anchor", function()
+	local f, scroll, viewport, rows = chunks(1, 100)
+	local P, D = f.env.require("ui/primitives"), f.h.sandbox.UDim2
+	local header = P.frame(scroll.instance, { size = D.new(1, 0, 0, 60), layoutOrder = 0 })
+	scroll.instance.CanvasPosition = f.h.dt.Vector2.new(0, 80)
+	local fired = false
+	local restore = onGeometryRead(header, function()
+		if fired then return end
+		fired = true
+		scroll.layout:GetPropertyChangedSignal("AbsoluteContentSize"):Fire()
+	end)
+	local anchor = viewport.anchor()
+	check("pending native layout cannot clear the active offset tables", fired and anchor and anchor.root == rows[1].root and anchor.offset == -20)
+	restore()
+	header.Size = D.new(1, 0, 0, 120)
+	check("the invalidated calculation does not retain stale offsets", viewport.restoreAnchor(anchor) == 140)
+	viewport.destroy(); scroll.instance:Destroy(); f.healthy(); f.close()
+end)
+
+case("layout invalidation inside a parent walk preserves nested chunk offsets", function()
+	local f = F.ui(800, 300)
+	local P, D = f.env.require("ui/primitives"), f.h.sandbox.UDim2
+	local scroll = P.scroll(f.host, { size = D.fromScale(1, 1), gap = 0 })
+	local viewport = f.env.require("ui/chat/viewport").new(scroll)
+	local column = P.column(scroll.instance, { size = D.new(1, 0, 0, 500), gap = 0 })
+	local item = viewport.add(column, { estimate = 100,
+		build = function(parent) return { root = P.frame(parent, { size = D.new(1, 0, 0, 100) }) } end })
+	scroll.instance.CanvasPosition = f.h.dt.Vector2.new(0, 50)
+	local fired = false
+	local restore = onGeometryRead(column, function()
+		if fired then return end
+		fired = true
+		scroll.instance:GetPropertyChangedSignal("AbsoluteSize"):Fire()
+	end)
+	local anchor = viewport.anchor()
+	check("nested lookups retain one geometry snapshot across callbacks", fired and anchor and anchor.root == item.root and anchor.offset == -50)
+	restore()
+	check("the nested anchor remains restorable after native layout delivery", viewport.restoreAnchor(anchor) == 50)
+	viewport.destroy(); scroll.instance:Destroy(); f.healthy(); f.close()
+end)
+
 case("backtracking reuses recently read content and releases distant content", function()
 	local f, scroll, viewport, rows = chunks(100, 100)
 	f.h.settle(0.2)

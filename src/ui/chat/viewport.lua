@@ -23,10 +23,10 @@ return function(env)
 		local previousWidth, previousY
 		local connections = {}
 		local manager = { mounted = 0, created = 0, warm = 0 }
-		local positions, tops
+		local geometry
 		local queue
 		local function invalidate()
-			positions, tops = nil, nil
+			geometry = nil
 		end
 		local function connect(signal, fn)
 			local connection = signal:Connect(fn)
@@ -50,13 +50,20 @@ return function(env)
 		-- until content or geometry changes, rather than sorting the whole history
 		-- on every wheel/touch tick. These offsets also work before native layout
 		-- publishes AbsolutePosition after a hidden window returns.
-		local function top(node)
-			if not tops then positions, tops = {}, { [frame] = 0 } end
+		local function top(node, cache)
+			if not cache then
+				if not geometry then geometry = { positions = {}, tops = { [frame] = 0 } } end
+				cache = geometry
+			end
+			-- Native geometry reads can deliver layout callbacks that invalidate the
+			-- next lookup. Retain this calculation's tables through its parent walk;
+			-- an invalidated calculation must not publish its cache again.
+			local positions, tops = cache.positions, cache.tops
 			if tops[node] ~= nil then return tops[node] end
 			local parent = node.Parent
 			if not parent or (parent ~= frame and not parent:IsDescendantOf(frame)) then return nil end
 			if not node.Visible or (parent ~= frame and parent:IsA("GuiObject") and not parent.Visible) then return nil end
-			local parentTop = top(parent)
+			local parentTop = top(parent, cache)
 			if parentTop == nil then return nil end
 			local offsets = positions[parent]
 			if not offsets then
