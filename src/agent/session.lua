@@ -76,6 +76,9 @@ return function(env)
 		session.persistenceDirty = true
 		session.persistenceRevision = (session.persistenceRevision or 0) + 1
 	end
+	local function admissionProblem()
+		return config.accessProblem() or env.require("provider/registry").admissionProblem()
+	end
 
 	local function placeNumber(value)
 		local number = tonumber(value)
@@ -239,7 +242,7 @@ return function(env)
 			return true
 		end
 		local function takeReady(deadline)
-			local access = config.accessProblem()
+			local access = admissionProblem()
 			if access then queue.hold(access); return nil end
 			local head = queue.peek()
 			if not head or head.state ~= "queued" or queue.held() then return nil end
@@ -253,7 +256,7 @@ return function(env)
 				head.needsValidation = false
 			end
 			if session.aborted() or deadline and clock.ms() >= deadline then return nil end
-			access = config.accessProblem()
+			access = admissionProblem()
 			if access then queue.hold(access); return nil end
 			return queue.take()
 		end
@@ -349,7 +352,7 @@ return function(env)
 		function session.consumeQueued(waitForPreparation, deadline)
 			local count = 0
 			while count < 16 and not session.aborted() and not queue.held() do
-				local access = config.accessProblem()
+				local access = admissionProblem()
 				if access then queue.hold(access); break end
 				if deadline and clock.ms() >= deadline then break end
 				local head = queue.peek()
@@ -372,7 +375,7 @@ return function(env)
 		end
 		function session.resumeQueue()
 			if not alive or session.removed then return false, "conversation no longer exists" end
-			local access = config.accessProblem()
+			local access = admissionProblem()
 			if access then return false, access end
 			if session.clearingMessages then return false, "conversation is being cleared" end
 			if session.cancellingMessages then return false, "conversation is being stopped" end
@@ -388,7 +391,7 @@ return function(env)
 		-- message and join that worker only at a safe response/tool boundary.
 		function session.send(text, onDone, files, images, options)
 			if not alive then return false, "client is unloaded" end
-			local access = config.accessProblem()
+			local access = admissionProblem()
 			if access then return false, access end
 			if session.removed then return false, "conversation no longer exists" end
 			if session.clearingMessages then return false, "conversation is being cleared" end
@@ -451,7 +454,7 @@ return function(env)
 				end
 				clean = prepared
 			end
-			access = config.accessProblem()
+			access = admissionProblem()
 			if access then queue.reject(entry, access); preparing(); return false, access end
 			local accepted, commitError = queue.commit(entry, clean)
 			preparing()
@@ -474,7 +477,7 @@ return function(env)
 
 		runPrepared = function()
 			if not alive or session.removed then return false, "conversation no longer exists" end
-			local access = config.accessProblem()
+			local access = admissionProblem()
 			if access then return false, access end
 			if session.busy then return false, "already working" end
 			if running >= 8 then return false, "Eight native session workers are already active; wait for a turn to finish" end

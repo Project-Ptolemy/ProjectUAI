@@ -18,9 +18,11 @@ return function(env)
 	local dispose = env.require("runtime/dispose")
 	local P = env.require("ui/primitives")
 	local sessions = env.require("agent/session")
+	local providers = env.require("provider/registry")
 
 	local M = { visible = false, mounted = false }
 	local visibilityGeneration = 0
+	local refreshHint
 
 	local DEFAULT_KEY = "Semicolon"
 
@@ -125,22 +127,28 @@ return function(env)
 			onSubmit = function(text) if not mobile then M.submit(text) end end,
 		})
 
+		M.hint = P.text(content, {
+			name = "QuickHint",
+			text = "",
+			role = "caption",
+			color = theme.color.textTertiary,
+			size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true,
+			layoutOrder = 3,
+		})
+		M.providerSetupButton = P.button(content, {
+			name = "OpenQuickProviders", text = "Open Providers", variant = "primary",
+			size = "sm", fill = true, layoutOrder = 4,
+			onClick = function()
+				M.hide()
+				env.require("ui/app").show("providers")
+			end,
+		})
 		local footer = P.row(content, {
 			name = "QuickFooter",
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			gap = theme.space.md,
-			layoutOrder = 3,
-		})
-		M.hint = P.text(footer, {
-			name = "QuickHint",
-			text = "",
-			role = "caption",
-			color = theme.color.textTertiary,
-			size = UDim2.new(0, 0, 0, theme.text.caption.height),
-			truncate = true,
-			flex = "Fill",
-			layoutOrder = 1,
+			alignX = "Right", layoutOrder = 5,
 		})
 		P.iconButton(footer, {
 			name = "OpenFullChat", icon = "windowMaximize", diameter = theme.size.controlSmall, layoutOrder = 2,
@@ -157,9 +165,9 @@ return function(env)
 				end
 			end,
 		})
-		P.button(footer, {
+		M.sendButton = P.button(footer, {
 			name = "SendQuickChat", text = "Send", icon = "send",
-			variant = "primary", size = "sm", layoutOrder = 3,
+			variant = "primary", size = "sm", layoutOrder = 3, enabled = false,
 			onClick = function() M.submit(M.field.get()) end,
 		})
 		local function layoutCard()
@@ -171,6 +179,10 @@ return function(env)
 			-- for the fixed controls until the first measured pass arrives.
 			local minimum = head.Size.Y.Offset + M.field.shell.Size.Y.Offset + gap
 				+ math.max(theme.size.controlSmall, responsive.minTarget()) + gap
+				+ math.ceil(P.measureText(M.hint.Text, { role = "caption", width = math.max(1, width - pad * 2) }).Y) + gap
+			if M.providerSetupButton.instance.Visible then
+				minimum = minimum + M.providerSetupButton.instance.Size.Y.Offset + gap
+			end
 			local wanted = math.max(minimum, measured and measured.Y or 0)
 			local height = math.max(1, math.min(bounds.height, wanted + pad * 2))
 			card.Size = UDim2.fromOffset(math.max(math.floor(width), 1), math.floor(height))
@@ -182,9 +194,22 @@ return function(env)
 		contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(layoutCard)
 		layoutCard()
 		local unsubscribe = dispose.add(responsive.changed:connect(layoutCard), "quick chat layout")
+		local unsubscribeProviders = dispose.add(providers.changed:connect(function()
+			refreshHint()
+			layoutCard()
+		end), "quick chat providers")
+		local unsubscribeConfig = dispose.add(config.changed:connect(function(path)
+			if path == nil or path == "agent" or path == "agent.fallback"
+				or path == "providers" or (type(path) == "string" and util.startsWith(path, "providers.")) then
+				refreshHint()
+				layoutCard()
+			end
+		end), "quick chat provider settings")
 		local root = M.root
 		root.Destroying:Connect(function()
 			unsubscribe()
+			unsubscribeProviders()
+			unsubscribeConfig()
 			if M.root == root then M.mounted = false; M.visible = false end
 		end)
 		local function rebuild()
@@ -211,19 +236,23 @@ return function(env)
 		end)
 
 		M.mounted = true
+		refreshHint()
+		layoutCard()
 		return M.root
 	end
 
-	local function refreshHint()
+	refreshHint = function()
 		if not M.hint then return end
-		local providers = env.require("provider/registry")
 		local record = providers.active()
-		M.hint.TextColor3 = theme.color.textTertiary
+		local problem = providers.admissionProblem()
+		M.sendButton.setEnabled(problem == nil)
+		M.providerSetupButton.instance.Visible = problem ~= nil
+		M.hint.TextColor3 = problem and theme.color.warn or theme.color.textTertiary
 		M.hint.Visible = true
-		M.hint.Text = record
+		M.hint.Text = problem and ("Sending is disabled. " .. problem) or (record
 			and (responsive.isMobile() and string.format("%s  ·  Tap Send to send", tostring(record.label))
 				or string.format("%s  ·  Enter to send  ·  Esc to close", tostring(record.label)))
-			or "No provider configured yet -- open the window and add one."
+			or "")
 	end
 
 	function M.show(selection)
@@ -288,6 +317,11 @@ return function(env)
 		if not M.mounted or not M.visible then return end
 		local message = util.trim(tostring(text or ""))
 		if message == "" then return end
+		if providers.admissionProblem() then
+			refreshHint()
+			if M.layout then M.layout() end
+			return false
+		end
 		-- The same session the Chat panel is bound to, so the message and its reply
 		-- land in the transcript rather than in a parallel conversation.
 		local session = sessions.current()

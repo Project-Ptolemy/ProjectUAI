@@ -103,8 +103,14 @@ uai.env.require("agent/loop").run = originalRun
 local previousRecords = uai.env.require("runtime/util").deepCopy(uai.config.get("providers"))
 -- Explicit list removal exercises the no-provider admission path.
 uai.config.set("providers.list", {})
-local unavailable = assert(sdk.request(session, "no provider"))
-check("provider failure differs from successful acceptance", unavailable.await(5).status == "failed" and unavailable.result.error ~= nil)
+local beforeUnavailable, unavailableCompletions = calls, 0
+local unavailable, unavailableReason = sdk.request(session, "no provider", {
+	onComplete = function() unavailableCompletions = unavailableCompletions + 1 end,
+})
+check("missing provider rejects SDK admission with setup guidance", unavailable == nil
+	and unavailableReason:find("Set up a provider before sending messages", 1, true) ~= nil)
+check("provider rejection does not dispatch, queue or call completion", calls == beforeUnavailable
+	and unavailableCompletions == 0 and session.queueSnapshot().count == 0 and not session.busy)
 uai.config.set("providers", previousRecords)
 
 -- A completion callback can immediately submit the next request without a stale

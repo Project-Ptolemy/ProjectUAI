@@ -872,6 +872,22 @@ return function(env)
 		return out
 	end
 
+	-- Match inference admission, including a disabled selection with fallback off.
+	-- Temporary key cooldowns and provider availability keep their request behavior.
+	function M.admissionProblem()
+		if #M.chain() > 0 then return nil end
+		local list = M.list()
+		if #list == 0 then
+			return "Set up a provider before sending messages. Open Providers, choose a provider, complete its setup, and click Save."
+		end
+		for _, record in ipairs(list) do
+			if record.enabled ~= false then
+				return "Select an enabled provider before sending messages. Open Providers, select an enabled provider, and click Use this provider."
+			end
+		end
+		return "Enable a provider before sending messages. Open Providers, select a saved provider, and turn on Enabled."
+	end
+
 	function M.summary(record)
 		if not record then return "no provider configured" end
 		local state = health(record)

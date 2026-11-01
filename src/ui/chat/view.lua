@@ -7,7 +7,6 @@ return function(env)
 	local clock = env.require("runtime/clock")
 	local theme = env.require("ui/theme")
 	local P = env.require("ui/primitives")
-	local C = env.require("ui/controls")
 	local message = env.require("ui/chat/message")
 
 	local M = {}
@@ -410,29 +409,16 @@ return function(env)
 		end
 
 
-		-- What an empty conversation shows: the greeting, the activity card, and -- on a
-		-- client with nothing configured yet -- the one thing to do about that. The card
-		-- itself lives in ui/panels/home, which reads agent/stats.
+		-- The empty conversation shows the greeting and activity card. Provider setup
+		-- stays beside the composer, where it remains visible after messages exist.
 		function view.greeting()
 			if destroyed or not visible then return end
-			local providers = env.require("provider/registry")
 			if view.welcomeCard then
 				pcall(function() view.welcomeCard:Destroy() end)
 				view.welcomeCard = nil
 			end
 			view.welcomeCard = env.require("ui/panels/home").card(scroll.instance, nextOrder(), props)
 			move(0)
-			if providers.count() == 0 then
-				C.emptyState(view.welcomeCard, {
-					title = "No provider configured",
-					description = "Add an OpenAI-compatible endpoint to start. Anything that speaks /v1/chat/completions works: a hosted API, a relay, or a local server.",
-					action = "Open providers",
-					onAction = function()
-						env.require("ui/app").show("providers")
-					end,
-					layoutOrder = 5,
-				})
-			end
 		end
 
 		-- Bound the live instance tree as well as the saved log. A retained child

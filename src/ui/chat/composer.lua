@@ -93,9 +93,44 @@ return function(env)
 		local sendButton
 		local function syncSend()
 			if alive() and sendButton then
-				sendButton.setEnabled(not pendingSends[draftId] and (#composer.attachments > 0
+				sendButton.setEnabled(not providers.admissionProblem() and not pendingSends[draftId] and (#composer.attachments > 0
 					or (composer.field and util.trim(composer.field.get()) ~= "")))
 			end
+		end
+		local providerNotice = P.column(shell, {
+			name = "ProviderSetupNotice", size = UDim2.new(1, -sideInset * 2, 0, 0),
+			position = UDim2.fromOffset(sideInset, topInset), visible = false,
+			bg = theme.color.warnSurface, radius = theme.radius.lg,
+			padding = theme.space.sm, gap = theme.space.xs,
+		})
+		P.stroke(providerNotice, theme.color.warn)
+		local providerTitle = P.text(providerNotice, {
+			name = "ProviderSetupTitle", text = "Set up a provider to start chatting",
+			role = "bodyStrong", color = theme.color.text, wrap = true, layoutOrder = 1,
+		})
+		local providerDescription = P.text(providerNotice, {
+			name = "ProviderSetupDescription", text = "", role = "small",
+			color = theme.color.textSecondary, wrap = true, layoutOrder = 2,
+		})
+		local providerAction = P.button(providerNotice, {
+			name = "OpenProviderSetup", text = "Open Providers", variant = "primary", size = "sm",
+			fill = true, layoutOrder = 3,
+			onClick = function() env.require("ui/app").show("providers") end,
+		})
+		local function fitProviderNotice()
+			if not providerNotice.Visible then return 0 end
+			local measuredWidth = shell.AbsoluteSize.X > 0 and shell.AbsoluteSize.X or parent.AbsoluteSize.X
+			if measuredWidth <= 0 then measuredWidth = responsive.viewport.X end
+			local width = math.max(1, measuredWidth - sideInset * 2 - theme.space.sm * 2)
+			local titleHeight = math.ceil(P.measureText(providerTitle.Text, { role = "bodyStrong", width = width }).Y)
+			local descriptionHeight = math.ceil(P.measureText(providerDescription.Text, { role = "small", width = width }).Y)
+			providerTitle.Size = UDim2.new(1, 0, 0, titleHeight)
+			providerDescription.Size = UDim2.new(1, 0, 0, descriptionHeight)
+			providerAction.instance.Size = UDim2.new(1, 0, 0, math.max(theme.size.controlSmall, responsive.minTarget()))
+			local height = titleHeight + descriptionHeight + providerAction.instance.Size.Y.Offset
+				+ theme.space.sm * 2 + theme.space.xs * 2
+			providerNotice.Size = UDim2.new(1, -sideInset * 2, 0, height)
+			return height + theme.space.sm
 		end
 
 		-- Scope chips ---------------------------------------------------------
@@ -462,6 +497,10 @@ return function(env)
 			if not alive() or not draftId or pendingSends[draftId] then return false end
 			local id = draftId
 			if not sessions.threads[id] or sessions.current().id ~= id then return false end
+			if providers.admissionProblem() then
+				composer.syncContext()
+				return false
+			end
 			local text = composer.field.get()
 			if util.trim(text) == "" and #composer.attachments == 0 then return end
 			local payload = compose(text)
@@ -538,7 +577,8 @@ return function(env)
 			return P.field(fieldHolder, {
 				name = "Prompt",
 				bare = true,
-				placeholder = props.placeholder or "Message UAI…",
+				placeholder = providers.admissionProblem() and "Set up a provider before sending…"
+					or (composer.busy and "Queue a follow-up…" or props.placeholder or "Message UAI…"),
 				multiline = mobile or composer.expanded,
 				height = promptHeight(),
 				text = carried,
@@ -776,8 +816,9 @@ return function(env)
 		resizeComposer = function()
 			if not alive() or resizing then return end
 			resizing = true
+			local noticeHeight = fitProviderNotice()
 			local top = inset
-			local room = parent.AbsoluteSize.Y
+			local room = math.max(0, parent.AbsoluteSize.Y - noticeHeight)
 			if pendingButton.instance.Visible then
 				pendingButton.instance.Position = UDim2.fromOffset(inset, top)
 				pendingButton.instance.Size = UDim2.new(1, -inset * 2, 0, chipHeight)
@@ -806,7 +847,7 @@ return function(env)
 				attachmentScroll.instance.Size = UDim2.new(1, -inset * 2, 0, attachmentHeight)
 				top = top + attachmentHeight + inset
 			end
-			extraHeight = top - inset
+			extraHeight = noticeHeight + top - inset
 			local fieldHeight = promptHeight()
 			local expanded = stackedInput()
 			inputHolder.Position = UDim2.fromOffset(inset, top)
@@ -816,8 +857,9 @@ return function(env)
 			metaRow.Position = UDim2.fromOffset(0, expanded and fieldHeight + theme.space.xs or 0)
 			metaRow.Size = UDim2.new(1, 0, 0, controlHeight)
 			local surfaceHeight = top + inputHeight + inset
+			surface.Position = UDim2.fromOffset(sideInset, topInset + noticeHeight)
 			surface.Size = UDim2.new(1, -sideInset * 2, 0, surfaceHeight)
-			shell.Size = UDim2.new(1, 0, 0, surfaceHeight + topInset + bottomInset)
+			shell.Size = UDim2.new(1, 0, 0, noticeHeight + surfaceHeight + topInset + bottomInset)
 			fitLabels()
 			fitAttachments()
 			resizing = false
@@ -829,6 +871,12 @@ return function(env)
 		modelLabel:GetPropertyChangedSignal("TextBounds"):Connect(fitLabels)
 		attachRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() resizeComposer() end)
 		local parentSizeConnection = parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() resizeComposer() end)
+		local lastShellWidth = shell.AbsoluteSize.X
+		shell:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if shell.AbsoluteSize.X == lastShellWidth then return end
+			lastShellWidth = shell.AbsoluteSize.X
+			resizeComposer()
+		end)
 
 		-- Everything on the meta row, from the real records ---------------------
 
@@ -840,6 +888,14 @@ return function(env)
 				and theme.color.warn or theme.color.textSecondary
 
 			local record = providers.active()
+			local problem = providers.admissionProblem()
+			providerNotice.Visible = problem ~= nil
+			providerTitle.Text = providers.count() == 0 and "Set up a provider to start chatting"
+				or (problem and util.startsWith(problem, "Select") and "Select a provider to start chatting"
+					or "Enable a provider to start chatting")
+			providerDescription.Text = problem and ("Sending is disabled. " .. problem) or ""
+			composer.field.instance.PlaceholderText = problem and "Set up a provider before sending…"
+				or (composer.busy and "Queue a follow-up…" or props.placeholder or "Message UAI…")
 			if not record then
 				modelLabel.Text = "Choose provider"
 				modelLabel.TextColor3 = theme.color.warn
@@ -890,6 +946,8 @@ return function(env)
 				contextDot.BackgroundColor3 = theme.color.warn
 			end
 			fitLabels()
+			resizeComposer()
+			syncSend()
 		end
 
 		-- Rebuilding the field is the honest way to switch MultiLine: changing the
@@ -966,10 +1024,7 @@ return function(env)
 			composer.busy = value == true
 			if composer.mascot then pcall(composer.mascot.setBusy, composer.busy) end
 			stopButton.instance.Visible = composer.busy
-			composer.field.instance.PlaceholderText = composer.busy and "Queue a follow-up…"
-				or props.placeholder or "Message UAI…"
-			resizeComposer()
-			syncSend()
+			composer.syncContext()
 		end
 
 		function composer.setStatus(text)
@@ -1027,7 +1082,8 @@ return function(env)
 			composer.syncContext()
 		end)
 		local unsubscribeConfig = config.changed:connect(function(path)
-			if path == nil or path == "agent" or path == "agent.effort"
+			if path == nil or path == "agent" or path == "agent.effort" or path == "agent.fallback"
+				or path == "providers" or (type(path) == "string" and util.startsWith(path, "providers."))
 				or path == "agent.forceReasoning" or path == "agent.forceContext"
 				or path == "agent.contextTokens" or path == "agent.contextFraction" then
 				composer.syncContext()

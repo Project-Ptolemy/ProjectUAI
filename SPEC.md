@@ -462,7 +462,14 @@ Per-request selections retain the saved `auto`, preserve scoped adapter lessons,
 and cannot override later provider edits. Free model choices have a subdued green
 rounded outline in the model picker and provider menus; selection stays distinct.
 Empty startup/import/reset configurations remain empty. Public credentials remain
-masked in the UI. The welcome directs new users to Providers; a selected Free
+masked in the UI. A persistent setup notice above the composer states that sending
+is disabled and opens Providers directly. Send and keyboard submission remain
+blocked in Chat and Quick Chat until the configured inference chain contains an
+enabled provider. Sends without an enabled provider retain drafts and do not add
+user/error messages, reserve queued input, or prepare attachments. Setup is rechecked
+after yielding preparation; unconsumed queued input remains held if enabled
+providers are removed or disabled, while already accepted inference retains its
+original owner. A selected Free
 record shows its schedule and variable shared availability. Personal HCNSEC
 setup never offers or automatically installs the community credential.
 No session-only development credential belongs in source or generated artifacts.

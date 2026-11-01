@@ -499,10 +499,12 @@ conversation-deletion action, not a way to unsubscribe from a conversation.
 
 Prefer `uai.sdk.request(session, text, options?)` when your host needs a structured
 outcome. It accepts a live registered session and returns a request handle, or
-`nil, reason` when admission fails. A busy/removed session, invalid input, and
-failed attachment preparation are rejection cases. No completion callback runs
-for a rejected request. Provider failures after acceptance settle the request
-with a failure result instead.
+`nil, reason` when admission fails. No enabled provider in the configured inference
+chain, a busy/removed session, invalid input, and failed attachment preparation
+are rejection cases. No completion callback runs for a rejected request.
+Missing provider setup is rejected before attachment
+preparation, queue reservation, or transcript changes. Provider failures after
+acceptance settle the request with a failure result instead.
 
 ```lua
 local request, why = uai.sdk.request(session, "Read the workbench status.", {

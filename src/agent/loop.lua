@@ -109,7 +109,7 @@ return function(env)
 		local function aborted() return session.toolEpoch ~= epoch or session.aborted() end
 		local chain = providers.chain()
 		if #chain == 0 then
-			return nil, "No provider is configured. Open the Providers panel and add one."
+			return nil, providers.admissionProblem()
 		end
 
 		local firstError

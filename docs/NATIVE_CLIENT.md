@@ -27,6 +27,10 @@ for retention limits and what an export includes.
 New, reset and empty imported configurations start without a provider. Add
 Project UAI Free explicitly through the Providers library if desired; personal-key
 HCNSEC is a separate preset. [Provider guides](providers/README.md) cover both.
+Chat and Quick Chat disable sending until an enabled provider can be used. The
+setup notice explains the steps and opens Providers directly. Blocked submissions
+keep the draft without adding failed messages to the conversation; queued input
+remains held after setup is restored until Resume or another send.
 
 **Settings → Obsidian** connects local bridge-computer vaults and controls their
 read/write policy. The bridge browser browses and edits notes; native tools read,

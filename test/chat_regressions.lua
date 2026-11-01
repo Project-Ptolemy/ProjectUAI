@@ -22,6 +22,16 @@ local function boot()
 	local harness = envMock.new()
 	local handle = assert(harness.boot())
 	harness.settle(1)
+	local allowed
+	harness.sched.spawn(function() allowed = handle.config.continueWithoutEncryption() end)
+	harness.settle(1)
+	assert(allowed and handle.config.vaultStatus().ready, "Chat regression fixture must complete credential setup")
+	-- These scenarios exercise configured chat; provider-free admission is covered
+	-- separately so sending and compact-layout assertions use a valid setup.
+	local record = handle.providers.blank("custom")
+	record.label, record.baseUrl, record.apiKey = "Chat regression fixture", "https://chat.fixture/v1", "fixture-key"
+	record.model, record.models = "fixture-model", { "fixture-model" }
+	assert(handle.providers.save(record)); assert(handle.providers.setActive(record.id))
 	local panel = assert(handle.app.chatPanel, "main chat panel missing")
 	return harness, handle, panel
 end
@@ -49,7 +59,7 @@ scenario("main composer retains rejected input and sends accepted input once", f
 
 	composer.setBusy(true)
 	harness.type(composer.field.instance, "Draft while running")
-	check("busy Enter does not dispatch", attempts == 1)
+	check("busy Enter attempts queued admission once", attempts == 2)
 	check("busy Enter does not stop the current turn", stopped == 0)
 	check("busy Enter preserves prompt", composer.field.get() == "Draft while running")
 	check("busy Enter preserves attachments", #composer.attachments == 1)
@@ -57,7 +67,7 @@ scenario("main composer retains rejected input and sends accepted input once", f
 	composer.setBusy(false)
 	session.send = function(text) attempts = attempts + 1; payload = text; return true end
 	harness.click(harness.byName("Send", composer.shell))
-	check("accepted click sends once", attempts == 2)
+	check("accepted click sends once", attempts == 3)
 	check("accepted payload contains the drafted question", payload:find("Draft while running", 1, true))
 	check("accepted payload includes retained context", payload:find("ATTACHED_CONTEXT", 1, true))
 	check("accepted send clears prompt", composer.field.get() == "")
@@ -65,7 +75,7 @@ scenario("main composer retains rejected input and sends accepted input once", f
 	check("accepted send hides attachment indicator", not harness.byName("Attachments", composer.shell).Visible)
 	composer.field.instance.FocusLost:Fire(true)
 	harness.click(harness.byName("Send", composer.shell))
-	check("empty repeat input cannot dispatch again", attempts == 2)
+	check("empty repeat input cannot dispatch again", attempts == 3)
 	check("composer flow has no thread errors", #harness.errors() == 0)
 end)
 
@@ -556,6 +566,10 @@ scenario("context breakdown shows live colored categories across screen sizes", 
 		harness.setViewport(size[1], size[2])
 		local handle = assert(harness.boot())
 		harness.settle(1)
+		local allowed
+		harness.sched.spawn(function() allowed = handle.config.continueWithoutEncryption() end)
+		harness.settle(1)
+		assert(allowed and handle.config.vaultStatus().ready, "Context fixture must complete credential setup")
 		local composer = handle.app.chatPanel.composer
 		local session = handle.sessions.current()
 		composer.field.set("Keep this draft")

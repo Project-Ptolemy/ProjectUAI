@@ -24,6 +24,10 @@ h.http.handler = function(req)
 	return { StatusCode = 404, Body = "{}" }
 end
 local app = assert(h.boot()); h.settle(0.2)
+local storageReady
+h.sched.spawn(function() storageReady = app.config.continueWithoutEncryption() end)
+h.settle(1)
+assert(storageReady and app.config.vaultStatus().ready, "queue UI fixture must finish credential storage setup")
 app.config.set("bridge.autoDiscover", false)
 local record = app.providers.blank("custom")
 record.id, record.baseUrl, record.apiKey, record.model = "queue-ui", "https://queue.fixture/v1", "fixture-key", "fixture-model"
