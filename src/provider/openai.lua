@@ -229,6 +229,9 @@ return function(env)
 		local body = {
 			messages = M.wireMessages(request.messages),
 		}
+		if registry.isOpencodeZen(record) then
+			body.messages = env.require("provider/opencode_context").chat(body.messages)
+		end
 
 		-- The classic Azure preview path takes the model from the deployment in the
 		-- URL and rejects the field; everyone else -- the Azure v1 surface included
@@ -365,7 +368,12 @@ return function(env)
 		local decoded = res and util.decode(res.body) or nil
 		local message
 		if type(decoded) == "table" then
-			if type(decoded.error) == "table" then
+			if env.require("runtime/support").isOpencodeFreeUsage(decoded) then
+				local failure = type(decoded.error) == "table" and decoded.error or decoded
+				message = type(decoded.error) == "string" and decoded.error
+					or tostring(failure.message or failure.type or failure.name or failure.code or "FreeUsageLimitError")
+				if not env.require("runtime/support").opencodeProblem(message) then message = message .. " -- FreeUsageLimitError" end
+			elseif type(decoded.error) == "table" then
 				local errType = tostring(decoded.error.type or decoded.error.name or decoded.error.code or "")
 				local errMsg = tostring(decoded.error.message or "")
 				if env.require("runtime/support").opencodeProblem(errMsg) then
@@ -413,6 +421,7 @@ return function(env)
 		local problem = env.require("runtime/support").opencodeProblem(message)
 		if problem == "subscription" then prefix = "OpenCode Go subscription access was refused"
 		elseif problem == "region" then prefix = "OpenCode Go requires a different workspace region" end
+		if problem == "free-usage" then prefix = "OpenCode refused free API usage" end
 		-- A refusal that carries no body at all is worth naming as such. It usually
 		-- means the call never reached the API, so nothing about the key or the model
 		-- accounts for it, and the answer is in the response headers the Requests view
@@ -994,6 +1003,7 @@ return function(env)
 	-- still has to fit inside.
 	local function quotaRefusal(res)
 		if not res then return false end
+		if http.isOpencodeFreeUsageRefusal(res) then return false end
 		if res.status == 429 then return true end
 		if res.status == 402 or res.status == 403 then
 			local body = tostring(res.body or ""):lower()

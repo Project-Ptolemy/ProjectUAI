@@ -18,6 +18,23 @@ return function(env)
 	function M.new(parent, options)
 		options = options or {}; local role = theme.text.mono
 		local root = P.frame(parent, { name = "CodeEditor", size = UDim2.fromScale(1, 1), bg = theme.color.codeSurface, clip = true })
+		local handle = { root = root, alive = true, syntax = "", visible = true }
+		local owned, offStore, saveView = {}, nil, nil
+		local syntaxGeneration = 0
+		local function own(connection) if connection then owned[#owned + 1] = connection end; return connection end
+		local function cleanup()
+			if not handle.alive then return false end
+			if saveView then pcall(saveView) end
+			handle.alive, handle.visible = false, false; syntaxGeneration = syntaxGeneration + 1
+			sources.release(handle)
+			for _, connection in ipairs(owned) do pcall(function() connection:Disconnect() end) end
+			if offStore then offStore(); offStore = nil end
+			return true
+		end
+		-- Own cleanup before any input, optional presentation or initial layout can
+		-- fail. The app destroys this root after a failed lazy construction.
+		root.Destroying:Connect(cleanup)
+		function handle.destroy() if cleanup() then root:Destroy() end end
 		local scroll = P.scroll(root, { name = "SourceScroll", bg = theme.color.codeSurface })
 		scroll.layout:Destroy(); scroll.instance.AutomaticCanvasSize = Enum.AutomaticSize.None; scroll.instance.ScrollingDirection = Enum.ScrollingDirection.XY
 		local box = Instance.new("TextBox", scroll.instance)
@@ -33,20 +50,8 @@ return function(env)
 		-- Font bounds and native line advance are different measurements. Read a
 		-- long native sample to retain fractional spacing instead of accumulating
 		-- a rounded single-line estimate down the document. These cannot take input.
-		-- Create them independently: host inputs need not support cloning.
-		local function probe(name, value)
-			local node = Instance.new("TextBox", root)
-			node.Name, node.Text, node.TextTransparency, node.BackgroundTransparency = name, value, 1, 1
-			node.Active, node.Selectable, node.TextEditable = false, false, false
-			node.BorderSizePixel, node.ClearTextOnFocus = 0, false
-			node.MultiLine, node.TextWrapped, node.RichText = true, false, false
-			node.Font, node.TextSize, node.LineHeight = role.font, role.size, role.line
-			if role.face then pcall(function() node.FontFace = role.face end) end
-			node.Position, node.Size = UDim2.fromOffset(-2000, 0), UDim2.fromOffset(1000, 2000)
-			return node
-		end
-		local singleProbe = probe("SourceSingleLineMetrics", "Mg")
-		local linesProbe = probe("SourceLineMetrics", "Mg" .. string.rep("\nMg", 32))
+		local singleProbe = metrics.probe(root, "SourceSingleLineMetrics", "Mg", role)
+		local linesProbe = metrics.probe(root, "SourceLineMetrics", "Mg" .. string.rep("\nMg", 32), role)
 		local layer = P.frame(box, { name = "SourcePresentation", size = UDim2.fromScale(1, 1), bg = theme.color.codeSurface, zIndex = 4 })
 		layer.Active, layer.Selectable = false, false
 		local currentLine = P.frame(layer, { name = "SourceCurrentLine", bg = theme.color.codeBar, zIndex = 5, visible = false })
@@ -55,7 +60,7 @@ return function(env)
 		P.frame(gutter, { name = "GutterRule", size = UDim2.new(0, theme.stroke.hair, 1, 0), position = UDim2.new(1, -theme.stroke.hair, 0, 0), bg = theme.color.codeBorder, zIndex = 9 })
 		local caret = P.frame(scroll.instance, { name = "SourceCaret", bg = theme.color.codeText, size = UDim2.fromOffset(2, role.height), zIndex = 7, visible = false })
 		caret.Active, caret.Selectable = false, false
-		local handle = { root = root, box = box, scroll = scroll.instance, alive = true, syntax = "", visible = true }
+		handle.box, handle.scroll = box, scroll.instance
 		local document, ignore, focused, cache, pending = nil, false, false, nil, false
 		local selectionPointer
 		local restoring, layingOut = false, false
@@ -100,7 +105,7 @@ return function(env)
 				currentLine.Position, currentLine.Size = UDim2.fromOffset(0, (index - 1) * lineHeight), UDim2.new(1, 0, 0, lineHeight)
 			end
 		end
-		local function saveView()
+		saveView = function()
 			if not document or restoring then return end
 			local view = store.view(document.id); if not view then return end
 			if box.CursorPosition > 0 then view.cursor, view.selection = box.CursorPosition, box.SelectionStart end
@@ -208,11 +213,10 @@ return function(env)
 					matchCount()
 				end
 			end
-			local nativeAdvance = (linesProbe.TextBounds.Y - singleProbe.TextBounds.Y) / 32
+			local nativeAdvance = metrics.nativeAdvance(singleProbe, linesProbe, role.size)
 			local measured = P.measureText("Mg\nMg", { role = "mono", line = 1 }).Y
 				- P.measureText("Mg", { role = "mono", line = 1 }).Y
-			lineHeight = nativeAdvance >= role.size * 0.5 and nativeAdvance <= role.size * 4
-				and nativeAdvance or math.max(1, measured * box.LineHeight)
+			lineHeight = nativeAdvance or math.max(1, measured * box.LineHeight)
 			gutterWidth = math.max(theme.size.codeGutter, P.measureText(tostring(#cache.lines), { role = "mono" }).X + theme.space.lg)
 			width = math.max(1, scroll.instance.AbsoluteSize.X - gutterWidth - theme.space.lg)
 			width = math.max(width, maxLineWidth + theme.space.lg)
@@ -230,9 +234,8 @@ return function(env)
 			if pending then return end; pending = true
 			clock.delay(0.015, function() pending = false; if handle.alive and handle.visible then layout(); if handle.revealCursor then handle.revealCursor() end end end)
 		end
-		singleProbe:GetPropertyChangedSignal("TextBounds"):Connect(queue)
-		linesProbe:GetPropertyChangedSignal("TextBounds"):Connect(queue)
-		local syntaxGeneration = 0
+		own(metrics.watchProbe(singleProbe, queue))
+		own(metrics.watchProbe(linesProbe, queue))
 		local function checkSyntax()
 			if not handle.alive then return end
 			syntaxGeneration = syntaxGeneration + 1; local generation = syntaxGeneration
@@ -268,13 +271,13 @@ return function(env)
 				selectionPointer = input; draw()
 			end
 		end)
-		local selectionEnded = env.uis.InputEnded:Connect(function(input)
+		own(env.uis.InputEnded:Connect(function(input)
 			if selectionPointer and (input == selectionPointer or (selectionPointer.UserInputType == Enum.UserInputType.MouseButton1
 				and input.UserInputType == Enum.UserInputType.MouseButton1)) then
 				selectionPointer = nil; draw()
 			end
-		end)
-		local selectionFocusLost = env.uis.WindowFocusReleased:Connect(function() selectionPointer = nil; draw() end)
+		end))
+		own(env.uis.WindowFocusReleased:Connect(function() selectionPointer = nil; draw() end))
 		local function revealCursor()
 			if restoring or selectionPointer or not focused or not handle.visible or not document or box.CursorPosition < 1 then return end
 			if not cache then return end
@@ -290,7 +293,7 @@ return function(env)
 		handle.revealCursor = revealCursor
 		box:GetPropertyChangedSignal("CursorPosition"):Connect(function() caretMovedAt = clock.ms(); revealCursor(); matchCount(); draw(); saveView(); if options.onStatus then options.onStatus(handle.syntax) end end)
 		box:GetPropertyChangedSignal("SelectionStart"):Connect(function() caretMovedAt = clock.ms(); draw(); saveView() end)
-		local blink = env.run.Heartbeat:Connect(function() if handle.alive and handle.visible and focused then blinkCaret() end end)
+		own(env.run.Heartbeat:Connect(function() if handle.alive and handle.visible and focused then blinkCaret() end end))
 		scroll.instance:GetPropertyChangedSignal("CanvasPosition"):Connect(function() draw(); saveView() end)
 		root:GetPropertyChangedSignal("AbsoluteSize"):Connect(queue)
 		function handle.select(doc, requestedView)
@@ -430,10 +433,10 @@ return function(env)
 			findBar.Visible = false; scroll.instance.Position, scroll.instance.Size = UDim2.fromOffset(0, 0), UDim2.fromScale(1, 1)
 			layout(); if document then local view = util.copy(store.view(document.id)); pcall(function() box:CaptureFocus() end); box.CursorPosition, box.SelectionStart = view.cursor, view.selection end
 		end
-		local findInput = env.uis.InputBegan:Connect(function(input)
+		own(env.uis.InputBegan:Connect(function(input)
 			if handle.visible and findBar.Visible and input.KeyCode == Enum.KeyCode.Escape and (env.uis:GetFocusedTextBox() == findField.instance or focused) then handle.closeFind() end
-		end)
-		local off = store.changed:connect(function(event)
+		end))
+		offStore = store.changed:connect(function(event)
 			if not handle.alive then return end
 			local active = store.active()
 			if event.kind == "source_navigation" and active and event.documentId == active.id then handle.select(active, true); return end
@@ -444,17 +447,6 @@ return function(env)
 				box.CursorPosition, box.SelectionStart = math.min(cursor, #box.Text + 1), math.min(selection, #box.Text + 1); queue(); checkSyntax()
 			end
 		end)
-		local function cleanup()
-			if not handle.alive then return false end
-			saveView(); handle.alive, handle.visible = false, false; syntaxGeneration = syntaxGeneration + 1
-			sources.release(handle)
-			blink:Disconnect(); findInput:Disconnect(); selectionEnded:Disconnect(); selectionFocusLost:Disconnect(); off()
-			return true
-		end
-		root.Destroying:Connect(cleanup)
-		function handle.destroy()
-			if cleanup() then root:Destroy() end
-		end
 		function handle.setVisible(visible)
 			if not handle.alive or handle.visible == visible then return end
 			selectionPointer = nil

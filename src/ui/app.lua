@@ -1098,9 +1098,9 @@ return function(env)
 			})
 			local ok, panel = pcall(BUILDERS[id], holder)
 			if not ok then
-				log.error("app", "panel '" .. id .. "' failed to build", panel)
+				log.error("app", "panel '" .. id .. "' failed to build: " .. util.ellipsis(tostring(panel), 600), panel)
 				holder:Destroy()
-				overlay.toast("Could not open " .. M.panelLabel(id) .. ". Try opening it again; details are in Logs.", "warn")
+				overlay.toast("Could not open " .. M.panelLabel(id) .. ". Open Logs and copy the failed-to-build error for help.", "warn")
 				return
 			end
 			panel.root = holder

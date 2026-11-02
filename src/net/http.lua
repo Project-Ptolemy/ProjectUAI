@@ -19,6 +19,7 @@ return function(env)
 	local tunnelRoute = env.require("net/tunnel_route")
 	local budgets = env.require("net/deadline")
 	local retryAfter = env.require("net/retry_after")
+	local support = env.require("runtime/support")
 
 	local HISTORY_LIMIT = 60
 	local MAX_BODY, MAX_WORKERS, MAX_RELAY_WORKERS = 8 * 1024 * 1024, 8, 16
@@ -114,7 +115,7 @@ return function(env)
 		if type(body) ~= "string" or body == "" then return nil end
 		local decoded = util.decode(body)
 		if type(decoded) ~= "table" then return nil end
-		if decoded.type == "error" or decoded.error ~= nil then return decoded end
+		if decoded.type == "error" or decoded.error ~= nil or support.isOpencodeFreeUsage(decoded) then return decoded end
 		return nil
 	end
 
@@ -123,6 +124,10 @@ return function(env)
 		changed = signal.new("http"),
 		count = 0,
 	}
+
+	function M.isOpencodeFreeUsageRefusal(res)
+		return res ~= nil and support.isOpencodeFreeUsage(errorPayload(res.body))
+	end
 
 	function M.header(res, name)
 		local headers = res and res.headers
@@ -494,6 +499,7 @@ return function(env)
 	-- its way through a backoff on a key that rotation can replace at once.
 	function M.shouldRetry(res, err, info)
 		if (res and res.terminal) or terminal(err) then return false end
+		if M.isOpencodeFreeUsageRefusal(res) then return false, "OpenCode refused this direct free-model request" end
 		if res and tostring(M.header(res, "x-should-retry")):lower() == "false" then
 			return false, "provider requested no retry"
 		end

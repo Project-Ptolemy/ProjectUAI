@@ -71,9 +71,12 @@ its existing Windows Job Object to own the bridge and its CLI descendant; Stop
 and closing the window shut them down. The bridge also supports an absolute
 `UAI_OPENCODE_BINARY` override; see the [bridge guide](../bridge/README.md).
 
-The existing direct desktop workaround still works without this app. This native
-route provides an additional desktop option; on mobile, OpenCode requires the UAI
-Relay app from Discord.
+For the verified free API-key route, use the current UAI client and desktop bridge.
+The bridge sends compatible direct HTTPS requests without requiring the OpenCode
+CLI or Bun; the **OpenCode tunnel** switch controls only the optional CLI path.
+See the [API-key investigation](../docs/OPENCODE_API_KEY_INVESTIGATION.md).
+Direct executor and Android TLS behavior remain unverified; on mobile, OpenCode
+requires the UAI Relay app from Discord.
 UAI tools are returned to Roblox for execution. The bundled bridge includes the private
 execution guard and matching permission handling before returning
 blocked-action feedback. The CLI never receives permission to run local

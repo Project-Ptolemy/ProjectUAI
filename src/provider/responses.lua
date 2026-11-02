@@ -45,6 +45,7 @@ return function(env)
 
 	function M.isProtocolRefusal(res)
 		if not res or tonumber(res.status) ~= 400 then return false end
+		if http.isOpencodeFreeUsageRefusal(res) then return false end
 		local decoded = util.decode(tostring(res.body or ""))
 		if type(decoded) ~= "table" then return false end
 		local failure = decoded.error
@@ -64,6 +65,7 @@ return function(env)
 
 	function M.isFreeTierRefusal(res)
 		if not res or tonumber(res.status) ~= 403 then return false end
+		if http.isOpencodeFreeUsageRefusal(res) then return false end
 		local decoded = util.decode(tostring(res.body or ""))
 		if type(decoded) ~= "table" then return false end
 		local failure = decoded.error
@@ -207,6 +209,9 @@ return function(env)
 	function M.buildBody(record, request)
 		request = request or {}
 		local input, instructions = M.inputFor(request.messages)
+		if registry.isOpencodeZen(record) then
+			instructions = env.require("provider/opencode_context").instructions(instructions)
+		end
 		local body = {
 			model = record.model,
 			input = input,
@@ -516,7 +521,7 @@ return function(env)
 		end
 		local res, err = fire()
 		while res and not res.terminal and not http.terminal(err) do
-			if not res.ok and res.status == 429 and rotationsLeft > 0 then
+			if not res.ok and res.status == 429 and not http.isOpencodeFreeUsageRefusal(res) and rotationsLeft > 0 then
 				rotationsLeft = rotationsLeft - 1
 				registry.cooldownKey(record, currentKey)
 				currentKey = registry.nextKey(record)

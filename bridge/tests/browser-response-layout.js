@@ -183,6 +183,8 @@ const { startBridge } = require('./helpers/bridge');
       ['Relay token unauthorized.', 401, 'Check your bridge connection', 'Check connection'],
       ['Invalid token for relay.', 403, 'Check your bridge connection', 'Check connection'],
       ['HTTP 401: invalid API key', 401, 'Check your provider access', 'Open providers'],
+      ['HTTP 429: RateLimit.FreeUsageLimitError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going: https://opencode.ai/go', 429, 'OpenCode free API access refused', 'Open providers'],
+      ['HTTP 429: Free usage limit reached. Free models work in OpenCode (https://opencode.ai).', 429, 'OpenCode free API access refused', 'Open providers'],
     ];
     for (const [message, status, title, action] of errorCases) {
       const count = await page.locator('#transcript > .response-error').count();
@@ -193,6 +195,12 @@ const { startBridge } = require('./helpers/bridge');
       assert.equal(await card.getByRole('button', { name: action, exact: true }).count(), 1);
       assert.equal(await card.locator('.error-details pre').textContent(), message, 'classification preserves the diagnostic');
       assert.equal(await card.locator('.error-details').getAttribute('open'), null);
+      if (title === 'OpenCode free API access refused') {
+        assert.match(await card.locator('.error-message').textContent(), /Desktop Bridge for API-key access/);
+        assert.match(await card.locator('.error-message').textContent(), /installed OpenCode tunnel/);
+        assert.match(await card.locator('.error-message').textContent(), /Changing keys may not restore access/);
+        assert.doesNotMatch(await card.locator('.error-message').textContent(), /wait a moment/i);
+      }
     }
 
     // Live history can outgrow a snapshot. Eviction must release moved reasoning

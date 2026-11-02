@@ -5,6 +5,7 @@ const https = require('node:https');
 const crypto = require('node:crypto');
 const { StringDecoder } = require('node:string_decoder');
 const { help } = require('./support');
+const { optionsFor: openCodeTransportOptions } = require('./opencode-transport');
 
 // Per-job normalized frame ring bounds. The ring is a browser projection only;
 // the raw body accumulator (job.body) is kept separately for the Roblox poll and
@@ -380,7 +381,7 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
       drainLines();
     };
     const transport = kilo?.accepts(url, headers, providerBody) ? kilo : url.protocol === 'https:' ? https : http;
-    const request = transport.request(url, { method: 'POST', headers }, response => {
+    const request = transport.request(url, { method: 'POST', headers, ...(transport === https ? openCodeTransportOptions(url) : {}) }, response => {
       job.status = response.statusCode;
       job.headers = {};
       for (const name of ['content-type', 'retry-after', 'x-should-retry', 'x-request-id', 'server']) {

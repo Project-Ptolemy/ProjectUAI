@@ -8,7 +8,9 @@ The embedding SDK is **1.1.0** and standalone **UI LIB is 1.6.0**.
 The Android companion remains **3.7.1 (version code 8)**; its existing protocol,
 Kilo quota recovery and release assets are unchanged.
 
-Bridge 3.8.0 and Windows desktop 3.8.0 use verified automatic GitHub updates.
+Bridge/web 3.8.1 adds the November 2 OpenCode API-key transport fix; the client
+and Windows shell remain 3.8.0 with the corrected client build.
+Bridge 3.8.1 and Windows desktop 3.8.0 use verified automatic GitHub updates.
 Bridge worker replacement waits for idle work and retains its session token;
 desktop app updates stage for restart with a retained fallback. Desktop detects
 Node.js 18+ or downloads a verified LTS runtime per user instead of bundling Node.
@@ -388,6 +390,27 @@ omitted because the live Chat probe rejected the previous CLI fingerprint. Mobil
 OpenCode requires the UAI Relay app from Discord; mobile free-tier refusals do not
 retry the alternate lane or a retired proxy. Errors explain the optional installed
 CLI desktop path and the mobile relay requirement.
+
+Exact Zen Chat and Responses requests include reusable truthful `<env>` context
+with `Working directory: Roblox runtime` and `Platform: Roblox`. It is added in
+system/instructions context without mutating original conversation history. The
+existing seven compatibility declarations and desktop identity remain effective.
+Go and unrelated routes receive no such context; explicit body overrides retain
+precedence. The desktop bridge's direct HTTPS transport offers the native Bun
+cipher-suite list on exact Zen Chat/Responses routes without URL credentials,
+queries, fragments or nonstandard ports. Certificate validation and Node's TLS
+version defaults remain effective. The profile applies before the first dispatch
+and adds no replay or runtime dependency; the installed CLI retains priority.
+The November 2 checks restored the same service-account API key outside the CLI.
+Executor and Android TLS transports are separate and remain unverified.
+
+An explicit HTTP 429 `FreeUsageLimitError` is a free-access refusal, distinct from
+temporary rate limiting. Complete JSON error replies with this code or the
+specific OpenCode free-usage message do not trigger transport retries, key
+rotation, or the historical free-tier protocol fallback. Errors preserve the
+status and provider detail and explain that the installed CLI can still work
+when a direct request is refused. Ordinary 429 replies retain
+their existing retry behavior.
 
 OpenCode Go is a separate keyed preset at `https://opencode.ai/inference/go/v1`.
 Its legacy `/zen/go/v1` alias remains a Go route. Go model discovery and every
@@ -1747,7 +1770,11 @@ available during ordinary editing. Syntax labels remain visible while dragging
 or selecting a range; bounded selection fills follow the native TextBox's byte
 endpoints without switching to its full-document text renderer. Native multiline
 font probes calibrate editor and preview line advances without accumulated
-rounded-height drift. Cursor-follow
+rounded-height drift. Calibration is optional: refused probe creation, properties,
+bounds reads or listeners retain the existing text-measurement fallback in the
+editor and previews. Failed first construction releases editor service listeners
+and workspace observers; the visible Logs entry includes the bounded, redacted
+failing operation. Cursor-follow
 scrolling yields to pointer selection. Source
 remains raw and unwrapped. Enter inserts a newline; Run is explicit.
 

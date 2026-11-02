@@ -335,13 +335,27 @@ Help, availability updates and community news: https://discord.gg/9xYyyYuKap.
 
 ### OpenCode desktop and mobile
 
-The direct desktop workaround uses the live-verified desktop User-Agent/client
-identity, timestamp-based session headers and wildcard Accept header, without a
-bridge. Required compatibility tool declarations and the Chat/Responses fallback
-are retained. Explicit custom headers stay effective. A free-tier refusal on desktop
-can still try Responses once. An
-explicit protocol refusal also retains that fallback. Required declarations remain
-present on direct and older bridge routes.
+The desktop workaround uses the historically verified desktop User-Agent/client
+identity, timestamp-based session headers and wildcard Accept header. Required
+compatibility tool declarations remain present on direct and bridge routes, and
+explicit custom headers stay effective. Historical `FreeTierError` and explicit
+protocol refusals retain the Chat/Responses fallback where applicable.
+
+OpenCode can refuse direct API-key requests with HTTP 429 `FreeUsageLimitError`
+even while the installed CLI works for the same account. Current Zen Chat and
+Responses requests include truthful Roblox `<env>` context with `Working directory:`
+in their system/instructions metadata. On November 2, 2026, that context restored
+DeepSeek Flash API-key text, a synthetic UAI tool call, and result replay through
+standalone Bun with the existing desktop headers and seven declarations. Ordinary
+Node HTTPS also returned 200 after offering the same cipher-suite list with
+production bridge headers. The current desktop bridge supplies this scoped TLS
+profile before the first direct Zen Chat/Responses request; it requires no CLI
+or Bun installation and preserves certificate validation. Use the current client
+and bridge for the verified API-key route. Executor and Android transport behavior
+remain unverified. UAI reports a remaining
+explicit refusal without repeating the same route, rotating keys, or trying
+the Responses protocol. Ordinary temporary 429 responses retain their retries.
+See [the current investigation](OPENCODE_API_KEY_INVESTIGATION.md).
 
 The desktop bridge adds an optional installed OpenCode CLI server path for its
 verified free-model catalog. Install OpenCode separately; Project UAI does not

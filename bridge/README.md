@@ -44,8 +44,16 @@ connection details, or follow the [MCP setup guide](MCP.md) for Claude Code,
 Codex, Cursor, OpenCode and command-based MCP clients. Roblox retains permission
 decisions and executes tools in isolated external sessions.
 
-The existing direct desktop workaround remains supported. Version 3.2 also adds
-an optional native route through an **already installed OpenCode CLI**. Install
+For free API-key requests, use the current UAI client and bridge. The client adds
+truthful Roblox environment context; the bridge matches OpenCode's native TLS
+cipher-suite offer on exact official Zen Chat/Responses routes. The same service
+key returned HTTP 200 for DeepSeek Flash outside the CLI in November 2 tests.
+Certificate validation stays enabled; no Bun installation is needed. Direct
+executor and Android TLS behavior remain unverified. See the
+[API-key investigation](../docs/OPENCODE_API_KEY_INVESTIGATION.md).
+
+Version 3.2 also added an optional native route through an **already installed
+OpenCode CLI**. Install
 [OpenCode Desktop](https://opencode.ai), restart Cowork, and wait for its OpenCode
 status to become ready. UAI does not download or package the OpenCode binary.
 OpenCode free models require the UAI Relay app from Discord on mobile; install and
@@ -69,7 +77,8 @@ start Cowork. Quoted PATH folders are supported. A custom native binary may be
 selected with the absolute `UAI_OPENCODE_BINARY` environment variable; an invalid
 override is reported as missing instead of silently selecting another installation.
 Shell shims and the Electron Desktop launcher are not executed.
-`UAI_OPENCODE_DISABLED=1` disables this optional route.
+`UAI_OPENCODE_DISABLED=1` disables this optional CLI route; direct keyed HTTPS
+requests still use the bridge's Zen transport compatibility.
 OpenCode's v2 server API is required (verified with CLI 2.0.32). The bridge checks
 all required routes before accepting requests and reports the selected binary's
 actual version. Incompatible installations produce an update instruction.
@@ -154,18 +163,20 @@ update state before any restart it causes. The cache keeps the active version
 and recent entries, and prunes stale predecessors and quarantine folders.
 
 Publish `dist/bridge-release.json` and `dist/uai-bridge-package.json` on the same
-official `v3.8.0` GitHub release together with the matching desktop and client
-assets. The Android companion remains on 3.7.1. Generate
+official `bridge-v3.8.1` GitHub release. This bridge/web patch updates independently
+of the Windows 3.8.0 shell and Android 3.7.1 companion. Reload the corrected Lua
+client for the request-context and Code fixes. Generate
 the bundles with
 `node tools/build_bridge.js` after reviewing final bridge/web inputs, inspect
 the outputs, then run `node tools/build_bridge.js --check` and focused tests.
 Later releases must bump `bridge/release.js` and use the matching release tag.
 The release builder embeds OpenCode, MCP and support helpers into the original
-permitted root filenames so installed 3.1 updaters can verify and activate 3.8.0. Checkout,
+permitted root filenames so installed 3.1 updaters can verify and activate 3.8.1. Checkout,
 executor downloads and desktop payloads retain the separate source modules.
 
-The 3.8.0 release supplies matching client, bridge, web and Windows app versions.
-Existing compatible installs receive bridge and web updates while idle.
+The 3.8.0 release supplied matching client, bridge, web and Windows app versions;
+bridge/web 3.8.1 is an independent patch. Existing compatible installs receive
+bridge and web updates while idle.
 Refresh an open browser page to load changed web assets. The desktop's **Copy
 client script** uses its embedded client; update the desktop app to refresh that
 copy. See the [3.8.0 verification record](../docs/POLISH_2026_10.md),

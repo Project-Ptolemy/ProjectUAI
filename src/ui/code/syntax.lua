@@ -13,18 +13,10 @@ return function(env)
 		local layer = P.frame(box, { name = "CodeSyntax", size = UDim2.fromScale(1, 1), bg = theme.color.codeSurface, zIndex = box.ZIndex + 1 })
 		layer.Active, layer.Selectable = false, false
 		local probes = P.frame(box, { name = "PreviewMetrics", size = UDim2.fromOffset(0, 0), clip = true })
-		local function probe(name, value)
-			local node = Instance.new("TextBox", probes)
-			node.Name, node.Text, node.TextTransparency, node.BackgroundTransparency = name, value, 1, 1
-			node.Active, node.Selectable, node.TextEditable = false, false, false
-			node.MultiLine, node.TextWrapped, node.RichText = true, false, false
-			node.Font, node.TextSize, node.LineHeight = box.Font, box.TextSize, box.LineHeight
-			pcall(function() node.FontFace = box.FontFace end)
-			node.Position, node.Size = UDim2.fromOffset(-2000, 0), UDim2.fromOffset(1000, 2000)
-			return node
-		end
-		local singleProbe = probe("PreviewSingleLineMetrics", "Mg")
-		local linesProbe = probe("PreviewLineMetrics", "Mg" .. string.rep("\nMg", 32))
+		local role = { font = box.Font, size = box.TextSize, line = box.LineHeight }
+		pcall(function() role.face = box.FontFace end)
+		local singleProbe = metrics.probe(probes, "PreviewSingleLineMetrics", "Mg", role)
+		local linesProbe = metrics.probe(probes, "PreviewLineMetrics", "Mg" .. string.rep("\nMg", 32), role)
 		local alive, pending, focused, cache, rows, connections = true, false, false, nil, {}, {}
 		local measured, caretAt, lineHeight = {}, clock.ms(), theme.text.mono.height
 		local handle = { lineHeight = lineHeight }
@@ -55,9 +47,9 @@ return function(env)
 			if previous ~= cache then
 				measured = {}
 			end
-			local nativeAdvance = (linesProbe.TextBounds.Y - singleProbe.TextBounds.Y) / 32
+			local nativeAdvance = metrics.nativeAdvance(singleProbe, linesProbe, box.TextSize)
 			local measuredAdvance = P.measureText("Mg\nMg", { role = "mono", line = 1 }).Y - P.measureText("Mg", { role = "mono", line = 1 }).Y
-			local height = nativeAdvance >= box.TextSize * 0.5 and nativeAdvance <= box.TextSize * 4 and nativeAdvance or math.max(1, measuredAdvance * box.LineHeight)
+			local height = nativeAdvance or math.max(1, measuredAdvance * box.LineHeight)
 			if lineHeight ~= height then
 				lineHeight, handle.lineHeight = height, height
 				if handle.onLineHeight then handle.onLineHeight(height) end
@@ -106,8 +98,9 @@ return function(env)
 			if pending or not alive then return end; pending = true
 			clock.delay(0.015, function() pending = false; if alive then draw() end end)
 		end
-		connections[#connections + 1] = singleProbe:GetPropertyChangedSignal("TextBounds"):Connect(queue)
-		connections[#connections + 1] = linesProbe:GetPropertyChangedSignal("TextBounds"):Connect(queue)
+		local function own(connection) if connection then connections[#connections + 1] = connection end end
+		own(metrics.watchProbe(singleProbe, queue))
+		own(metrics.watchProbe(linesProbe, queue))
 		for _, property in ipairs({ "Text", "AbsoluteSize", "AbsolutePosition", "LineHeight", "CursorPosition", "SelectionStart", "TextTransparency", "TextWrapped" }) do connections[#connections + 1] = box:GetPropertyChangedSignal(property):Connect(queue) end
 		connections[#connections + 1] = box.Focused:Connect(function() focused = true; caretAt = clock.ms(); queue() end)
 		connections[#connections + 1] = box.FocusLost:Connect(function() focused = false; queue() end)

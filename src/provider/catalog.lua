@@ -115,7 +115,7 @@ return function(env)
 			claudeUa = false,
 			-- Desktop retains direct request compatibility; the installed CLI is an
 			-- additional route through the desktop bridge, never a bundled binary.
-			note = "Desktop supports the direct OpenCode workaround without a bridge. Project UAI Bridge also supports a separately installed OpenCode CLI for free models; models fetched from the connected CLI need no personal key. Mobile OpenCode requires the UAI Relay app from Discord; install and start the app, then connect it in UAI. The retired OpenCode proxy cannot restore mobile access. Direct and paid Zen API access use your own key. Help and updates: https://discord.gg/9xYyyYuKap",
+			note = "Use the current UAI client and Project UAI Desktop Bridge for the verified free API-key route. Direct executor access depends on the host transport. The bridge also supports a separately installed OpenCode CLI for free models; models fetched from the connected CLI need no personal key. Mobile OpenCode requires the UAI Relay app from Discord; install and start the app, then connect it in UAI. Direct and paid Zen API access use your own key. Help and updates: https://discord.gg/9xYyyYuKap",
 			noteHighlight = "Mobile OpenCode requires the UAI Relay app from Discord",
 			featured = true,
 			featuredOrder = 3,
