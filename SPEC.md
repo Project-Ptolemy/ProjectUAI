@@ -667,8 +667,11 @@ resolves a provider's models from exactly two sources — ids the user added by
 hand (which rank first, and persist on the record) and whatever `GET /v1/models`
 reported, or the authenticated desktop backend's catalog for CLI routes (cached
 for ten minutes, not persisted). Generic catalogs retain every ID. Native Gemini
-uses explicit generation methods; exact AI/ML API, Vercel, FriendliAI and Venice
-catalog routes use documented type/mode fields to omit explicit non-chat APIs.
+uses explicit generation methods; Cloudflare's exact Workers AI account prefix
+lists canonical model names through `/ai/models/search`, with bounded pagination
+and explicit tasks other than Text Generation omitted. Exact AI/ML API, Vercel,
+FriendliAI and Venice catalog routes use documented type/mode fields to omit
+explicit non-chat APIs.
 Unknown field shapes, custom routes and manually entered IDs remain available.
 Names never determine whether a model is chat-compatible. An endpoint with no
 `/models` route is a normal case: the Providers editor

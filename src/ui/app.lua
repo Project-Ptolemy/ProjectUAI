@@ -1089,27 +1089,28 @@ return function(env)
 	function M.showPanel(id)
 		if M.disposed or dispose.draining or not M.body then return end
 		if not BUILDERS[id] then id = "chat" end
-		for key, panel in pairs(M.panels or {}) do
-			if panel.root then panel.root.Visible = key == id end
-			if panel.setVisible then panel.setVisible(key == id) end
-		end
+		-- Keep the current panel usable until the requested view is ready.
 		if not M.panels[id] then
 			local holder = P.frame(M.body, {
 				name = "Panel_" .. id,
 				size = UDim2.fromScale(1, 1),
+				visible = false,
 			})
 			local ok, panel = pcall(BUILDERS[id], holder)
 			if not ok then
 				log.error("app", "panel '" .. id .. "' failed to build", panel)
 				holder:Destroy()
+				overlay.toast("Could not open " .. M.panelLabel(id) .. ". Try opening it again; details are in Logs.", "warn")
 				return
 			end
 			panel.root = holder
 			M.panels[id] = panel
 			if id == "chat" then M.chatPanel = panel end
 		end
-		M.panels[id].root.Visible = true
-		if M.panels[id].setVisible then M.panels[id].setVisible(true) end
+		for key, panel in pairs(M.panels or {}) do
+			if panel.root then panel.root.Visible = key == id end
+			if panel.setVisible then panel.setVisible(key == id) end
+		end
 		M.panel = id
 		config.set("ui.panel", id, { quiet = true })
 		if id == "chat" then M.attachSession() end

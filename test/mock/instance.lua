@@ -329,13 +329,14 @@ function M.build(dt)
 	proto.destroy = proto.Destroy
 
 	function proto.Clone(self)
+		if self.__props.Archivable == false then return nil end
 		local copy = Instance.new(self.__class)
 		for key, value in pairs(self.__props) do
 			if key ~= "Parent" then copy.__props[key] = value end
 		end
 		for _, child in ipairs(self.__children) do
 			local childCopy = proto.Clone(child)
-			childCopy.Parent = copy
+			if childCopy then childCopy.Parent = copy end
 		end
 		return copy
 	end

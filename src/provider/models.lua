@@ -18,6 +18,7 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local urls = env.require("net/url")
 	local modelCatalog = env.require("provider/model_catalog")
+	local cloudflareCatalog = env.require("provider/cloudflare_catalog")
 	local modelId = env.require("provider/model_id")
 	local communityKey = env.require("provider/community_key")
 	local support = env.require("runtime/support")
@@ -188,7 +189,7 @@ return function(env)
 		if nativeGemini and (snapshot.query and snapshot.query.alt ~= nil or tostring(snapshot.baseUrl):find("[?&]alt=")) then
 			snapshot.query = util.copy(snapshot.query or {}); snapshot.query.alt = "json"
 		end
-		local url = registry.endpoint(snapshot, "/models")
+		local url, cloudflare = cloudflareCatalog.endpoint(registry.endpoint(snapshot, "/models"))
 		local headers = env.require("provider/chat").headers(snapshot)
 		local deadline = env.require("net/deadline").at(opts.timeout, opts.deadlineMs)
 		local recovery = proxy.new(record, { aborted = opts.aborted, onRetry = opts.onRetry, deadlineMs = deadline })
@@ -225,6 +226,24 @@ return function(env)
 		if res and not cli then decoded, decodeError = util.decode(res.body) end
 		err = err or decodeError
 		local partial = false
+		if cloudflare and res and res.ok then
+			local pageRows = cloudflareCatalog.rows(decoded)
+			local rows, pages = {}, 1
+			if not pageRows then err = "could not read the Workers AI model catalog"; res = nil end
+			while pageRows do
+				for _, row in ipairs(pageRows) do if #rows >= 10000 then partial = true; break end; rows[#rows + 1] = row end
+				local nextPage = cloudflareCatalog.nextPage(decoded, pages)
+				if not nextPage then break end
+				if pages >= 10 or #rows >= 10000 then partial = true; break end
+				if pending[key] ~= token or not same(scope, scopeFor(record)) then break end
+				pages = nextPage; url = cloudflareCatalog.page(url, pages)
+				res, err = fetch()
+				decoded = res and res.ok and util.decode(res.body)
+				pageRows = cloudflareCatalog.rows(decoded)
+				if not pageRows then err = err or "could not read the next Workers AI model page"; res = nil; break end
+			end
+			if res then decoded = { data = rows } end
+		end
 		if nativeGemini and res and res.ok and type(decoded) == "table" and type(decoded.models) == "table" then
 			local rows, tokens, pages = {}, {}, 1
 			for index, row in ipairs(decoded.models) do if index > 10000 then partial = true; break end; rows[#rows + 1] = row end
@@ -256,7 +275,9 @@ return function(env)
 			if res and res.status == 404 then note = "this endpoint has no /models route -- add a model by hand" end
 			if res and res.status == 401 then note = "the API key was rejected" end
 			if res and res.status == 403 then note = "the key is not allowed to list models" end
-			if proxy.isClientRefusal(res) or registry.isOpencode(record) then
+			if cloudflare and not res and err then
+				note = note .. ": " .. err
+			elseif proxy.isClientRefusal(res) or registry.isOpencode(record) then
 				note = "the endpoint rejected this client: " .. env.require("provider/chat").errorText(snapshot, res, err)
 			elseif res and res.status ~= 401 and res.status ~= 403 and res.status ~= 404 then
 				note = note .. ": " .. env.require("provider/chat").errorText(snapshot, res, err)
@@ -273,13 +294,15 @@ return function(env)
 			for index, row in ipairs(rows) do
 				if index > 10000 then partial = true; break end
 				local id
-				if type(row) == "string" then
+				if cloudflare then
+					id = cloudflareCatalog.id(row)
+				elseif type(row) == "string" then
 					id = row
 				elseif type(row) == "table" then
 					id = row.id or row.name or row.model
 				end
 				id = type(id) == "string" and util.trim(id) or ""
-				if id ~= "" and not modelCatalog.accepts(url, row) then
+				if id ~= "" and (not modelCatalog.accepts(url, row) or cloudflare and not cloudflareCatalog.accepts(row)) then
 					id, excluded = "", excluded + 1
 				end
 				if nativeGemini then

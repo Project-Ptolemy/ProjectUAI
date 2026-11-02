@@ -33,12 +33,16 @@ return function(env)
 		-- Font bounds and native line advance are different measurements. Read a
 		-- long native sample to retain fractional spacing instead of accumulating
 		-- a rounded single-line estimate down the document. These cannot take input.
+		-- Create them independently: host inputs need not support cloning.
 		local function probe(name, value)
-			local node = box:Clone()
-			node.Name, node.Text, node.TextTransparency = name, value, 1
+			local node = Instance.new("TextBox", root)
+			node.Name, node.Text, node.TextTransparency, node.BackgroundTransparency = name, value, 1, 1
 			node.Active, node.Selectable, node.TextEditable = false, false, false
+			node.BorderSizePixel, node.ClearTextOnFocus = 0, false
+			node.MultiLine, node.TextWrapped, node.RichText = true, false, false
+			node.Font, node.TextSize, node.LineHeight = role.font, role.size, role.line
+			if role.face then pcall(function() node.FontFace = role.face end) end
 			node.Position, node.Size = UDim2.fromOffset(-2000, 0), UDim2.fromOffset(1000, 2000)
-			node.Parent = root
 			return node
 		end
 		local singleProbe = probe("SourceSingleLineMetrics", "Mg")

@@ -48,6 +48,16 @@ entries and manually entered IDs remain available. These rules do not interpret
 vendor fields on custom hosts, alternate ports or different API paths. Chat
 compatibility still does not establish tools, vision or reasoning support.
 
+Cloudflare Workers AI keeps Chat Completions under
+`https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1`, but that prefix
+has no OpenAI `/models` endpoint. UAI fetches the account's
+[`/ai/models/search` catalog](https://developers.cloudflare.com/api/resources/ai/subresources/models/methods/list/)
+and uses each record's model `name`, omitting explicit tasks other than
+Text Generation. Discovery owns page/per-page parameters, retains the token and
+other configured queries, and reads at most ten pages or 10,000 rows. Custom
+origins and paths keep normal `/models` discovery. The inference URL and manually
+saved choices stay intact.
+
 Chat and Responses requests keep at most 128 tool declarations by default.
 When more tools are available, `uai_tool_catalog` exposes the remaining names,
 their exact schema pages and a call action. The native dispatcher retains the
