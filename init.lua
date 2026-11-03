@@ -172,7 +172,7 @@ env.plr = env.players and env.players.LocalPlayer or nil
 -- The loader. Cycles are an error rather than a hang: a module that is already
 -- loading has been reached again, and returning a half-built table would fail
 -- somewhere far away from the cause.
-local loaded, loading = {}, {}
+local loaded, loading, requireStack = {}, {}, {}
 
 -- How many modules this artifact carries, counted rather than written down: the
 -- bundler decides it, and a literal here would go stale on the next build. It is the
@@ -188,14 +188,23 @@ function env.require(id)
 	local cached = loaded[id]
 	if cached ~= nil then return cached end
 	if loading[id] then
-		error("[uai] circular require: " .. tostring(id), 2)
+		local start = 1
+		for index, loadedId in ipairs(requireStack) do
+			if loadedId == id then start = index; break end
+		end
+		local cycle = {}
+		for index = start, #requireStack do cycle[#cycle + 1] = requireStack[index] end
+		cycle[#cycle + 1] = id
+		error("[uai] circular require: " .. table.concat(cycle, " -> "), 2)
 	end
 	local factory = MODULES[id]
 	if type(factory) ~= "function" then
 		error("[uai] no module '" .. tostring(id) .. "'", 2)
 	end
 	loading[id] = true
+	requireStack[#requireStack + 1] = id
 	local ok, result = pcall(factory, env)
+	requireStack[#requireStack] = nil
 	loading[id] = nil
 	if not ok then
 		error("[uai] module '" .. tostring(id) .. "' failed to load: " .. tostring(result), 2)
