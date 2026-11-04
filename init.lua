@@ -188,12 +188,8 @@ function env.require(id)
 	local cached = loaded[id]
 	if cached ~= nil then return cached end
 	if loading[id] then
-		local start = 1
-		for index, loadedId in ipairs(requireStack) do
-			if loadedId == id then start = index; break end
-		end
 		local cycle = {}
-		for index = start, #requireStack do cycle[#cycle + 1] = requireStack[index] end
+		for index = 1, #requireStack do cycle[#cycle + 1] = requireStack[index] end
 		cycle[#cycle + 1] = id
 		error("[uai] circular require: " .. table.concat(cycle, " -> "), 2)
 	end

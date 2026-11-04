@@ -1,12 +1,12 @@
 -- Bounded pending user messages. Preparation reserves order before file I/O can
 -- yield. Only compact prepared content is persisted; restoration never starts work.
 return function(env)
-	local util = env.require("runtime/util")
-	local clock = env.require("runtime/clock")
-	local images = env.require("runtime/images")
 	local M = { LIMIT = 16, BYTES = 128000, PREPARING_BYTES = 32 * 1024 * 1024 }
 
 	function M.new(session, changed)
+		local util = env.require("runtime/util")
+		local clock = env.require("runtime/clock")
+		local images = env.require("runtime/images")
 		local items, receipts, receiptOrder = {}, {}, {}
 		local held, reason = false, nil
 		local Q = {}
