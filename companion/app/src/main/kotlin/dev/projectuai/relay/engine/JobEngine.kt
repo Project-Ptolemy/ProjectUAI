@@ -12,8 +12,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.Buffer
+import okio.BufferedSink
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -229,7 +231,15 @@ class JobEngine(
             headers.forEach { (key, value) -> builder.addHeader(key, value) }
             val mediaType = headers.entries.firstOrNull { it.key.equals("content-type", true) }
                 ?.value?.toMediaTypeOrNull() ?: "application/json".toMediaTypeOrNull()
-            builder.method("POST", request.body.toRequestBody(mediaType))
+            val requestBody = request.body.toRequestBody(mediaType)
+            builder.method("POST", object : RequestBody() {
+                override fun contentType() = requestBody.contentType()
+                override fun contentLength() = requestBody.contentLength()
+                override fun writeTo(sink: BufferedSink) = requestBody.writeTo(sink)
+                // Allow another address before dispatch, never an automatic replay
+                // after sending. Kilo's complete quota refusal owns its separate call.
+                override fun isOneShot() = true
+            })
             val prepared = builder.build()
             val response = if (kilo != null && KiloRoute.eligible(prepared, request.body)) {
                 kilo.execute(prepared, client, timeout, { job.cancelled }) { call ->
@@ -365,13 +375,13 @@ class JobEngine(
     companion object {
         const val OWNER_LEASE_MS = 120_000L
 
-        /** One provider dispatch. Silence while reasoning is not a read deadline. */
+        /** Alternate connection routes are safe only with the one-shot inference body above. */
         fun providerClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .writeTimeout(0, TimeUnit.MILLISECONDS)
             .callTimeout(0, TimeUnit.MILLISECONDS)
-            .retryOnConnectionFailure(false)
+            .retryOnConnectionFailure(true)
             .followRedirects(false)
             .followSslRedirects(false)
             .build()

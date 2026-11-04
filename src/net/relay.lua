@@ -8,6 +8,7 @@ return function(env)
 	local clock = env.require("runtime/clock")
 	local dispose = env.require("runtime/dispose")
 	local transport = env.require("net/transport")
+	local relayLink = env.require("net/relay_link")
 	local alive, pending = true, {}
 	local M = {}
 
@@ -48,8 +49,9 @@ return function(env)
 		if unlimited then deadline = math.huge end
 		local nativeOwner = {}
 		local ended, counted
-		local function short(method, path, body)
-			if clock.ms() >= deadline then return nil, "deadline: relay request budget expired" end
+		local function short(method, path, body, exchangeDeadline)
+			local stop = math.min(deadline, exchangeDeadline or deadline)
+			if clock.ms() >= stop then return nil, "deadline: relay request budget expired" end
 			return call({ url = base .. path, method = method, body = body,
 				-- Before the first submission, a hello or slot wait must not let a
 				-- newly challenged client start inference. Receipt recovery belongs
@@ -63,7 +65,7 @@ return function(env)
 					if spec.onDispatch then pcall(spec.onDispatch) end
 				end or nil,
 				headers = { Authorization = "Bearer " .. token }, identity = "none", silent = true,
-				waitForSlot = true, timeout = math.min(5, (deadline - clock.ms()) / 1000), deadlineMs = deadline,
+				waitForSlot = true, timeout = math.min(5, (stop - clock.ms()) / 1000), deadlineMs = stop,
 				aborted = ended, executorProfile = executorProfile, nativeOwner = nativeOwner })
 		end
 		local cancelled = false
@@ -97,12 +99,41 @@ return function(env)
 			end
 			return failure("Web runtime needs the bridge token in Cowork settings.")
 		end
-		local hello = short("GET", "/api/hello")
-		if ended() then pending[id] = nil; return nil, "aborted" end
-		local info = hello and hello.ok and util.decode(hello.body)
-		if type(info) ~= "table" or info.protocol ~= 2 or not info.instance then
+		local info, helloProblem
+		local helloDeadline = target == "companion" and math.min(deadline, clock.ms() + 15000) or deadline
+		for attempt = 1, target == "companion" and 3 or 1 do
+			local hello, problem, _, failureKind = short("GET", "/api/hello", nil, helloDeadline)
+			if ended() then pending[id] = nil; return nil, "aborted" end
+			local access = config.accessProblem()
+			if access then pending[id] = nil; return nil, "vault_required: " .. access end
+			if hello and hello.ok then
+				local decoded = util.decode(hello.body)
+				if type(decoded) == "table" and decoded.protocol == 2 and type(decoded.instance) == "string"
+					and #decoded.instance > 0 and #decoded.instance <= 128
+					and (target ~= "companion" or decoded.server == "uai-relay") then info = decoded; break end
+				helloProblem = "The local relay returned an invalid or incompatible hello."
+				break
+			end
+			local unusable = not hello and unusableResponse(problem)
+			if hello then
+				helloProblem = "The local relay returned HTTP " .. tostring(hello.status or 0) .. "."
+				if hello.status == 401 then helloProblem = helloProblem .. " Open Cowork settings and scan to repair pairing." end
+			else helloProblem = relayLink.describeTransportProblem(problem) end
+			if unusable or failureKind == "response" or (hello and hello.status ~= 408 and (hello.status < 500 or hello.status > 599))
+				or attempt == 3 or target ~= "companion" or clock.ms() >= helloDeadline then break end
+			-- Hello cannot start inference. A transient local failure may recover
+			-- before any POST, retaining this native profile and owner throughout.
+			-- A timed-out native call keeps its lane; another attempt waits for it.
+			local wake = math.min(helloDeadline, clock.ms() + 250)
+			while clock.ms() < wake do
+				if ended() then pending[id] = nil; return nil, "aborted" end
+				clock.wait(math.min(0.05, (wake - clock.ms()) / 1000))
+			end
+		end
+		if not info then
 			if target == "companion" then
-				return failure("The companion relay did not answer. Start the Project UAI Companion app, then retry.")
+				return failure("The companion relay could not complete its local connection check. " .. tostring(helloProblem)
+					.. " No inference was submitted.")
 			end
 			return failure("Web runtime cannot connect. Start the updated bridge/server.js and check its token.")
 		end

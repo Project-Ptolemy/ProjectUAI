@@ -112,10 +112,10 @@ return function(env)
 			return "The executor rejected a native request option or argument."
 		end
 		if timedOut(text) then
-			return "The discovery exchange reached its deadline or timed out."
+			return "The local relay exchange reached its deadline or timed out."
 		end
 		if has(text, { "aborted", "cancelled", "canceled" }) then
-			return "The discovery exchange was cancelled."
+			return "The local relay exchange was cancelled."
 		end
 		if has(text, { "capacity:", "slots are busy", "request limit" }) then
 			return "Native HTTP capacity is busy; wait for other requests, then scan again."
@@ -134,6 +134,7 @@ return function(env)
 		end
 		return "The executor reported an unknown transport failure."
 	end
+	M.describeTransportProblem = transportProblem
 
 	local function readReply(step, response, problem, probePort, limit, profile, failureKind)
 		local label = "Companion " .. step .. " on port " .. tostring(probePort)
@@ -183,10 +184,21 @@ return function(env)
 		for index, profile in ipairs(candidates) do
 			if stale() then return nil, nil, "cancelled" end
 			local authenticated = sameProfile(profile, verifiedProfile) and token() == verifiedToken and token() ~= ""
+			local rejectedToken = false
 			local hello, helloError, _, failureKind = http.request({ url = probeBase .. "/api/hello", method = "GET",
 				headers = authenticated and { Authorization = "Bearer " .. token() } or nil,
 				identity = "none", silent = true, timeout = EXCHANGE_SECONDS, aborted = stale, executorProfile = profile })
 			if stale() then return nil, nil, "cancelled" end
+			-- The DataModel adapter authenticates hello through /api/executor. A
+			-- replaced companion can explicitly reject that old token before we see
+			-- its new instance. Read public metadata once, then let the existing
+			-- authenticated status check decide whether pairing needs repair.
+			if authenticated and hello and hello.status == 401 then
+				rejectedToken = true
+				hello, helloError, _, failureKind = http.request({ url = probeBase .. "/api/hello", method = "GET",
+					identity = "none", silent = true, timeout = EXCHANGE_SECONDS, aborted = stale, executorProfile = profile })
+				if stale() then return nil, nil, "cancelled" end
+			end
 			attempts[#attempts + 1] = profileLabel(profile)
 			local info, problem = readReply("hello", hello, helloError, probePort, 4096, profile, failureKind)
 			if info then
@@ -197,7 +209,7 @@ return function(env)
 				elseif profile.request == dataModel.request and (type(info.capabilities) ~= "table"
 					or type(info.capabilities.executorPost) ~= "table" or info.capabilities.executorPost.schema ~= 1) then
 					problem = "The companion is reachable through HttpGet. Install UAI Relay 3.5.7 or newer for authenticated HttpPost support."
-				else return info, profile end
+				else return info, profile, nil, rejectedToken end
 			end
 			local errorText = tostring(helloError or ""):lower()
 			local stop = hello ~= nil or failureKind ~= "transport"
@@ -215,10 +227,10 @@ return function(env)
 	-- request; a late hello/pair cannot restore credentials for an old endpoint.
 	local function probe(mine, probeBase, probePort)
 		local function stale() return config.accessProblem() ~= nil or not alive or epoch ~= mine or mode() == "off" end
-		local info, profile, helloProblem = chooseHello(probeBase, probePort, stale)
+		local info, profile, helloProblem, rejectedToken = chooseHello(probeBase, probePort, stale)
 		if not info then return false, helloProblem end
 		local pairedToken = token()
-		if pairedToken ~= "" and (pairedToken ~= verifiedToken or info.instance ~= verifiedInstance or not sameProfile(profile, verifiedProfile)) then
+		if pairedToken ~= "" and (rejectedToken or pairedToken ~= verifiedToken or info.instance ~= verifiedInstance or not sameProfile(profile, verifiedProfile)) then
 			local status, statusError, _, failureKind = http.request({ url = probeBase .. "/api/status", method = "GET",
 				headers = { Authorization = "Bearer " .. pairedToken }, identity = "none", silent = true,
 				timeout = EXCHANGE_SECONDS, aborted = stale, executorProfile = profile })
@@ -273,9 +285,9 @@ return function(env)
 		local access = config.accessProblem()
 		if access then return false, access end
 		if mode() == "off" then setState("off"); return false, "off" end
-		if type(caps.fn.request) ~= "function" then
+		if type(caps.fn.request) ~= "function" and not dataModel.available() then
 			nextProbe = clock.ms() + PROBE_MS
-			local reason = "The companion needs an executor HTTP request function; Roblox HttpService cannot reach this phone's loopback relay."
+			local reason = "The companion needs an executor HTTP request function or HttpGet/HttpPost; Roblox HttpService cannot reach this phone's loopback relay."
 			setState("error", reason); return false, reason
 		end
 		if activeProbe then

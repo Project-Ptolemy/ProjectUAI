@@ -172,7 +172,7 @@ do
 	local result, starts, polls = nil, 0, 0
 	h.sandbox.task.spawn(function()
 		result = app.env.require("net/relay").request({ url = "https://provider.invalid", body = "{}", timeout = 15 }, {}, function(spec)
-			if spec.url:find("/api/hello", 1, true) then return { ok = true, body = '{"protocol":2,"instance":"phone-one"}' } end
+			if spec.url:find("/api/hello", 1, true) then return { ok = true, body = '{"protocol":2,"instance":"phone-one","server":"uai-relay"}' } end
 			if spec.method == "POST" then starts = starts + 1; return { ok = true, body = json.encode({ id = json.decode(spec.body).id, state = "running" }) } end
 			polls = polls + 1
 			return { ok = true, body = json.encode({ id = spec.url:match("/inference/(.+)$"), state = polls < 3 and "running" or "completed", status = 200, body = "kept job" }) }

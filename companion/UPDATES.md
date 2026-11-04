@@ -1,12 +1,13 @@
 # Android companion updates
 
-Current companion: **3.7.1 (Android version code 8)**. Kilo quota recovery now
-accepts every Kilo free-model spelling: model ids ending in `free` behind a
-`:`, `/` or `-` separator, so `reflection/beam-free` and `openrouter/free`
-recover through the tunnel like `:free` routes. Replies remain bounded at
-8 MiB, and oversized replies still return status 413 without resubmitting
-inference. The APK retains the existing production signing identity and
-application ID.
+Current companion: **3.7.2 (Android version code 9)**. Provider connections can
+try remaining resolved addresses when an earlier connection attempt fails before
+sending the request. This fixes failures caused by an unreachable first address
+without automatically repeating a sent inference request. All attempts share the
+original explicit deadline; certificate validation and the 8 MiB response limit
+remain enforced. Kilo's complete quota refusal retains its separately controlled
+recovery. The APK retains the existing production signing identity and application
+ID.
 
 The companion checks the official `Project-Ptolemy/ProjectUAI` GitHub releases at
 startup and every 15 minutes while its app or relay process is alive. Compatible

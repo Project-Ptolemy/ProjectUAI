@@ -1,6 +1,6 @@
 # UAI Relay (Android companion)
 
-Version **3.7.0** (Android version code 7).
+Version **3.7.2** (Android version code 9).
 
 **Settings > Kilo tunnel** enables automatic anonymous Kilo quota recovery.
 Native Tor starts only after an explicit quota refusal, with one circuit retry
@@ -21,8 +21,9 @@ serving, no agent state, no commands. Just the relay contract in
 
 - Android 8.0+ (`minSdk 26`). Sideload only; no Play dependency.
 - A mobile executor that exposes `request` / `http_request` / `syn.request` /
-  `http.request` / `fluxus.request`. Plain `HttpService` cannot reach loopback
-  plain-HTTP; the executor must perform requests locally on the phone.
+  `http.request` / `fluxus.request`, or working `game:HttpGet` and `game:HttpPost`.
+  Plain `HttpService` cannot reach loopback plain-HTTP; the executor must perform
+  requests locally on the phone.
 - The client's `relay.mode` is `auto` by default: the script probes
   `127.0.0.1:8790`, pairs once for a stable token, and relays from then on.
   **Always** requires a relay and reports an unavailable companion instead of
@@ -142,10 +143,14 @@ and send `timeout:0` for requests without an explicit finite budget. The compani
 does not stop these requests because a model is quiet or reasoning takes longer
 than ten seconds. Stop, an explicit request deadline, an upstream failure or the
 existing response-size limit still ends work. Older clients retain their positive
-timeout, and an omitted timeout remains 180 seconds. Connection establishment has
-a 15-second limit; established request reads and writes have no hidden timeout.
-The relay does not automatically replay a POST after a connection failure or
-redirect.
+timeout, and an omitted timeout remains 180 seconds. Each connection attempt has
+a 15-second limit. A failed connection can try the provider's remaining addresses
+before sending the HTTP request, so an unreachable first address does not hide a
+reachable provider. All attempts share the original explicit request deadline.
+Established request reads and writes have no hidden timeout. Inference bodies
+are marked one-shot: connection loss after sending, retryable HTTP responses and
+redirects cannot automatically replay the POST. Kilo's explicit, complete quota
+refusal retains its separately controlled recovery.
 
 Each running job also needs contact from its waiting Roblox client. A matching
 submission retry or authenticated poll for that job renews a two-minute ownership

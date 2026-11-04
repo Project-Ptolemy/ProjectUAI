@@ -27,6 +27,7 @@ local function fixture(options)
 	f.h.http.handler = function(entry)
 		if entry.url:find("/api/hello", 1, true) then
 			return { StatusCode = 200, Body = f.h.json.encode({ protocol = 2, instance = endpoint.instance,
+				server = endpoint.target == "companion" and "uai-relay" or nil,
 				capabilities = options.old and {} or { inferencePreview = { schema = 1 } } }) }
 		end
 		if entry.method == "DELETE" then f.deletes = f.deletes + 1; return { StatusCode = 200, Body = "{}" } end

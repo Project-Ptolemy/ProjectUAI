@@ -433,8 +433,8 @@ case("an accepted job pins its copied profile through rediscovery, polls and can
 	f.finish()
 end)
 
-local function dataModelFixture(old)
-	local f = fixture()
+local function dataModelFixture(old, options)
+	local f = fixture(options)
 	f.nativeOverride = function() error("HttpError: ConnectFail", 0) end
 	f.posts, f.gets = {}, {}
 	f.h.sandbox.game.HttpGet = function(_, url)
@@ -467,6 +467,58 @@ case("Delta ConnectFail can pair and infer through the advertised DataModel tran
 	check("GET was only used for public discovery", #f.gets == 1 and f.gets[1] == "http://127.0.0.1:8790/api/hello")
 	f.finish()
 end)
+
+case("a DataModel-only executor can discover, pair and infer without a request alias", function()
+	local f = dataModelFixture(false, { executor = false })
+	check("no native request alias is available", f.caps.fn.request == nil and #f.caps.requestAliases() == 0)
+	check("HttpGet and HttpPost alone establish the authenticated profile", f.probe() and f.link.usable()
+		and f.link.status().transport == "HttpGet/HttpPost minimal")
+	local registry = f.env.require("provider/registry")
+	local record = registry.blank("custom")
+	record.id, record.model, record.baseUrl, record.apiKey = "datamodel-only", "fixture-model", "https://provider.fixture/v1", "fixture-key"
+	check("a public provider validates without a native request alias", registry.validate(record))
+	f.override = function(step, request)
+		local id = step:match("^inference/(.+)$")
+		if id and request.method == "GET" then
+			return f.reply({ id = id, state = "completed", status = 200, body = f.h.json.encode({
+				choices = { { message = { role = "assistant", content = "companion result" }, finish_reason = "stop" } },
+			}) })
+		end
+	end
+	local response = f.run(function() return f.env.require("provider/chat").complete(record, {
+		messages = { { role = "user", content = "hello" } }, stream = false,
+	}) end, 3)
+	check("the provider adapter completes one job through the independent transport", response and response.content == "companion result" and response.via == "relay"
+		and #f.submissions == 1 and #f.nativeCalls == 0)
+	check("only public discovery uses GET", #f.gets == 1 and #f.posts == 4)
+	f.finish()
+end)
+
+for _, changedInstance in ipairs({ false, true }) do
+	case("a verified DataModel token refusal repairs pairing with changed instance " .. tostring(changedInstance), function()
+		local f = dataModelFixture()
+		check("original pairing succeeds", f.probe())
+		local oldToken = f.token
+		f.token = ("b"):rep(64)
+		if changedInstance then f.instance = "replacement-phone" end
+		local refusals = 0
+		f.postOverride = function(url, body)
+			if not url:find("/api/executor", 1, true) then return end
+			local input = f.h.json.decode(body)
+			if input.token ~= f.token then
+				check("only the old hello and pairing check carry the refused token", input.token == oldToken
+					and (input.path == "/api/hello" or input.path == "/api/status"))
+				refusals = refusals + 1
+				return f.h.json.encode({ schema = 1, status = 401, body = '{"error":"bad token"}' })
+			end
+		end
+		check("explicit refusal recovers through public metadata and authenticated status", f.probe() and refusals == 2
+			and #f.gets == 2 and f.config.get("relay.token") == f.token and f.link.usable())
+		local response = f.infer()
+		check("the repaired profile submits once with its new token", response and response.ok and #f.submissions == 1)
+		f.finish()
+	end)
+end
 
 case("an old companion reached via HttpGet requires an update without pairing", function()
 	local f = dataModelFixture(true)
@@ -515,6 +567,170 @@ case("an old companion encoding rejection gives update guidance without another 
 	local message = f.h.json.decode(response.body).error.message
 	check("the user can fix the installed version without unpairing", message:find("Update UAI Relay", 1, true)
 		and message:find("Resetting pairing will not fix", 1, true) and f.link.usable())
+	f.finish()
+end)
+
+for _, kind in ipairs({ "transport", "http" }) do
+	case("preflight recovers one transient " .. kind .. " failure before submitting inference", function()
+		local f = fixture()
+		check("original profile is verified", f.probe())
+		local hellos = 0
+		f.nativeOverride = function(_, spec)
+			if not spec.Url:find("/api/hello", 1, true) then return end
+			hellos = hellos + 1
+			if hellos ~= 1 then return end
+			if kind == "transport" then error("connection refused private transport details " .. f.token, 0) end
+			return true, f.reply({ error = "private unavailable response" }, 503)
+		end
+		local dispatched = 0
+		local response = f.infer({ onDispatch = function() dispatched = dispatched + 1 end })
+		check("one repeated hello recovers the request", response and response.ok and response.body == "companion result" and hellos == 2)
+		check("preflight recovery dispatches exactly one provider job", #f.submissions == 1 and dispatched == 1)
+		for _, call in ipairs(f.nativeCalls) do check("the verified native profile stays fixed", call.name == "request") end
+		f.finish()
+	end)
+end
+
+for _, item in ipairs({
+	{ label = "token refusal", reply = { StatusCode = 401, Body = "private authentication failure" }, expected = "HTTP 401" },
+	{ label = "HTTP refusal", reply = { StatusCode = 403, Body = "private refusal" }, expected = "HTTP 403" },
+	{ label = "invalid JSON", reply = { StatusCode = 200, Body = "private malformed JSON" }, expected = "invalid or incompatible hello" },
+	{ label = "empty response", reply = { StatusCode = 0, Body = "" }, expected = "empty, malformed or oversized" },
+	{ label = "non-text body", reply = { StatusCode = 200, Body = {} }, expected = "empty, malformed or oversized" },
+	{ label = "oversized envelope", problem = "response_limit: private content", expected = "empty, malformed or oversized" },
+	{ label = "malformed envelope", problem = "malformed: private content", expected = "empty, malformed or oversized" },
+}) do
+	case("preflight " .. item.label .. " is terminal and has a safe specific diagnostic", function()
+		local f = fixture()
+		check("original profile is verified", f.probe())
+		local hellos = 0
+		f.nativeOverride = function(_, spec)
+			if not spec.Url:find("/api/hello", 1, true) then return end
+			hellos = hellos + 1
+			if item.problem then error(item.problem .. " " .. f.token, 0) end
+			return true, item.reply
+		end
+		local response = f.infer()
+		local message = response and f.h.json.decode(response.body).error.message or ""
+		check("one hello fails without submission", response and response.status == 599 and response.terminal and hellos == 1 and #f.submissions == 0)
+		check("the cause is bounded and contains no private payload", message:find(item.expected, 1, true) and message:find("No inference was submitted", 1, true)
+			and not message:find("private", 1, true) and not message:find(f.token, 1, true) and #message < 500)
+		f.finish()
+	end)
+end
+
+case("preflight retries cannot accept another program's hello", function()
+	local f = fixture()
+	check("original profile is verified", f.probe())
+	local hellos = 0
+	f.override = function(step)
+		if step ~= "hello" then return end
+		hellos = hellos + 1
+		local info = f.hello(); info.server = "unrelated-server"
+		return f.reply(info)
+	end
+	local response = f.infer()
+	check("a changed server marker stops before submission", response and response.terminal and hellos == 1 and #f.submissions == 0
+		and response.body:find("invalid or incompatible hello", 1, true))
+	f.finish()
+end)
+
+case("preflight retries wait for the original timed-out native hello", function()
+	local f = fixture()
+	f.h.services.UserInputService.TouchEnabled, f.h.services.UserInputService.MouseEnabled = true, false
+	check("original profile is verified", f.probe())
+	local hellos, active, maximum = 0, 0, 0
+	f.override = function(step)
+		if step ~= "hello" then return end
+		hellos, active = hellos + 1, active + 1
+		maximum = math.max(maximum, active)
+		if hellos == 1 then f.h.sched.wait(7) end
+		active = active - 1
+		return f.reply(f.hello())
+	end
+	local response = f.infer(nil, 10)
+	check("the recovered hello permits one inference", response and response.ok and hellos == 2 and #f.submissions == 1)
+	check("the timed-out native call never overlaps recovery", maximum == 1 and f.env.require("net/http").workers() == 0)
+	f.finish()
+end)
+
+case("a stuck preflight ends within fifteen seconds without releasing native ownership", function()
+	local f = fixture()
+	f.h.services.UserInputService.TouchEnabled, f.h.services.UserInputService.MouseEnabled = true, false
+	check("original profile is verified", f.probe())
+	local hellos = 0
+	f.override = function(step)
+		if step ~= "hello" then return end
+		hellos = hellos + 1
+		f.h.sched.wait(60)
+		return f.reply(f.hello())
+	end
+	local elapsed
+	local response = f.run(function()
+		local started = f.h.sched.now
+		local result = f.env.require("net/http").send({ url = "https://provider.fixture/v1/chat/completions", method = "POST",
+			body = "{}", relay = true, timeout = 60, attempts = 3 })
+		elapsed = f.h.sched.now - started
+		return result
+	end, 16)
+	check("preflight is bounded even with a longer caller budget", response and response.terminal and elapsed >= 14.9 and elapsed <= 15.1)
+	check("capacity explains the blocked local exchange", response.body:find("HTTP capacity is busy", 1, true) and #f.submissions == 0 and hellos == 1)
+	check("unfinished native work retains its slot", f.env.require("net/http").workers() == 1)
+	f.h.sched.advance(46)
+	check("late hello cannot revive the request", f.env.require("net/http").workers() == 0 and #f.submissions == 0 and hellos == 1)
+	f.finish()
+end)
+
+case("preflight respects an earlier caller deadline", function()
+	local f = fixture()
+	check("original profile is verified", f.probe())
+	local hellos = 0
+	f.override = function(step)
+		if step ~= "hello" then return end
+		hellos = hellos + 1; f.h.sched.wait(7)
+		return f.reply(f.hello())
+	end
+	local response, why = f.infer({ timeout = 2 }, 3)
+	check("the caller deadline stays terminal", (not response and tostring(why):find("deadline", 1, true))
+		or (response and response.terminal and response.body:find("deadline", 1, true)))
+	check("no retry or submission outlives the caller deadline", hellos == 1 and #f.submissions == 0)
+	f.h.sched.advance(5)
+	f.finish()
+end)
+
+case("cancelling preflight never submits or cancels a provider job", function()
+	local f = fixture()
+	check("original profile is verified", f.probe())
+	local hellos, deletes, stopped = 0, 0, false
+	f.override = function(step, request)
+		if request.method == "DELETE" then deletes = deletes + 1 end
+		if step ~= "hello" then return end
+		hellos = hellos + 1; f.h.sched.wait(7)
+		return f.reply(f.hello())
+	end
+	f.h.sched.delay(0.2, function() stopped = true end)
+	local response, why = f.infer({ aborted = function() return stopped end }, 1)
+	check("Stop settles the preflight without provider traffic", response == nil and why == "aborted"
+		and hellos == 1 and #f.submissions == 0 and deletes == 0)
+	f.h.sched.advance(7)
+	check("late hello cannot submit after Stop", #f.submissions == 0 and deletes == 0 and f.env.require("net/http").workers() == 0)
+	f.finish()
+end)
+
+case("vault access revoked during preflight stays terminal without inference", function()
+	local f = fixture()
+	check("original profile is verified", f.probe())
+	local hellos, locked = 0, false
+	local accessProblem = f.config.accessProblem
+	f.config.accessProblem = function() return locked and "Unlock credential storage to continue." or accessProblem() end
+	f.override = function(step)
+		if step ~= "hello" then return end
+		hellos = hellos + 1; f.h.sched.wait(0.2); locked = true
+		return f.reply(f.hello())
+	end
+	local response, why = f.infer()
+	check("preflight returns the vault access problem", not response and tostring(why):find("vault_required:", 1, true))
+	check("revoked access cannot retry hello or submit a job", hellos == 1 and #f.submissions == 0)
 	f.finish()
 end)
 

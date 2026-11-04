@@ -5,8 +5,9 @@ October 31, 2026**. This release adds focused tool families, persistent script
 goals, optional provider setup, separate Free/HCNSEC presets, native Obsidian
 browsing/editing, conversation and editor conveniences, and staged startup.
 The embedding SDK is **1.1.0** and standalone **UI LIB is 1.6.0**.
-The Android companion remains **3.7.1 (version code 8)**; its existing protocol,
-Kilo quota recovery and release assets are unchanged.
+The Android companion is **3.7.2 (version code 9)**. It can try another provider
+address after a failed connection without replaying a sent inference request.
+Its existing protocol and Kilo quota recovery remain compatible.
 
 Bridge/web 3.8.1 adds the November 2 OpenCode API-key transport fix; the client
 and Windows shell remain 3.8.0 with the corrected client build.
@@ -2110,6 +2111,13 @@ retains its slot until completion. A failed probe distinguishes unavailable
 executor transport, connection/deadline failures, HTTP refusals and incompatible
 replies without exposing response bodies or pairing credentials.
 
+Before inference submission, a companion hello can recover transient connection,
+deadline or server failures with at most three exchanges within 15 seconds and
+the caller's earlier deadline. The original native owner and executor profile
+remain fixed; timed-out native work still owns its slot. Explicit authentication,
+protocol and unusable-response failures stop immediately with a bounded diagnostic.
+No provider request is submitted until this preflight succeeds.
+
 Companion discovery can compare captured native request implementations using
 unauthenticated `GET /api/hello` only. The primary implementation is tried with its
 normal options, then with the minimal documented options after a completed native
@@ -2121,12 +2129,17 @@ instance and authenticated pairing are verified. It stays local to the relay and
 is captured for an active job's submissions, polls and cancellation. Discovering
 a new profile does not switch or replay that job.
 
+An explicit 401 from a previously verified profile's authenticated hello permits
+one public hello on that profile, followed by the existing saved-pairing check
+and repair. Transport errors never clear pairing credentials.
+
 Minimal native options omit the optional empty Headers table and undocumented
 Timeout field. The Lua caller still stops waiting at its own deadline; a native
 function that continues afterward keeps its connection slot until it ends.
 
 Companion 3.5.7 advertises `capabilities.executorPost = {schema:1}`. After completed
-native discovery failures, DataModel HttpGet/HttpPost can discover and pair.
+native discovery failures, or when no native request function is available,
+DataModel HttpGet/HttpPost can discover and pair.
 Authenticated operations use POST `/api/executor` with a schema-1 method/path/
 token/body envelope; credentials and provider data never enter GET URLs. This
 endpoint accepts only existing relay operations, checks loopback Host, rejects
@@ -2151,6 +2164,12 @@ remain finite. Legacy companions retain finite jobs. Finite submission timeouts 
 integer seconds, as required by the Kotlin protocol. Lost polls retain the accepted
 job identity; Stop, unload, changed credentials, lost receipts and upstream failures
 remain terminal. Provider limits still apply. No timeout causes a direct retry.
+Companion 3.7.2 permits OkHttp connection-route fallback before an HTTP request
+is sent, including another address returned by DNS. Inference bodies are one-shot:
+partial uploads, lost responses and automatic HTTP status follow-ups cannot replay
+them. Redirects remain disabled. Each connection attempt retains its 15-second
+limit and finite jobs retain their original overall deadline. Explicit complete
+Kilo quota refusals retain their separately bounded recovery policy.
 Companion jobs retain a separate 120-second monotonic ownership lease, renewed only
 by their authenticated result poll or matching submission retry. A five-second
 service sweep cancels abandoned provider calls and releases idle wake locks after

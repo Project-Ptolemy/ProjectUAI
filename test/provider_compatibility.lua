@@ -133,6 +133,12 @@ for _, row in ipairs(MATRIX) do
 			else check("named auth header", header(entry.headers, row[4]) == "fixture-key") end
 			if native then check("Messages version header", header(entry.headers, "anthropic-version") == "2023-06-01") end
 			if entry.method == "GET" then
+				if row[1] == "cloudflare" then
+					check("Workers AI model discovery route", entry.url == "https://api.cloudflare.com/client/v4/accounts/YOUR-ACCOUNT-ID/ai/models/search?page=1&per_page=100")
+					return { StatusCode = 200, Body = f.h.json.encode({ success = true, result = {
+						{ id = "catalog-fixture", name = record.model }, { id = "catalog-embedding", name = "embedding-fixture" },
+					}, result_info = { total_pages = 1 } }) }
+				end
 				check("model discovery route", entry.url == row[2] .. "/models" .. (row[5] or ""))
 				return { StatusCode = 200, Body = f.h.json.encode({ data = { { id = record.model }, { id = "embedding-fixture" } } }) }
 			end

@@ -21,6 +21,29 @@ the original app design and historical implementation plan follow afterward.
 
 ## Current companion transport and diagnostics
 
+Companion **3.7.2 (version code 9)** repairs provider connection fallback. The
+previous transport stopped after the first failed address even when DNS supplied
+another reachable address. The companion can now try the remaining connection
+routes before sending HTTP. Provider request bodies are one-shot, so a partial
+upload, lost response or automatic HTTP status follow-up cannot send inference
+again. Redirects stay disabled; finite jobs retain their original deadline.
+An explicit complete Kilo quota refusal keeps its existing bounded recovery.
+
+The updated client also supports discovery when HttpGet/HttpPost is the only
+executor transport. An explicit 401 on an authenticated discovery hello permits
+a public hello and the existing saved-pairing repair; connection failures never
+erase pairing. A transient hello failure immediately before submission gets up
+to three short attempts within 15 seconds and the caller's earlier deadline,
+using the same native owner and executor profile. Unusable replies, incompatible
+metadata and authentication failures stop immediately. Diagnostics distinguish
+these causes without exposing raw exceptions, response bodies or credentials.
+
+The displayed 599 is a local relay failure category, not an HTTP response from
+every provider. "Could not connect to the provider" comes from the companion's
+outbound connection; "did not answer" came from the client's local hello check.
+Install the updated companion and reload the client to receive both fixes.
+See [the investigation and verification](TESTING_RELAY_599.md).
+
 Companion **3.7.0 (version code 7)** caps the full UTF-8 reply to the executor at
 8 MiB, including JSON escaping and the additional `/api/executor` envelope. It
 counts the retained body's encoded size before allocating an oversized reply.
@@ -62,9 +85,10 @@ in hello and authenticated status. Updated clients can send `timeout:0` to wait
 without an overall inference deadline. An explicit positive timeout remains
 bounded to 10–86400 seconds; an omitted value retains the legacy 180-second
 default. A finite caller deadline remains authoritative. OkHttp has no hidden
-read/write timeout and no automatic connection retry or redirect replay;
-connection establishment retains its 15-second limit. Cancellation and response
-size limits remain terminal.
+read/write timeout. Current versions permit connection-route fallback before
+dispatch, with no automatic replay of a sent request or redirect; each connection
+attempt retains its 15-second limit. Cancellation and response size limits remain
+terminal.
 
 A running job has a 120-second monotonic ownership lease, renewed only by its
 authenticated job poll or identical submission retry. The Android service sweeps

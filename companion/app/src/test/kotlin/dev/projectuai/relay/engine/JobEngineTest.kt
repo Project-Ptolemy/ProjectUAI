@@ -25,8 +25,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.net.UnknownHostException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.io.IOException
 import okhttp3.Call
+import okhttp3.Dns
 import okhttp3.EventListener
 import okhttp3.Protocol
 import okhttp3.Response
@@ -219,6 +223,83 @@ class JobEngineTest {
         upstream.enqueue(MockResponse().setBody("must not retry"))
         val engine = engine()
         engine.submit(submitRequest())
+        val failed = waitFor(engine, "inference_abcdef12")!!
+        assertEquals(JobState.FAILED, failed.state)
+        assertEquals("transport", failed.errorCode)
+        assertEquals(1, upstream.requestCount)
+        assertEquals(1, engine.activity().failedJobs)
+    }
+
+    @Test
+    fun `an unreachable first provider address can fall back before sending the post`() {
+        val unavailable = InetAddress.getByName("127.0.0.2")
+        val available = InetAddress.getByName(upstream.hostName)
+        assertFalse(unavailable == available)
+        val attempts = CopyOnWriteArrayList<InetAddress>()
+        fun client() = JobEngine.providerClient().newBuilder()
+            .proxy(Proxy.NO_PROXY)
+            .connectTimeout(250, TimeUnit.MILLISECONDS)
+            .dns(object : Dns {
+                override fun lookup(hostname: String) = listOf(unavailable, available)
+            })
+            .eventListener(object : EventListener() {
+                override fun connectStart(call: Call, address: InetSocketAddress, proxy: Proxy) {
+                    attempts.add(address.address)
+                }
+            }).build()
+        val request = submitRequest(url = upstream.url("/v1/chat/completions").newBuilder()
+            .host("provider.test").build().toString())
+        upstream.enqueue(MockResponse().setBody("reachable address"))
+
+        // Reproduce the previous configuration: one failed address masks a
+        // reachable provider, even though no HTTP request was dispatched.
+        val previous = JobEngine(instance, scope, client().newBuilder().retryOnConnectionFailure(false).build())
+        previous.submit(request)
+        assertEquals(JobState.FAILED, waitFor(previous, request.id)!!.state)
+        assertEquals(listOf(unavailable), attempts.toList())
+        assertEquals(0, upstream.requestCount)
+
+        attempts.clear()
+        val fixed = JobEngine(instance, scope, client())
+        fixed.submit(request)
+        val view = waitFor(fixed, request.id)!!
+        assertEquals(JobState.COMPLETED, view.state)
+        assertEquals("reachable address", view.body)
+        assertEquals(listOf(unavailable, available), attempts.toList())
+        assertEquals(1, upstream.requestCount)
+        val received = upstream.takeRequest(1, TimeUnit.SECONDS)!!
+        assertEquals("POST", received.method)
+        assertEquals(request.body, received.body.readUtf8())
+        assertEquals("Bearer key", received.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `retryable provider statuses never automatically replay the post`() {
+        val status = AtomicInteger(408)
+        upstream.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                MockResponse().setResponseCode(status.get()).setHeader("Retry-After", "0").setBody("refused")
+        }
+        val engine = engine()
+        for (code in listOf(408, 503)) {
+            status.set(code)
+            val request = submitRequest(id = "inference_status_$code")
+            val before = upstream.requestCount
+            engine.submit(request)
+            val view = waitFor(engine, request.id)!!
+            assertEquals(JobState.COMPLETED, view.state)
+            assertEquals(code, view.status)
+            assertEquals("refused", view.body)
+            assertEquals(before + 1, upstream.requestCount)
+        }
+    }
+
+    @Test
+    fun `a partial request body is terminal and never repeated`() {
+        upstream.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_DURING_REQUEST_BODY))
+        upstream.enqueue(MockResponse().setBody("must not retry"))
+        val engine = engine()
+        engine.submit(submitRequest(body = "x".repeat(512 * 1024)))
         val failed = waitFor(engine, "inference_abcdef12")!!
         assertEquals(JobState.FAILED, failed.state)
         assertEquals("transport", failed.errorCode)

@@ -1312,7 +1312,7 @@ end)
 -- 14. Filesystem tools -----------------------------------------------------
 
 scenario("file tools stay inside the agent folder", function()
-	local harness, handle = bootWith({ provider = false })
+	local harness, handle = bootWith()
 	handle.config.set("permissions.mode", "full")
 	local tools = handle.tools
 	local context = handle.sessions.current().toolContext()
@@ -1340,7 +1340,9 @@ scenario("file tools stay inside the agent folder", function()
 	-- The client's own files are not in the workspace, which is the point of the
 	-- split: the model's file_list must not offer config.json or a session file.
 	local session = handle.sessions.current()
-	session.send("hello")
+	harness.http.queue({ StatusCode = 200, Body = chatBody({ content = "hello" }) })
+	local accepted, reason = session.send("hello")
+	truthy("the fixture starts a provider turn", accepted, reason)
 	harness.settle(4)
 	handle.sessions.persist(session)
 	local stale = tools.dispatch({ id = "stale", ["function"] = {
