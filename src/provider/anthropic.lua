@@ -10,6 +10,8 @@
 --
 -- Sampling follows the same documented model traits as chat completions. Raw
 -- provider and request parameters remain explicit overrides, spread in last.
+-- Exact native models reject documented incompatible thinking/tool choices
+-- before dispatch, rather than changing the requested tool behavior.
 return function(env)
 	local util = env.require("runtime/util")
 	local config = env.require("runtime/config")
@@ -190,6 +192,32 @@ return function(env)
 		return out
 	end
 
+	local function wireToolChoice(choice)
+		if choice == "auto" or choice == "none" then return { type = choice } end
+		if choice == "required" then return { type = "any" } end
+		if type(choice) == "table" then
+			local fn = choice["function"]
+			if choice.type == "function" and type(fn) == "table" then
+				return { type = "tool", name = fn.name }
+			end
+			return util.deepCopy(choice)
+		end
+		return choice
+	end
+
+	local function nativeThinkingContract(record, body)
+		if record.model ~= "claude-fable-5-2" and record.model ~= "claude-mythos-5-2" then return end
+		if env.require("provider/model_info").provider(record) ~= "anthropic" then return end
+		if type(body.thinking) ~= "table" or body.thinking.type ~= "adaptive"
+			or body.thinking.budget_tokens ~= nil then
+			error("This native Claude model requires adaptive thinking; remove the incompatible thinking override.", 0)
+		end
+		local choice = body.tool_choice
+		if choice ~= nil and (type(choice) ~= "table" or choice.type ~= "auto" and choice.type ~= "none") then
+			error("This native Claude model accepts only auto or none tool choice; forced tool use is unavailable.", 0)
+		end
+	end
+
 	function M.buildBody(record, request)
 		local messages, system = M.wireMessages(request.messages)
 		-- Clamped to whatever this record's model was last told it allows, which is
@@ -205,6 +233,7 @@ return function(env)
 		if system ~= "" then body.system = system end
 		local tools = M.wireTools(request.tools)
 		if #tools > 0 then body.tools = tools end
+		if request.toolChoice ~= nil then body.tool_choice = wireToolChoice(request.toolChoice) end
 		if request.stream then body.stream = true end
 
 		-- Reasoning. Adaptive is the only shape the current generations accept: a
@@ -229,6 +258,7 @@ return function(env)
 		for key, value in pairs(request.extra or {}) do body[key] = value end
 		env.require("provider/sampling").apply(record, request, body)
 		openai.enforceOutputCeiling(record, body, request.outputCeiling)
+		nativeThinkingContract(record, body)
 		-- This adapter has no WebSocket path; SSE here still arrives over HTTP.
 		return body
 	end
@@ -241,7 +271,7 @@ return function(env)
 	end
 
 	local function normaliseUsage(usage)
-		usage = usage or {}
+		usage = type(usage) == "table" and usage or {}
 		local function tokens(value)
 			local number = tonumber(value)
 			return number and number == number and number > 0 and number < math.huge and math.floor(number) or 0
@@ -254,6 +284,7 @@ return function(env)
 		return {
 			prompt_tokens = input,
 			completion_tokens = output,
+			output_tokens_reported = env.require("runtime/response_rate").validCount(usage.output_tokens),
 			total_tokens = input + output,
 			cache_read_input_tokens = usage.cache_read_input_tokens,
 			cache_creation_input_tokens = usage.cache_creation_input_tokens,
@@ -307,6 +338,7 @@ return function(env)
 		local content, reasoning = {}, {}
 		local slots, order = {}, {}
 		local model, id, usage, stop, streamError
+		local outputReported = false
 		local frameCount = 0
 		local done = false
 		local function validIndex(index)
@@ -402,6 +434,9 @@ return function(env)
 						end
 						if type(event.usage) == "table" then
 							usage = usage and util.merge(usage, event.usage) or event.usage
+							if event.usage.output_tokens ~= nil then
+								outputReported = env.require("runtime/response_rate").validCount(event.usage.output_tokens)
+							end
 						end
 					end
 				else streamError = "malformed_stream: invalid JSON frame" end
@@ -452,6 +487,9 @@ return function(env)
 			end
 		end
 
+		local normalizedUsage = normaliseUsage(usage)
+		-- message_start counts precede generation; only later usage measures output.
+		normalizedUsage.output_tokens_reported = outputReported
 		return {
 			role = "assistant",
 			content = text,
@@ -461,7 +499,7 @@ return function(env)
 			stopReason = stop,
 			model = model,
 			id = id,
-			usage = normaliseUsage(usage),
+			usage = normalizedUsage,
 			raw = raw,
 			chunks = frameCount,
 			frames = frameCount,
@@ -509,7 +547,8 @@ return function(env)
 		end
 		if env.require("net/transport").streamForced() then wantStream = true end
 
-		local body = M.buildBody(record, util.merge(request, { stream = wantStream }))
+		local prepared, body = pcall(M.buildBody, record, util.merge(request, { stream = wantStream }))
+		if not prepared then return nil, "Unable to prepare Messages request: " .. tostring(body) end
 		local requestScope = registry.compatibilityKey(record)
 		local url = M.endpoint(record)
 		local pool = registry.requestKeys(record)

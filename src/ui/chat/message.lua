@@ -16,6 +16,7 @@ return function(env)
 	local P = env.require("ui/primitives")
 	local C = env.require("ui/controls")
 	local usage = env.require("agent/usage")
+	local responseRate = env.require("runtime/response_rate")
 	local deadlineHelp = env.require("ui/deadline_help")
 
 	-- How many lines of a block are shown before it folds. Generous, because the point
@@ -740,7 +741,13 @@ return function(env)
 			function item.setModel(nextModel) model = nextModel or model; item.update("setModel", model) end
 			function item.setText(nextText) value, partial = nextText or "", false; item.fallback = value; item.update("setText", value) end
 			function item.stream(nextText) value, partial = tostring(nextText or ""), true; item.fallback = value; item.update("stream", value) end
-			function item.finish(nextText, nextModel) item.setModel(nextModel); item.setText(nextText or value) end
+			function item.setRequestMetrics(outputTokens, requestMs)
+				options.outputTokens, options.requestMs = outputTokens, requestMs
+				item.update("setRequestMetrics", outputTokens, requestMs)
+			end
+			function item.finish(nextText, nextModel, outputTokens, requestMs)
+				item.setModel(nextModel); item.setText(nextText or value); item.setRequestMetrics(outputTokens, requestMs)
+			end
 			return item
 		end
 		local holder = P.column(parent, {
@@ -777,6 +784,13 @@ return function(env)
 
 		local handle = { root = holder, column = column }
 		local modelLabel = attributionRow:FindFirstChild("ModelAttribution")
+		local rateLabel = P.text(holder, { name = "RequestTokenRate", text = "", role = "caption",
+			color = theme.color.textTertiary, size = UDim2.new(1, 0, 0, 0), auto = "Y", align = "Right",
+			wrap = true, visible = false, layoutOrder = 3 })
+		function handle.setRequestMetrics(outputTokens, requestMs)
+			local text = responseRate.text(outputTokens, requestMs)
+			rateLabel.Text, rateLabel.Visible = text or "", text ~= nil
+		end
 
 		function handle.setModel(value)
 			local text = util.trim(tostring(value or ""))
@@ -802,12 +816,14 @@ return function(env)
 			streamLabel.Text = currentText .. " ●"
 		end
 
-		function handle.finish(finalText, finalModel)
+		function handle.finish(finalText, finalModel, outputTokens, requestMs)
 			handle.setModel(finalModel)
 			handle.setText(finalText or currentText)
+			handle.setRequestMetrics(outputTokens, requestMs)
 		end
 
 		handle.setText(text or "")
+		handle.setRequestMetrics(props and props.outputTokens, props and props.requestMs)
 		return handle
 	end
 

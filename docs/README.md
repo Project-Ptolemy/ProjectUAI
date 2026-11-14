@@ -9,6 +9,9 @@ Start with [Getting started](GETTING_STARTED.md). The root
 | --- | --- |
 | [Getting started](GETTING_STARTED.md) | Load UAI, choose storage, add a provider and send a message. |
 | [Conversations](CONVERSATIONS.md) | Search, folders, queues, retained history and Markdown export. |
+| [Master Vault](MASTER_VAULT.md) | Search, edit and reuse local technical knowledge with sources and game/project scope. |
+| [Micro-goals](MICRO_GOALS.md) | Keep dependent tasks, acceptance criteria, evidence and blockers with a conversation. |
+| [UI mods](UI_MODS.md) | Create, review, version, export and import native visual or unrestricted scripted mods. |
 | [Shortcuts](SHORTCUTS.md) | Command search, keyboard focus and touch alternatives. |
 | [Startup](STARTUP.md) | Loading stages, slow startup and failure recovery. |
 | [Settings and accessibility](SETTINGS_AND_ACCESSIBILITY.md) | Exact setting search, keyboard controls and focus. |
@@ -25,7 +28,7 @@ Start with [Getting started](GETTING_STARTED.md). The root
   and [MCP integration](../bridge/MCP.md).
 - [OpenCode](PROVIDER_COMPATIBILITY.md), [Cline](CLINE_TUNNEL.md),
   [Kilo](KILO_TUNNEL.md), and [AgentRouter](AGENTROUTER.md).
-- [Android relay](MOBILE_COMPANION.md), maintained separately from this polish pass.
+- [Android relay](MOBILE_COMPANION.md), independently versioned from the client release.
 
 ## Building and extending
 
@@ -35,7 +38,7 @@ Start with [Getting started](GETTING_STARTED.md). The root
   [embedding examples](../examples/embedding/README.md).
 - [Development workflow](DEVELOPMENT.md), [contract](../SPEC.md),
   [native host checks](CODE_WORKSPACE_TESTING.md), and [diagnostics](DIAGNOSTICS.md).
-- [3.8.0 release](RELEASE_3_8_0.md), [Changelog](../CHANGELOG.md) and [current polish verification](POLISH_2026_10.md).
+- [4.0.0 release](RELEASE_4_0_0.md), [Changelog](../CHANGELOG.md) and [4.0.0 verification](TESTING_4.0.0.md).
 
 Files named `TESTING_*`, `AUDIT_*`, or `INVESTIGATION_*` record a particular
 investigation or release. Use the current task guides for setup instructions.

@@ -6,13 +6,13 @@ return function(env)
 	local M = {}
 	local families = {
 		{ name = "uai_files", label = "Read, search and edit workspace files", groups = { fs = true } },
-		{ name = "uai_code", label = "Author scripts, manage projects, analyze and test source", groups = { script = true, coding = true, templates = true } },
+		{ name = "uai_code", label = "Author scripts, UI mods and projects; analyze and test source", groups = { script = true, coding = true, templates = true, ui_mods = true } },
 		{ name = "uai_instances", label = "Inspect and edit the Roblox instance tree and interfaces", groups = { instance = true, gui = true } },
 		{ name = "uai_game", label = "Players, character, world, input and screen actions", groups = { players = true, character = true, world = true, input = true, screen = true } },
 		{ name = "uai_inspect", label = "Inspect remotes, network captures, performance and evidence", groups = { remotes = true, net_capture = true, perf = true, meta = true, evidence = true, support_bundle = true } },
 		{ name = "uai_connect", label = "Web, HTTP, Obsidian vaults and external integrations", groups = { net = true, web = true, obsidian = true } },
 		{ name = "uai_automate", label = "In-game chat, chat loops, Infinite Yield and Gravity", groups = { chat = true, iy = true, gravity = true } },
-		{ name = "uai_context", label = "Conversations, memory, task lists and skills", groups = { agentself = true, skills = true } },
+		{ name = "uai_context", label = "Master Vault, micro-goals, conversations, memory and skills", groups = { agentself = true, skills = true, master_vault = true, goals = true } },
 		{ name = "uai_other", label = "Additional tools registered by the host", groups = {} },
 	}
 	local direct = { ask_user = true, notify = true, dispatch_agent = true, agent_status = true, agent_followup = true,

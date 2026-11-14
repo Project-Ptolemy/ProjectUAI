@@ -498,7 +498,9 @@ return function(env)
 	--
 	-- `scroll = true` reserves a stable preferred height for forms. Short prompts
 	-- fit their contents up to the same usable-room ceiling. Both have a scrolling
-	-- body. In short mobile keyboard space the footer joins that scroll region,
+	-- body. `fitContent = true` lets workspace forms grow and shrink with their
+	-- measured content, capped by usable room and an optional explicit height.
+	-- In short mobile keyboard space the footer joins that scroll region,
 	-- keeping both editable fields and complete action targets reachable.
 	-- Catalogue dialogs can opt into pinFooter when their own list owns scrolling.
 	function M.modal(props)
@@ -755,8 +757,9 @@ return function(env)
 				local chromePad = roomNow < (headerTotal + footerTotal + closeDiameter) and theme.space.xs or headerPad
 				local wantedHeader = math.max(closeDiameter, titleHeight) + chromePad * 2
 				local bodyPadding = bodyHeight > 0 and bodyPad * 2 or 0
-				local preferred = props.height or (props.scroll == true and theme.size.modalTall
-					or (wantedHeader + footerTotal + bodyHeight + bodyPadding))
+				local naturalHeight = wantedHeader + footerTotal + bodyHeight + bodyPadding
+				local preferred = props.height or (props.scroll == true and theme.size.modalTall or naturalHeight)
+				if props.fitContent == true then preferred = math.min(naturalHeight, props.height or roomNow) end
 				local cardHeight = math.max(1, math.floor(math.min(preferred, roomNow)))
 				-- Reserve a control's height for the body only when the body actually
 				-- has content. A description-only confirmation has none, and reserving

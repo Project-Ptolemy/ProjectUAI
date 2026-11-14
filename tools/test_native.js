@@ -17,6 +17,7 @@ const skipped = skipImages ? ['image_input.lua (image verification omitted by re
 const reportPath = path.join(logDir, 'results.json');
 const startedAt = new Date().toISOString();
 const luajit = process.env.LUAJIT || 'luajit';
+const python = process.env.PYTHON || 'python';
 const toolPath = path.join(root, 'refer', 'native-tools', 'luau', process.platform === 'win32' ? 'luau-compile.exe' : 'luau-compile');
 const compiler = process.env.LUAU_COMPILE || (fs.existsSync(toolPath) ? toolPath : 'luau-compile');
 function report(complete) {
@@ -63,8 +64,8 @@ run('Bundle freshness and deterministic manifest', process.execPath, ['tools/bui
 run('Generated catalog freshness', process.execPath, ['tools/build_site.js', '--check']);
 run('Native static checker', luajit, ['test/check.lua', '--native']);
 run('Main native suite', luajit, ['test/run.lua', '--native']);
-const helpers = new Set(['run.lua', 'check.lua', 'luau.lua', 'coding_fixture.lua', 'workspace_fixture.lua', 'mobile_snapshots.lua', 'native_performance.lua']);
-const outOfScope = new Set(['bridge_install.lua', 'web_runtime.lua']);
+const helpers = new Set(['run.lua', 'check.lua', 'luau.lua', 'coding_fixture.lua', 'workspace_fixture.lua', 'automatic_bridge_fixture.lua', 'agentrouter_fixture.lua', 'password_fixture.lua', 'ui_library_support.lua', 'mobile_snapshots.lua', 'native_performance.lua', 'credential_crypto_oracle.lua', 'credential_crypto_benchmark.lua']);
+const outOfScope = new Set(['web_runtime.lua']);
 if (skipImages) { outOfScope.add('image_input.lua'); process.stdout.write('SKIP image_input.lua (--skip-images)\n'); }
 const focused = fs.readdirSync(path.join(root, 'test')).filter(file => file.endsWith('.lua') && !helpers.has(file) && !outOfScope.has(file)).sort();
 const priority = ['native_improvements.lua', 'native_workspace.lua', 'code_workspace.lua', 'coding_tab.lua', 'coding_layout.lua', 'execution_tools.lua', 'execution_ui.lua', 'chat_loops.lua'];
@@ -73,8 +74,12 @@ focused.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, 'en'));
 for (const file of focused) run('Focused ' + file, luajit, ['test/' + file]);
 run('Mock harness self-test', luajit, ['test/mock/selftest.lua']);
 run('Native performance contracts', luajit, ['test/native_performance.lua']);
+// The JSON oracle needs the deterministic request array supplied by this
+// independent reference, rather than direct auto-discovery with empty stdin.
+run('Credential cryptography interoperability', python, ['test/credential_crypto_interop.py', '--luajit', luajit]);
+run('Credential cryptography CPU benchmark', luajit, ['test/credential_crypto_benchmark.lua']);
 
-const exclusions = new Set(['net/bridge', 'net/bridge_commands', 'net/relay', 'runtime/bridge_install', 'ui/panels/cowork']);
+const exclusions = new Set(['net/bridge', 'net/bridge_commands', 'net/relay', 'ui/panels/cowork']);
 const nativeSources = [];
 function collect(directory) {
   for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
@@ -83,7 +88,7 @@ function collect(directory) {
     else if (file.endsWith('.lua') && !exclusions.has(file.slice(4, -4))) nativeSources.push(file);
   }
 }
-collect('src'); collect('ui-lib/src'); collect('ui-lib/examples'); collect('examples/embedding');
+collect('src'); collect('ui-lib/src'); collect('ui-lib/examples'); collect('examples/embedding'); collect('vault');
 nativeSources.sort(); nativeSources.push('init.lua', 'dist/uai.lua', 'dist/uai-ui.lua');
 run('Official Luau compiler', compiler, ['--null', ...nativeSources]);
 run('Native verification script syntax', process.execPath, ['--check', 'tools/test_native.js']);

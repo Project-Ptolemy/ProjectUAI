@@ -352,9 +352,15 @@ function message(who,text,model){
   const body=el('div','body');if(who==='user')body.textContent=text;else body.innerHTML=md(text);node.append(byline,body);
   const result={node,body};if(who==='user')decorateMessage(result,text);append(node,who==='agent'?ensureResponse(model).content:$('transcript'));return result;
 }
-function decorateMessage(message,text,model){
+function decorateMessage(message,text,model,event){
   message.node._uaiText=text;
   if(model)message.node.querySelector('.message-model').textContent=model;
+  if(message.node.classList.contains('agent')){
+    const label=window.UAIStreamRenderer.rateText(event?.outputTokens,event?.requestMs);
+    let rate=message.node.querySelector('.message-token-rate');
+    if(label){if(!rate){rate=el('small','message-token-rate');message.node.append(rate);}rate.textContent=label;rate.title='Provider output tokens divided by the full request time, including waiting and transport. This is not native decoding speed.';}
+    else rate?.remove();
+  }
   const response=responseFor(message.node);
   if(response){if(model)response.model.textContent=model;response.footer.hidden=![...response.content.querySelectorAll('.message.agent')].some(node=>node._uaiText);updateResponse(response);return;}
   if(message.node.querySelector('.message-actions'))return;
@@ -759,7 +765,7 @@ function threadMenu(thread){modal('Conversation details',root=>{
   form.onsubmit=event=>{event.preventDefault();modalCommand('thread:rename',{id:thread.id,title:name.value.trim()});};
   const privacy=el('section','dialog-section');privacy.append(el('h3',null,thread.ephemeral?'Isolated conversation':'Saved conversation'),el('p','muted',thread.ephemeral?'This conversation is temporary. Save it to keep it in your history.':'Isolate this conversation to keep it out of saved history.'),button(thread.ephemeral?'Save conversation':'Make isolated',()=>modalCommand('thread:isolate',{sessionId:thread.id,value:!(state.threads?.find(t=>t.id===thread.id)||thread).ephemeral}),'outline'));root.append(privacy);
   const del=button('Delete',()=>{},'danger outline');armButton(del,'Confirm delete?',()=>modalCommand('thread:delete',{id:thread.id}));
-  const rename=el('button','primary','Rename');rename.type='submit';rename.setAttribute('form',form.id);
+  const rename=el('button','primary','Rename');rename.type='submit';rename.setAttribute('form',form.getAttribute('id'));
   modalActions(del,el('span','spacer'),modalCancel(),rename);
 },{description:'Rename, save, or manage this conversation.',size:'compact'});}
 function renderStrips(){
@@ -776,6 +782,7 @@ function renderStrips(){
   if(!strip.children.length)strip.append(button('',()=>show('loops')),button('Stop all',()=>action('loops:stop',{id:'all'}),'danger'));
   strip.firstElementChild.textContent=`${loops.length} chat loop(s) running`;
 }
+function answerQuestion(card,text){return action('ask:answer',{id:card._request.id,text});}
 function renderQuestions(){
   const root=$('questions'),entries=[...(state.pendingPermissions||[]).map(req=>({type:'permission',req})),...(state.questions||[]).map(req=>({type:'question',req}))];
   for(const entry of entries){const req=entry.req;entry.key=entry.type+':'+req.id;entry.context=req.sessionTitle||state.threads?.find(t=>t.id===req.sessionId)?.title||req.sessionId||'Current conversation';}
@@ -797,13 +804,16 @@ function renderQuestions(){
         row.append(label);card.append(row);
       }else{
         const form=el('form','row'),options=el('div','row question-options'),input=el('input'),send=el('button','primary','Send');input.type='text';input.required=true;input.placeholder='Or type an answer';input.setAttribute('aria-labelledby',title.id);input.setAttribute('aria-describedby',caption.id);send.type='submit';
-        form.onsubmit=event=>{event.preventDefault();action('ask:answer',{id:card._request.id,text:input.value});};
-        form.append(options,input,send,button('Dismiss',()=>action('ask:answer',{id:card._request.id,text:''})));card.append(form);card._options=options;
+        form.onsubmit=event=>{event.preventDefault();answerQuestion(card,input.value);};
+        form.append(options,input,send,button('Dismiss',()=>answerQuestion(card,'')));card.append(form);card._options=options;
       }
     }
     card._request=req;card._title.textContent=type==='permission'?'Allow '+req.name+'?':req.question;card._context.textContent='Conversation: '+context;
     if(type==='permission'){card._args.textContent=JSON.stringify(req.args||{},null,2);card._args.setAttribute('aria-label','Arguments for '+req.name);}
-    else{const optionsSignature=JSON.stringify(req.options||[]);if(card._options.dataset.signature!==optionsSignature){card._options.replaceChildren(...(req.options||[]).map(option=>button(option,()=>action('ask:answer',{id:card._request.id,text:option}))));card._options.dataset.signature=optionsSignature;}}
+    else{
+      const optionsSignature=JSON.stringify(req.options||[]);
+      if(card._options.dataset.signature!==optionsSignature){card._options.replaceChildren(...(req.options||[]).map(option=>button(option,()=>answerQuestion(card,option))));card._options.dataset.signature=optionsSignature;}
+    }
     if(root.children[index]!==card)root.insertBefore(card,root.children[index]||null);
   });
   if(focused){const target=focused.isConnected?focused:root.querySelector('button,input,[tabindex="0"]')||$('input');if(document.activeElement!==target)target.focus({preventScroll:true});if(selection&&target===focused)focused.setSelectionRange(...selection);}
@@ -872,7 +882,7 @@ function runTool(name,initial){
   const tool=state.tools?.find(t=>t.name===name);
   modal(name,root=>{
     root.append(el('p','muted',tool?.description||''));
-    const form=el('form','tool-form'),fields=el('div','form-grid'),inputs={};
+    const formId='modalForm',form=el('form','tool-form'),fields=el('div','form-grid'),inputs={};form.id=formId;
     const required=new Set(tool?.parameters?.required||[]);
     form.append(fields);root.append(form);
     for(const [key,schema]of Object.entries(tool?.parameters?.properties||{})){
@@ -898,7 +908,8 @@ function runTool(name,initial){
       if(schema.description){const help=el('small','field-help',schema.description);help.id='tool-help-'+key;input.parentElement.append(help);input.setAttribute('aria-describedby',help.id);}
     }
     const output=el('p','form-error');output.setAttribute('role','alert');output.hidden=true;
-    const run=el('button','primary','Run tool');run.type='submit';form.id='modalForm';run.setAttribute('form',form.id);
+    // Named parameters such as id can shadow properties on HTMLFormElement.
+    const run=el('button','primary','Run tool');run.type='submit';run.setAttribute('form',formId);
     run.disabled=tool?.available===false||tool?.enabled===false||!connected;
     form.append(el('small','field-help','* Required parameter. Your current permissions apply.'),output);modalActions(modalCancel(),run);
     let running=false;
@@ -971,7 +982,7 @@ function providerEditor(provider){modal(provider?'Edit provider':'Add provider',
   preset.onchange=()=>{const p=state.presets?.find(p=>p.id===preset.value);if(p){label.value=p.label||'';url.value=p.baseUrl||'';apiStyle.value=p.api||'openai';auth.value=p.authStyle||defaultAuth();}describeEndpoint();};url.oninput=describeEndpoint;describeEndpoint();
   form.onsubmit=event=>{event.preventDefault();const value={id:provider?.id,preset:preset.value,label:label.value.trim(),baseUrl:url.value.trim(),api:apiStyle.value,authStyle:auth.value,model:model.value.trim()};if(key.value)value.apiKey=key.value;modalCommand('provider:save',{provider:value});};
   if(provider){const del=button('Delete',()=>{},'danger outline');armButton(del,'Confirm delete?',()=>modalCommand('provider:remove',{id:provider.id}));modalActions(del);}
-  const save=el('button','primary','Save');save.type='submit';save.setAttribute('form',form.id);modalActions(el('span','spacer'),modalCancel(),save);
+  const save=el('button','primary','Save');save.type='submit';save.setAttribute('form',form.getAttribute('id'));modalActions(el('span','spacer'),modalCancel(),save);
 },{description:'Connect the provider you want to use in this workspace.',size:'wide'});}
 function isFreeModel(provider,id){
   if(!id)return false;
@@ -1134,7 +1145,6 @@ function renderPanel(){
   root.scrollTop=position;
 }
 
-let installSource=stored('localStorage','uai.installSource')||'executor';
 function tunnelModels(id,name){
   modal(name+' free models',content=>{
     const context=modalContext,controller=new AbortController();
@@ -1178,8 +1188,8 @@ function renderTunnels(root){
 }
 function renderCowork(root){
   const hero=el('section','connection-hero'),copy=el('div'),eyebrow=el('p','connection-eyebrow');hero.dataset.connected=String(connected);eyebrow.append(el('span','status-dot'),document.createTextNode(connected?'CONNECTED':'READY TO CONNECT'));
-  copy.append(eyebrow,el('h2',null,connected?'Your workspace is connected.':'One connection. Your whole workspace.'),el('p',null,connected?(state.place?.name||'Roblox')+' is connected to this browser. Your conversations, tools, and changes stay in sync.':'Load Project UAI in Roblox, then connect it to this bridge to start working together.'));
-  const actions=el('div','connection-hero-actions');actions.append(connected?button('Open chat',()=>show('chat'),'primary'):button('View setup steps',()=>{const guide=$('connectionGuide');guide.open=true;guide.scrollIntoView({block:'start',behavior:'smooth'});},'primary'),button('Copy bridge token',()=>copyText(token),'outline'));hero.append(copy,actions);root.append(hero);
+  copy.append(eyebrow,el('h2',null,connected?'Your workspace is connected.':'One connection. Your whole workspace.'),el('p',null,connected?(state.place?.name||'Roblox')+' is connected to this browser. Your conversations, tools, and changes stay in sync.':'Start Cowork in Project UAI Desktop, then load the updated client in Roblox. It connects automatically.'));
+  const actions=el('div','connection-hero-actions');actions.append(connected?button('Open chat',()=>show('chat'),'primary'):button('View setup steps',()=>{const guide=$('connectionGuide');guide.open=true;guide.scrollIntoView({block:'start',behavior:'smooth'});},'primary'));hero.append(copy,actions);root.append(hero);
   const path=el('div','connection-path');path.setAttribute('aria-label','Browser, bridge, and Roblox connection status');
   for(const [name,detail,symbol,ready]of [['This browser','Open and ready','chat',true],['Local bridge',link==='online'?'Running on port '+location.port:'Reconnecting…','bridge',link==='online'],['Roblox',connected?(state.place?.name||'Connected'):'Waiting to connect','player',connected]]){
     const n=el('div','connection-node');n.dataset.ready=String(ready);n.append(el('span','status-dot'),el('strong',null,name),el('small',null,detail));path.append(n);
@@ -1196,22 +1206,19 @@ function renderCowork(root){
   const guide=el('details','setup-guide');guide.id='connectionGuide';guide.open=!connected;guide.append(el('summary',null,'Setup instructions'));root.append(guide);
   const steps=el('div','setup-steps');guide.append(steps);
   function step(number,title,complete){const n=el('section','setup-step');n.dataset.complete=String(complete);n.append(el('span','step-number',String(number)),el('h3',null,title));steps.append(n);return n;}
-  const one=step(1,'Start the bridge',link==='online');
-  one.append(el('p',null,'Install Node.js 18+ on this computer. Download the bridge in Roblox → UAI → Cowork, then open a terminal in your executor workspace.'));
-  const source=select(one,'Your installation',[['executor','Downloaded in Roblox'],['repo','Git checkout']],installSource);
-  const code=el('code',null,installSource==='repo'?'node bridge/server.js':'node UAI/bridge/start.txt');
-  source.onchange=()=>{installSource=source.value;code.textContent=installSource==='repo'?'node bridge/server.js':'node UAI/bridge/start.txt';try{localStorage.setItem('uai.installSource',installSource);}catch{}};
-  one.append(code,button('Copy start command',()=>copyText(code.textContent),'outline'),el('small','setup-detail','Keep this terminal open. No npm install or file renaming needed.'));
+  const one=step(1,'Start Project UAI Desktop',link==='online');
+  one.append(el('p',null,'Open the Windows desktop app from the official release. Complete Node.js setup if prompted, then choose Start Cowork on Workspace.'));
+  const download=el('a','button outline','Get desktop app');download.href='https://github.com/Project-Ptolemy/ProjectUAI/releases/latest';download.target='_blank';download.rel='noopener noreferrer';one.append(download,el('small','setup-detail','The desktop app prepares its files and opens Cowork. Keep it running on the same computer as Roblox.'));
   const two=step(2,'Connect Roblox',connected);
-  two.append(el('p',null,'In Roblox, open UAI → Cowork. Paste the bridge token, set the port below, then turn Enabled on.'),el('code',null,'Port '+location.port),button('Copy bridge token',()=>copyText(token),'outline'),el('small','setup-detail','The token is the long code from the terminal. Automatic updates keep it; a manual restart creates a new one.'));
+  two.append(el('p',null,'Load the updated UAI client in Roblox. In Cowork, keep Find desktop app automatically enabled. Discovery connects to the running desktop app.'),el('small','setup-detail','If you previously disconnected, choose Reconnect in UAI → Cowork. Old manual ports and tokens are discarded by client 4.0.0.'));
   const three=step(3,'Open your workspace',connected);
-  three.append(el('p',null,'Open the browser link printed by the terminal. Choose a provider and model, then send your first message. Your game stays in control of tools and permissions.'));
-  three.append(button(connected?'Open chat →':'Check connection',async()=>{if(connected){show('chat');$('input').focus();return;}try{const hello=await api('/hello');connected=!!hello.connected;refresh();renderPanel();if(!connected)toast('Still waiting. Paste the token into Roblox’s Cowork panel and turn Enabled on.');}catch(e){toast(e.message);}},connected?'primary':'outline'));
+  three.append(el('p',null,'Use the browser opened by the desktop app. Choose a provider and model, then send your first message. Roblox stays in control of tools and permissions.'));
+  three.append(button(connected?'Open chat':'Check connection',async()=>{if(connected){show('chat');$('input').focus();return;}try{const hello=await api('/hello');connected=!!hello.connected;refresh();renderPanel();if(!connected)toast('Still waiting. Start Cowork in the desktop app, then choose Reconnect in Roblox’s Cowork panel.');}catch(e){toast(e.message);}},connected?'primary':'outline'));
   three.append(el('small','setup-detail',connected?'Browser and Roblox share the active conversation.':'Your connection status updates automatically.'));
   const faq=el('div','setup-faq');
   for(const [question,answer]of [
-    ['Roblox is still waiting to connect','Keep Roblox and the terminal open on the same computer. Match the port shown above, paste the latest token, and turn Enabled on in UAI → Cowork. After a manual bridge restart, both windows need the new token. Automatic updates preserve your connection token.'],
-    ['Node or the start file cannot be found','Install Node.js, then reopen your terminal. Open it in your executor’s workspace folder—the one containing UAI. If you downloaded this repository instead, choose Git checkout in step 1 and run its command from the repository folder.'],
+    ['Roblox is still waiting to connect','Keep Roblox and Project UAI Desktop running on the same computer. Start Cowork on Workspace. In UAI → Cowork, enable Find desktop app automatically and choose Reconnect. Discovery refreshes its connection credentials automatically.'],
+    ['Node.js is unavailable','Open Workspace in Project UAI Desktop. Choose Get Node.js or follow its Node.js setup instructions, then Check again and Start Cowork.'],
     ['Can the AI see attached pictures?','Yes, when your selected model supports vision. PNG, JPEG, and WebP images are sent with your message. Keep the bridge running; if an image expires or the bridge restarts, attach it again. Reload the updated game client to enable image sends.'],
     ['What happens if I refresh or close the browser?','Refreshing reconnects to the conversation. Drafts are saved in this browser when storage is available. Closing the browser does not stop work in Roblox. Use Stop to cancel a turn. Pictures expire after 15 minutes of inactivity and are cleared when the bridge stops.']
   ]){const detail=el('details');detail.append(el('summary',null,question),el('p',null,answer));faq.append(detail);}root.append(faq);
@@ -1333,7 +1340,7 @@ function importConfig(){modal('Import configuration',root=>{
   const preview=el('p','field-help','Your JSON stays in this dialog until you import it.');form.append(preview);
   input.oninput=()=>{try{const parsed=JSON.parse(input.value);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error();preview.textContent='Valid JSON object. Import will replace the current configuration.';input.setCustomValidity('');}catch{preview.textContent=input.value?'Enter a valid configuration JSON object.':'Your JSON stays in this dialog until you import it.';input.setCustomValidity(input.value?'Enter a valid JSON object.':'');}};
   form.onsubmit=event=>{event.preventDefault();modalCommand('config:import',{text:input.value});};
-  const submit=el('button','primary','Import configuration');submit.type='submit';submit.setAttribute('form',form.id);modalActions(modalCancel(),submit);
+  const submit=el('button','primary','Import configuration');submit.type='submit';submit.setAttribute('form',form.getAttribute('id'));modalActions(modalCancel(),submit);
 },{description:'This replaces your saved settings and provider credentials. Stop running work before importing.',size:'wide'});}
 async function submit(){
   if(stopping||sending||sendPhase!=='idle'||readingFiles||draftLoads.has(sessionId)||(busy&&!state.queue)||!connected||state.queue?.count>=state.queue?.limit)return;

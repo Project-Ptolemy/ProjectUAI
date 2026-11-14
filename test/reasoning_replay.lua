@@ -3,6 +3,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
 local json = require("json")
+local authenticate = require("password_fixture")
 local passed, failed = 0, 0
 
 local function check(label, condition, detail)
@@ -41,6 +42,7 @@ local function bootWith(opts)
 	harness.http.handler = opts.handler
 	local handle, err = harness.boot()
 	if not handle then error("boot failed: " .. tostring(err), 0) end
+	authenticate(harness, handle)
 	harness.settle(1)
 
 	if opts.provider ~= false then

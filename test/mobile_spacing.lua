@@ -2,6 +2,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 io.stdout:setvbuf("no")
 local envMock = require("env")
+local authenticate = require("password_fixture")
 local newSignal = require("instance").newSignal
 local passed, failed = 0, 0
 local function check(label, value) assert(value, label); passed = passed + 1 end
@@ -14,7 +15,13 @@ local function boot(width, height, desktop)
 	h.services.UserInputService.TouchEnabled = not desktop
 	h.services.UserInputService.MouseEnabled = desktop == true
 	h.setViewport(width, height)
-	local app = assert(h.boot(arg[1] or "dist/uai.lua")); h.settle(1); app.app.show("chat")
+	local app = assert(h.boot(arg[1] or "dist/uai.lua")); authenticate(h, app)
+	local providers = app.env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label, provider.model = "mobile-fixture", "Mobile fixture", "fixture-model"
+	provider.baseUrl, provider.apiKey = "https://mobile.fixture/v1", "fixture-key"
+	assert(providers.save(provider, { force = true }))
+	h.settle(1); app.app.show("chat")
 	return h, app
 end
 local function keyboard(h, height)

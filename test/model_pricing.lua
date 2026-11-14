@@ -1,4 +1,4 @@
--- Reviewed catalog rates, accounting, and model limits; no network calls.
+-- Reviewed catalog rates, accounting and model limits; no external requests.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
 local suite = F.suite("Model pricing")
@@ -16,9 +16,9 @@ case("current model rates stay exact and scoped to the endpoint", function()
 	local f = F.new(); local pricing = f.env.require("agent/pricing")
 	check("GPT 6.1 Sol current base price", pricing.priceFor("gpt-6.1-sol", OPENAI)[1] == 2)
 	check("Opus 5.5 current base price", pricing.priceFor("claude-opus-5-5")[1] == 4)
-	check("direct DeepSeek has its own rate", pricing.priceFor("deepseek-v4-flash", provider("https://api.deepseek.com/v1"))[1] == 0.15)
+	check("direct scheduled DeepSeek rates remain unknown", pricing.priceFor("deepseek-v4-flash", provider("https://api.deepseek.com/v1")) == nil)
 	check("Zen DeepSeek has its own rate", pricing.priceFor("deepseek-v4-flash", ZEN)[1] == 0.14)
-	check("OpenRouter DeepSeek has its own rate", pricing.priceFor("deepseek/deepseek-v4-flash", ROUTER)[1] == 0.091)
+	check("OpenRouter DeepSeek has its own rate", pricing.priceFor("deepseek/deepseek-v4-flash", ROUTER)[1] == 0.09)
 	check("invented snapshots do not borrow a family rate", pricing.priceFor("gpt-4o-2099-01-01", OPENAI) == nil)
 	check("substrings do not borrow a model rate", pricing.priceFor("not-gpt-4o-custom", OPENAI) == nil)
 	check("OpenRouter retains its provider namespace", pricing.priceFor("gpt-4o", ROUTER) == nil)
@@ -61,23 +61,101 @@ case("Kilo and Cline prices stay scoped to exact supported routes", function()
 		check("Kilo prices cannot cross route " .. base, pricing.priceFor("kilo-auto/free", provider(base)) == nil)
 	end
 	check("documented Kilo gateway alias retains scoped prices", pricing.priceFor("kilo-auto/free", provider("https://ai-gateway.kilo.ai:443/api/v1/chat/completions"))[1] == 0)
-	check("Cline exact promotion has a zero rate", pricing.priceFor("reflection/beam-free", CLINE)[1] == 0)
+	for _, id in ipairs({ "cline-free/nemotron-3.5-super-vl", "cline-free/solar-mini4", "nvidia/nemotron-3.5-lightning-free" }) do
+		check("current Cline promotion has a zero rate " .. id, pricing.priceFor(id, CLINE)[1] == 0)
+	end
+	check("retired Cline promotions no longer establish free access", pricing.priceFor("reflection/beam-free", CLINE) == nil
+		and pricing.priceFor("poolside/laguna-s-2.1-free", CLINE) == nil)
 	check("Cline cannot borrow another free or paid ID", pricing.priceFor("reflection/beam", CLINE) == nil
 		and pricing.priceFor("invented:free", CLINE) == nil)
-	check("Cline promotion does not price another endpoint", pricing.priceFor("reflection/beam-free", provider("https://custom.example/v1")) == nil)
-	check("unsupported Cline routes have no price", pricing.priceFor("reflection/beam-free", provider("https://uai-tunnel.invalid/cline/v1/responses")) == nil)
+	check("Cline promotion does not price another endpoint", pricing.priceFor("cline-free/solar-mini4", provider("https://custom.example/v1")) == nil)
+	check("unsupported Cline routes have no price", pricing.priceFor("cline-free/solar-mini4", provider("https://uai-tunnel.invalid/cline/v1/responses")) == nil)
 	f.healthy(); f.close()
 end)
 
-case("October catalog changes update billing estimates and provider limits", function()
+case("November catalog changes update billing estimates and provider limits", function()
 	local f = F.new(); local pricing = f.env.require("agent/pricing"); local traits = f.env.require("provider/traits")
 	local mistral = pricing.priceFor("mistral-large-4", provider("https://api.mistral.ai/v1"))
-	check("Mistral Large 4 uses the updated public rate", mistral[1] == 1.36 and mistral[2] == 4.18)
+	check("Mistral Large 4 uses the updated public rate", mistral[1] == 0.7 and mistral[2] == 2.1)
+	check("new exact Mistral alias retains documented limits", pricing.priceFor("mistral-large-4-0-8", provider("https://api.mistral.ai/v1"))[1] == 0.7
+		and traits.maxOutput("mistral-large-4-0-8", provider("https://api.mistral.ai/v1")) == 262144)
 	local together = provider("https://api.together.xyz/v1")
 	check("Together Qwen has its provider-specific updated rate", pricing.priceFor("qwen/qwen3.7-max", together)[1] == 2.5)
 	check("Together Qwen reply limit comes from current catalog", traits.maxOutput("qwen/qwen3.6-plus", together) == 65536)
+	check("new Together Kimi exact ID is priced independently", pricing.priceFor("moonshotai/kimi-k3.1-pro", together)[1] == 2
+		and traits.maxOutput("moonshotai/kimi-k3.1-pro", together) == 131072)
+	check("new Fireworks Kimi exact ID retains its own rate", pricing.priceFor("accounts/fireworks/models/kimi-k3p1-pro", provider("https://api.fireworks.ai/inference/v1"))[2] == 10)
 	check("retired Mistral model is no longer priced", pricing.priceFor("mistral-large-2411", provider("https://api.mistral.ai/v1")) == nil)
 	check("direct DeepSeek context uses its corrected size", traits.contextWindow("deepseek-v4-flash", provider("https://api.deepseek.com/v1")) == 1048576)
+	f.healthy(); f.close()
+end)
+
+case("reviewed primary releases retain exact rates, limits and controls", function()
+	local f = F.new(); local pricing = f.env.require("agent/pricing"); local traits = f.env.require("provider/traits")
+	local terra = pricing.ratesFor("gpt-6.1-terra", OPENAI, 272000)
+	check("Terra base and cache categories match the official reference", terra.input == 1 and terra.output == 5
+		and terra.cacheRead == 0.05 and terra.cacheWrite == 1.25)
+	local large = pricing.ratesFor("gpt-6.1-terra", OPENAI, 272001)
+	check("Terra long context charges the whole request at its documented tier", large.input == 2 and large.output == 7.5
+		and large.cacheRead == 0.1 and large.cacheWrite == 2.5)
+	check("Terra reserves room for its output budget", traits.contextWindow("gpt-6.1-terra", OPENAI) == 922000
+		and traits.maxOutput("gpt-6.1-terra", OPENAI) == 128000)
+	check("documented none effort remains a real level", traits.nearestEffort("gpt-6.1-terra", "none") == "none"
+		and traits.nearestEffort("gpt-6-sol", "none") == "none" and traits.nearestEffort("gpt-6-luna", "none") == "none")
+	check("Astra and Sol 6.1 retain mandatory reasoning", traits.nearestEffort("gpt-6-astra", "none") == "low"
+		and traits.nearestEffort("gpt-6.1-sol", "none") == "low" and not traits.allowsSampling("gpt-6.1-sol"))
+	local anthropic = provider("https://api.anthropic.com/v1")
+	for _, id in ipairs({ "claude-fable-5-2", "claude-mythos-5-2" }) do
+		local rate = pricing.ratesFor(id, anthropic)
+		check("exact Claude primary rates " .. id, rate.input == 8 and rate.output == 40 and rate.cacheRead == 0.2 and rate.cacheWrite == 10)
+		check("exact Claude limits and adaptive controls " .. id, traits.contextWindow(id, anthropic) == 1000000
+			and traits.maxOutput(id, anthropic) == 128000 and traits.thinkingStyle(id) == "adaptive"
+			and traits.alwaysThinks(id) and traits.defaultEffort(id) == "high" and not traits.allowsSampling(id))
+	end
+	check("new primary aliases are never inferred", pricing.priceFor("gpt-6.1-terra-pro", OPENAI) == nil
+		and pricing.priceFor("claude-fable-5.2", anthropic) == nil
+		and pricing.priceFor("deepseek-v4.1-flash-1017", provider("https://api.deepseek.com/v1")) == nil)
+	f.healthy(); f.close()
+end)
+
+case("reseller thresholds and unknown scheduled rates remain provider scoped", function()
+	local f = F.new(); local pricing = f.env.require("agent/pricing"); local traits = f.env.require("provider/traits")
+	check("OpenRouter inclusive threshold leaves the prior token at base", pricing.priceFor("openai/gpt-6.1-terra", ROUTER, 271999)[1] == 1)
+	check("OpenRouter inclusive threshold starts the new tier exactly", pricing.priceFor("openai/gpt-6.1-terra", ROUTER, 272000)[1] == 2)
+	check("the direct vendor retains its separately published boundary", pricing.priceFor("gpt-6.1-terra", OPENAI, 272000)[1] == 1)
+	check("Kilo rates do not borrow unpublished OpenRouter tiers", pricing.priceFor("openai/gpt-6.1-terra", KILO, 300000)[1] == 1)
+	for _, id in ipairs({ "minimax/minimax-m3.1-flash", "tencent/hy4-preview", "tencent/hy3" }) do
+		check("scheduled reseller price is unknown " .. id, pricing.priceFor(id, ROUTER) == nil)
+		check("scheduled reseller limits remain available " .. id, traits.contextWindow(id, ROUTER) > 0 and traits.maxOutput(id, ROUTER) > 0)
+	end
+	for _, id in ipairs({ "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-v4-pro" }) do
+		local direct = provider("https://api.deepseek.com/v1")
+		check("scheduled direct DeepSeek price is unknown " .. id, pricing.priceFor(id, direct) == nil)
+		check("scheduled direct DeepSeek limits remain exact " .. id, traits.contextWindow(id, direct) == 1048576 and traits.maxOutput(id, direct) == 393216)
+	end
+	f.healthy(); f.close()
+end)
+
+case("introductory estimates expire at the UTC boundary without erasing capabilities", function()
+	local f = F.new(); local pricing = f.env.require("agent/pricing"); local traits = f.env.require("provider/traits")
+	local now = 1796083199999
+	f.env.require("runtime/clock").ms = function() return now end
+	local google = provider("https://generativelanguage.googleapis.com/v1beta")
+	for _, entry in ipairs({ { "gpt-5.6-sol", OPENAI, 4 }, { "gpt-5.6", OPENAI, 4 },
+		{ "gemini-4-carbon", google, 2 }, { "gemini-4-argon", google, 2 } }) do
+		check("introductory price remains known before expiry " .. entry[1], pricing.priceFor(entry[1], entry[2])[1] == entry[3])
+	end
+	now = 1796083200000
+	for _, entry in ipairs({ { "gpt-5.6-sol", OPENAI }, { "gpt-5.6", OPENAI }, { "gemini-4-carbon", google }, { "gemini-4-argon", google } }) do
+		check("expired price is unknown exactly at UTC midnight " .. entry[1], pricing.priceFor(entry[1], entry[2], 300000) == nil
+			and pricing.costFor(entry[1], entry[2], 100, 20, 0, 0) == nil)
+		check("expired price does not erase model limits " .. entry[1], traits.contextWindow(entry[1], entry[2]) > 0 and traits.maxOutput(entry[1], entry[2]) > 0)
+	end
+	check("Hydrogen paid tiers stay priced", pricing.priceFor("gemini-4-hydrogen", google)[1] == 1.5)
+	check("unexpired primary models retain their rates", pricing.priceFor("gpt-6.1-terra", OPENAI)[1] == 1)
+	check("reseller estimates retain independent validity", pricing.priceFor("google/gemini-4-carbon", KILO)[1] == 2)
+	local result = f.env.require("agent/usage").record({ input_tokens = 100, output_tokens = 20 }, "gemini-4-carbon", nil, google)
+	check("expired rates remain an unknown estimate in accounting", not result.costKnown and result.cost == 0)
 	f.healthy(); f.close()
 end)
 
@@ -161,6 +239,68 @@ case("documented free-route limits and direct provider limits reach model traits
 	check("explicit GPT input cap is respected", traits.contextWindow("gpt-6.1-sol", OPENAI) == 922000)
 	check("Zen output differs from direct DeepSeek", traits.maxOutput("deepseek-v4-flash", ZEN) == 384000
 		and traits.maxOutput("deepseek-v4-flash", provider("https://api.deepseek.com/v1")) == 393216)
+	f.healthy(); f.close()
+end)
+
+case("native Gemini current models enforce their distinct hop limits and effort scales", function()
+	local f = F.new(); local registry = f.env.require("provider/registry"); local config = f.env.require("runtime/config")
+	local adapter = f.env.require("provider/gemini"); local record = registry.blank("google")
+	record.id, record.apiKey = "gemini-current-fixture", "fixture-key"
+	record.params = { generationConfig = { maxOutputTokens = 1000000, temperature = 0.7, topP = 0.9, topK = 4 } }
+	for _, id in ipairs({ "gemini-4-carbon", "gemini-4-argon" }) do
+		record.model = id
+		local request = { messages = { { role = "user", content = "Hello" } }, effort = "xhigh", stream = false,
+			extra = { generationConfig = { maxOutputTokens = 999999 } } }
+		local body = adapter.buildBody(record, request)
+		check("native nonstreaming cap survives both raw override layers " .. id, body.generationConfig.maxOutputTokens == 32768)
+		check("current Gemini effort clamps to high " .. id, body.generationConfig.thinkingConfig.thinkingLevel == "HIGH")
+		check("current Gemini omits unsupported sampling " .. id, body.generationConfig.temperature == nil
+			and body.generationConfig.topP == nil and body.generationConfig.topK == nil)
+		request.stream = true
+		check("native streaming retains the larger ceiling " .. id, adapter.buildBody(record, request).generationConfig.maxOutputTokens == 65536)
+		request.outputCeiling = 8192
+		check("temporary request ceiling remains lower " .. id, adapter.buildBody(record, request).generationConfig.maxOutputTokens == 8192)
+	end
+	record.model = "gemini-4-hydrogen"
+	local hydrogen = adapter.buildBody(record, { messages = {}, effort = "xhigh", stream = false })
+	check("Hydrogen keeps its separate nonstreaming ceiling and xhigh", hydrogen.generationConfig.maxOutputTokens == 65536
+		and hydrogen.generationConfig.thinkingConfig.thinkingLevel == "XHIGH")
+	config.set("agent.forceSampling", { ["gemini-4-hydrogen"] = true })
+	check("an explicit sampling claim stays effective", adapter.buildBody(record, { messages = {}, stream = false }).generationConfig.temperature == 0.7)
+	config.set("agent.forceContext", { ["gemini-4-hydrogen"] = 77777 })
+	check("new model metadata preserves a user context override", f.env.require("provider/traits").contextWindow(record.model, record) == 77777)
+	check("builder leaves provider raw overrides unchanged", record.params.generationConfig.maxOutputTokens == 1000000 and record.params.generationConfig.temperature == 0.7)
+	f.healthy(); f.close()
+end)
+
+case("Gemini dispatch uses its resolved stream choice for the native hop limit", function()
+	local f = F.new(); local registry = f.env.require("provider/registry"); local config = f.env.require("runtime/config")
+	local adapter = f.env.require("provider/gemini"); local transport = f.env.require("net/transport")
+	local record = registry.blank("google"); record.id, record.apiKey, record.model = "gemini-hop-fixture", "fixture-key", "gemini-4-carbon"
+	record.params = { generationConfig = { maxOutputTokens = 1000000 } }
+	local sent = {}
+	f.h.http.handler = function(entry)
+		sent[#sent + 1] = { url = entry.url, body = f.h.json.decode(entry.body) }
+		return { StatusCode = 200, Body = f.h.json.encode({ candidates = { { content = { parts = { { text = "Fixture answer" } } }, finishReason = "STOP" } } }) }
+	end
+	local function complete(request)
+		request = request or {}; request.messages = { { role = "user", content = "Hello" } }; request.attempts = 1
+		return f.run(function() return adapter.complete(record, request) end)
+	end
+	config.set("agent.stream", false); record.stream = true
+	assert(complete())
+	check("global nonstreaming preference reaches the builder", sent[1].body.generationConfig.maxOutputTokens == 32768
+		and sent[1].url:find(":generateContent?", 1, true))
+	assert(complete({ stream = true }))
+	check("explicit streaming preference reaches the larger cap", sent[2].body.generationConfig.maxOutputTokens == 65536
+		and sent[2].url:find(":streamGenerateContent?", 1, true))
+	config.set("agent.stream", true); record.stream = false
+	assert(complete())
+	check("record-level nonstreaming preference is respected", sent[3].body.generationConfig.maxOutputTokens == 32768)
+	transport.streamForced = function() return true end
+	assert(complete({ stream = false }))
+	check("forced transport streaming is resolved before building", sent[4].body.generationConfig.maxOutputTokens == 65536
+		and sent[4].url:find(":streamGenerateContent?", 1, true))
 	f.healthy(); f.close()
 end)
 

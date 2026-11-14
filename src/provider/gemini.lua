@@ -194,6 +194,10 @@ return function(env)
 		local wanted = tonumber(body.generationConfig.maxOutputTokens)
 		if not wanted or wanted ~= wanted or wanted < 1 or wanted == math.huge then wanted = 4096 end
 		wanted = openai.cappedMaxTokens(record, wanted) or wanted
+		if request.stream == false and row.nonStreamingOutput
+			and env.require("provider/model_info").provider(record) == "google" then
+			wanted = math.min(wanted, row.nonStreamingOutput)
+		end
 		if ceiling and ceiling >= 1 and ceiling < math.huge then wanted = math.min(wanted, ceiling) end
 		body.generationConfig.maxOutputTokens = math.max(1, math.floor(wanted))
 		local id = modelId(record) or ""
@@ -208,6 +212,8 @@ return function(env)
 		if type(value) ~= "table" or value.promptTokenCount == nil and value.candidatesTokenCount == nil and value.totalTokenCount == nil then return nil end
 		local prompt, completion = count(value.promptTokenCount), count(value.candidatesTokenCount) + count(value.thoughtsTokenCount)
 		return { prompt_tokens = prompt, completion_tokens = completion,
+			output_tokens_reported = env.require("runtime/response_rate").validCount(value.candidatesTokenCount)
+				and (value.thoughtsTokenCount == nil or env.require("runtime/response_rate").validCount(value.thoughtsTokenCount)),
 			total_tokens = count(value.totalTokenCount) > 0 and count(value.totalTokenCount) or prompt + completion,
 			prompt_tokens_details = { cached_tokens = count(value.cachedContentTokenCount) },
 			completion_tokens_details = { reasoning_tokens = count(value.thoughtsTokenCount) } }
@@ -299,6 +305,7 @@ return function(env)
 		if wantStream == nil then wantStream = record.stream ~= false and config.get("agent.stream", true) end
 		local transport = env.require("net/transport")
 		if transport.streamForced() then wantStream = true end
+		request.stream = wantStream
 		local ok, body = pcall(M.buildBody, record, request)
 		if not ok then return nil, "Unable to prepare Gemini request: " .. tostring(body) end
 		local scope, started = registry.compatibilityKey(record), clock.ms()

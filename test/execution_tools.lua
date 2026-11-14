@@ -560,6 +560,13 @@ end)
 
 scenario("a crashed session cancels only its old turn and can be used again", function()
 	local h, env = fixture()
+	-- Admission requires a configured provider even when the loop is replaced.
+	local providers = env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label = "crash-fixture", "Crash recovery fixture"
+	provider.baseUrl, provider.model = "https://crash-fixture.invalid/v1", "fixture-model"
+	assert(providers.save(provider, { force = true }))
+	providers.setActive(provider.id)
 	local sessions = env.require("agent/session")
 	local session, other = sessions.create(), sessions.create()
 	local loop = env.require("agent/loop")

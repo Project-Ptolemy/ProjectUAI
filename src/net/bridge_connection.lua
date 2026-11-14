@@ -17,14 +17,10 @@ return function(env)
 
 	local function automatic()
 		return alive and not paused and config.get("bridge.autoDiscover", true) == true
-			and config.get("bridge.enabled", false) ~= true and not phone()
+			and not phone()
 	end
 
 	function M.get()
-		if config.get("bridge.enabled", false) == true then
-			return { enabled = alive and not paused, source = "manual", port = config.get("bridge.port", 8790),
-				token = tostring(config.get("bridge.token", "")) }
-		end
 		if automatic() and desktop then
 			return { enabled = true, source = "desktop", port = M.PORT, token = desktop.token, instance = desktop.instance }
 		end
@@ -82,8 +78,7 @@ return function(env)
 	end
 
 	dispose.add(config.changed:connect(function(path)
-		if path ~= nil and path ~= "bridge" and path ~= "bridge.enabled" and path ~= "bridge.port"
-			and path ~= "bridge.token" and path ~= "bridge.autoDiscover" then return end
+		if path ~= nil and path ~= "bridge" and path ~= "bridge.autoDiscover" then return end
 		epoch, nextProbe, desktop, paused = epoch + 1, 0, nil, false
 		M.changed:fire()
 	end), "bridge connection settings")

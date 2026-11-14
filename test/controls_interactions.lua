@@ -47,6 +47,17 @@ cache["ui/responsive"] = responsive
 cache["ui/icons"] = {}
 local controls = env.require("ui/controls")
 local dispose = env.require("runtime/dispose")
+local disposalBaseline = dispose.count()
+local inputSignals = { env.uis.InputChanged, env.uis.InputEnded, env.uis.InputBegan, env.uis.WindowFocusReleased }
+local listenerBaseline = {}
+for index, inputSignal in ipairs(inputSignals) do listenerBaseline[index] = inputSignal:Count() end
+local function cleanupRestored()
+	if dispose.count() ~= disposalBaseline then return false end
+	for index, inputSignal in ipairs(inputSignals) do
+		if inputSignal:Count() ~= listenerBaseline[index] then return false end
+	end
+	return true
+end
 local root = harness.Instance.new("Frame")
 local passed = 0
 local function check(label, condition)
@@ -112,7 +123,7 @@ local priorChanges = changes
 slider.instance:Destroy()
 env.uis.InputChanged:Fire(first)
 env.uis.InputEnded:Fire(first)
-check("destroying an active slider releases its global listeners", changes == priorChanges and commits == 2 and dispose.count() == 0)
+check("destroying an active slider releases its global listeners", changes == priorChanges and commits == 2 and cleanupRestored())
 
 -- A setting can rebuild its whole panel from onChange. The same gesture must
 -- not start fresh hover tweens against controls destroyed by that callback.
@@ -126,7 +137,7 @@ victim = controls.slider(root, {
 local victimHit = victim.instance:FindFirstChildOfClass("TextButton")
 local before = #captured
 victimHit.InputBegan:Fire(input(Enum.UserInputType.MouseButton1, 0.5))
-check("synchronous panel teardown prevents subsequent feedback tweens", #captured == before and dispose.count() == 0)
+check("synchronous panel teardown prevents subsequent feedback tweens", #captured == before and cleanupRestored())
 env.uis.InputEnded:Fire(input(Enum.UserInputType.MouseButton1, 0.5))
 check("a destroyed slider never commits after teardown", victimCommits == 0)
 harness.settle(1)

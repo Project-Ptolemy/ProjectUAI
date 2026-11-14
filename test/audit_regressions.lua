@@ -79,6 +79,14 @@ end)
 
 scenario("quick chat preserves rejected drafts and closes on acceptance", function()
 	local harness, handle = boot()
+	local allowed
+	harness.sched.spawn(function() allowed = handle.config.continueWithoutEncryption() end)
+	harness.settle(1)
+	assert(allowed and handle.config.vaultStatus().ready, "Quick-chat fixture must complete credential setup")
+	local provider = handle.providers.blank("custom")
+	provider.label, provider.baseUrl, provider.apiKey = "Quick-chat fixture", "https://quickchat.fixture/v1", "fixture-key"
+	provider.model, provider.models = "quickchat-fixture-model", { "quickchat-fixture-model" }
+	assert(handle.providers.save(provider)); assert(handle.providers.setActive(provider.id))
 	local quick = source(harness, handle, "ui/quickchat")
 	quick.mount(harness.screen())
 	quick.show()

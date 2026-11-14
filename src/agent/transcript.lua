@@ -204,7 +204,9 @@ return function(env)
 					if kind and type(item.content) == "string" and util.trim(item.content) ~= "" then
 						local key = identity(kind, item.content)
 						if (seen[key] or 0) > 0 then seen[key] = seen[key] - 1
-						else table.insert(recovered, 1, { kind = kind, text = item.content, at = item.at, model = item.model, recovered = true }) end
+						else table.insert(recovered, 1, { kind = kind, text = item.content, at = item.at, model = item.model,
+							outputTokens = kind == "assistant:text" and item.outputTokens or nil,
+							requestMs = kind == "assistant:text" and item.requestMs or nil, recovered = true }) end
 					end
 				end
 				if #recovered > 0 then

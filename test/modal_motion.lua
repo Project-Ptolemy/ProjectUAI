@@ -50,6 +50,7 @@ end
 local signal = env.require("runtime/signal")
 cache["runtime/config"] = {
 	get = function(_, fallback) return fallback end,
+	vaultStatus = function() return { required = false, ready = true, locked = false, busy = false } end,
 	changed = signal.new("config"),
 }
 cache["runtime/caps"] = { clipboard = false }
@@ -57,7 +58,11 @@ cache["ui/icons"] = { draw = function() end, check = function() end, close = fun
 cache["ui/brand"] = { draw = function() end }
 local sent = 0
 cache["agent/session"] = { current = function() return { send = function() sent = sent + 1; return true end } end }
-cache["provider/registry"] = { active = function() return { label = "Provider" } end }
+cache["provider/registry"] = {
+	active = function() return { label = "Provider" } end,
+	admissionProblem = function() return nil end,
+	changed = signal.new("providers"),
+}
 local responsive, theme = env.require("ui/responsive"), env.require("ui/theme")
 local P, overlay = env.require("ui/primitives"), env.require("ui/overlay")
 local root = h.Instance.new("Frame")

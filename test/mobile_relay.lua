@@ -3,6 +3,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock, json = require("env"), require("json")
 local F = require("workspace_fixture")
+local desktop = require("automatic_bridge_fixture")
 local passed = 0
 local function check(label, value, expected)
 	if expected ~= nil then assert(value == expected, label .. ": " .. tostring(value) .. " ~= " .. tostring(expected))
@@ -67,7 +68,7 @@ do
 	local h, app = setup({ relay = relay })
 	local relayLink = app.env.require("net/relay_link")
 	check("companion paired at boot", relayLink.usable())
-	check("pairing never touches Cowork settings", app.config.get("bridge.token") == "" and app.config.get("bridge.enabled") == false)
+	check("pairing never introduces retired desktop settings", app.config.get("bridge.token") == nil and app.config.get("bridge.enabled") == nil)
 	check("the token lives on the relay block only", app.config.get("relay.token") == ("a"):rep(64) and app.config.get("relay.server") == "uai-relay")
 	local session = app.sessions.current()
 	session.send("hello")
@@ -181,7 +182,7 @@ do
 end
 
 do
-	-- Cowork keeps precedence while it is enabled, even with a companion paired.
+	-- A connected desktop Cowork route takes precedence over a paired companion.
 	local companionInference = 0
 	local function relay(req)
 		if req.url:find("/api/hello", 1, true) then return hello("inst-four") end
@@ -192,7 +193,7 @@ do
 	local cowork = {}
 	local function handler(req)
 		local url = tostring(req.url)
-		if not url:find(":8795/", 1, true) then return { StatusCode = 404, Body = "{}" } end
+		if not url:find(":28791/", 1, true) then return { StatusCode = 404, Body = "{}" } end
 		if url:find("/api/agent/inbox", 1, true) then return { StatusCode = 200, Body = '{"commands":[]}', delay = 1 } end
 		if url:find("/api/agent/", 1, true) then return { StatusCode = 204, Body = "" } end
 		if url:find("/api/hello", 1, true) then return { StatusCode = 200, Body = '{"protocol":2,"instance":"bridge-one"}' } end
@@ -206,12 +207,10 @@ do
 			headers = { ["content-type"] = "application/json" }, body = completion("Cowork answer.") }) }
 	end
 	local h, app = setup({ relay = relay, handler = handler })
-	app.config.set("bridge.port", 8795)
-	app.config.set("bridge.token", "bridge-token")
-	app.config.set("bridge.enabled", true)
+	desktop.connect(h, app, { instance = "bridge-one" })
 	h.settle(2)
 	check("the companion is still paired", app.env.require("net/relay_link").usable())
-	check("Cowork wins while it is enabled", app.env.require("net/transport").target() == "cowork")
+	check("connected Cowork wins over the companion", app.env.require("net/transport").target() == "cowork")
 	local session = app.sessions.current()
 	session.send("hello")
 	h.settle(8)

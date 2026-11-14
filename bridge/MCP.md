@@ -16,9 +16,8 @@ Start the desktop bridge, load the updated UAI client in Roblox, and open
 **Settings → MCP** in the bridge for connection details and configuration examples.
 Use **Copy setup prompt** to give your local coding agent the exact connection
 details and instructions to configure its harness, then verify tool discovery.
-The desktop endpoint is `http://127.0.0.1:28791/mcp`; a terminal bridge normally uses
-`http://127.0.0.1:8790/mcp`. Both accept `/api/mcp` as an alias. All HTTP requests
-require `Authorization: Bearer <bridge token>`.
+The desktop endpoint is `http://127.0.0.1:28791/mcp`, with `/api/mcp` as an alias.
+All HTTP requests require `Authorization: Bearer <bridge token>`.
 
 The desktop app's **MCP access** switch controls admission when Cowork starts.
 Stop Cowork to change it, then start again. Terminal users can set
@@ -55,9 +54,11 @@ From a Git checkout, the equivalent command is:
 node C:\path\to\projectuai\bridge\server.js --mcp-stdio
 ```
 
-For a terminal bridge on port 8790, set `UAI_BRIDGE_TOKEN` in the harness's process
-environment and append `--url http://127.0.0.1:8790`. `UAI_BRIDGE_URL` is also
-supported. Credentials go in the environment, not command-line arguments.
+For checkout development, start `node bridge/server.js --desktop` before the
+adapter. It exposes the same discovery route and fixed port as the Windows app.
+The adapter also accepts `UAI_BRIDGE_URL` and `UAI_BRIDGE_TOKEN` for explicitly
+configured protocol servers. Credentials go in the environment, not command-line
+arguments.
 
 For HTTP-capable clients, use their supported remote-server configuration.
 Cursor's `.cursor/mcp.json` accepts:

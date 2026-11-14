@@ -1,6 +1,7 @@
 -- Cline virtual routes must stay on their authenticated desktop owner.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local desktop = require("automatic_bridge_fixture")
 local suite = F.suite("Cline desktop route")
 local case, check = suite.case, suite.check
 local URL = "https://uai-tunnel.invalid/cline/v1/chat/completions"
@@ -23,7 +24,7 @@ local function fixture(options)
 		}) } end
 		if req.url:find("/api/tunnels/cline/models", 1, true) then
 			f.catalogCalls = f.catalogCalls + 1
-			check("catalog is authenticated only to the selected bridge", req.headers.Authorization == "Bearer fixture-token" and req.url:find(":28792/", 1, true))
+			check("catalog is authenticated only to the selected desktop", req.headers.Authorization == "Bearer " .. f.desktop.token and req.url:find(":28791/", 1, true))
 			return { StatusCode = 200, Body = '{"data":[{"id":"fixture-model","vision":false,"modalities":{"input":["text"],"output":["text"]}}]}', delay = f.modelDelay }
 		end
 		if req.url:find("/api/agent/inbox", 1, true) then return { StatusCode = 200, Body = '{"commands":[]}' } end
@@ -44,10 +45,7 @@ local function fixture(options)
 	f.record = f.registry.blank("cline")
 	f.record.model = "fixture-model"
 	if options.connect ~= false then
-		f.config.set("bridge.port", 28792)
-		f.config.set("bridge.token", "fixture-token")
-		f.config.set("bridge.enabled", true)
-		f.h.settle(0.5)
+		f.desktop = desktop.connect(f.h, f, { instance = f.instance })
 	end
 	function f.finish() f.healthy(); f.close() end
 	return f
@@ -123,7 +121,7 @@ case("healthy Cline pins inference to Cowork and preserves exact payload", funct
 		relay = true, relayEndpoint = { target = "companion", base = "http://127.0.0.1:8790", token = "phone-token" } }) end, 2)
 	check("one completion comes from the bridge", result and result.status == 200 and #f.sent == 1)
 	check("selected bridge owns the exact inference payload", f.sent[1].body.body == body and f.sent[1].body.url == URL
-		and f.sent[1].url:find(":28792/", 1, true) and f.sent[1].headers.Authorization == "Bearer fixture-token")
+		and f.sent[1].url:find(":28791/", 1, true) and f.sent[1].headers.Authorization == "Bearer " .. f.desktop.token)
 	for _, target in ipairs(f.nativeTargets) do check("virtual host never reaches executor HTTP", not target:find("uai-tunnel.invalid", 1, true)) end
 	f.finish()
 end)
@@ -157,7 +155,7 @@ case("late catalogs cannot cross a changed bridge token", function()
 	local models, why
 	f.h.sched.spawn(function() models, why = f.models.discover(f.record, { force = true }) end)
 	f.h.settle(0.1)
-	f.config.set("bridge.token", "replacement-token")
+	f.desktop.token = ("b"):rep(64); f.bridge.sync()
 	f.h.settle(1.5)
 	check("stale result is rejected and not cached", models and #models == 0 and why:find("connection changed", 1, true) and f.models.cached(f.record) == nil)
 	f.finish()

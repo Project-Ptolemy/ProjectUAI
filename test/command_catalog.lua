@@ -7,9 +7,9 @@ local check, case = suite.check, suite.case
 case("commands combine keywords, rank exact matches and keep stable ties", function()
 	local f = F.new()
 	local catalog = f.env.require("runtime/command_catalog")
-	local entries = { { id = "one", label = "Vault", detail = "local notes" },
-		{ id = "two", label = "Vault", detail = "local notes" } }
-	local result, total = catalog.find("vault", entries)
+	local entries = { { id = "one", label = "Fixture vault", detail = "local notes" },
+		{ id = "two", label = "Fixture vault", detail = "local notes" } }
+	local result, total = catalog.find("fixture vault", entries)
 	check("exact labels rank first", result[1].id == "one" and result[2].id == "two" and total == 2)
 	result = catalog.find("notes local", entries)
 	check("word order is independent", #result == 2)

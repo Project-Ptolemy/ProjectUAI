@@ -25,6 +25,7 @@ local function fixture()
 	cache["runtime/config"] = {
 		get = function(path, default) if settings[path] ~= nil then return settings[path] end return default end,
 		set = function(path, value) settings[path] = value end,
+		vaultStatus = function() return { required = false, ready = true, locked = false, busy = false } end,
 		changed = env.require("runtime/signal").new("settings"),
 	}
 	local responsive = env.require("ui/responsive")
@@ -298,6 +299,7 @@ end)
 scenario("notification actions open their conversation and acknowledge only that conversation", function()
 	local h = envMock.new()
 	local handle = assert(h.boot())
+	require("password_fixture")(h, handle)
 	h.settle(0.5)
 	local app, sessions = handle.app, handle.sessions
 	local alpha = sessions.current(); alpha.title = "Alpha"

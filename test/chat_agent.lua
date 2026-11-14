@@ -16,6 +16,12 @@ local function toolNames(request)
 	for _, definition in ipairs(request.tools or {}) do
 		local fn = definition["function"] or definition
 		names[fn.name] = true
+		-- Focused families declare their permitted underlying action names.
+		local properties = fn.parameters and fn.parameters.properties
+		local actions = properties and properties.name and properties.name.enum
+		if fn.name:sub(1, 4) == "uai_" and type(actions) == "table" then
+			for _, name in ipairs(actions) do names[name] = true end
+		end
 	end
 	return names
 end

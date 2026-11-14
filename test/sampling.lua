@@ -9,6 +9,11 @@ local function fixture(api)
 	local record = f.env.require("provider/registry").blank("custom")
 	record.id, record.label = "sampling-fixture", "Sampling fixture"
 	record.api, record.baseUrl, record.model = api == "responses" and "openai" or api, "https://sampling.fixture/v1", "sampling-model"
+	if api == "responses" then
+		record.baseUrl, record.model = "https://api.openai.com/v1", "gpt-6-sol"
+		-- Disable reasoning so this fixture sends temperature before the refusal.
+		record.params = { reasoning = { effort = "none" } }
+	end
 	record.apiKey, record.authStyle = "fixture-key", "bearer"
 	return f, record
 end
@@ -20,7 +25,9 @@ local function reply(f, api)
 	if api == "anthropic" then
 		body = { type = "message", role = "assistant", content = { { type = "text", text = "ready" } }, stop_reason = "end_turn" }
 	elseif api == "responses" then
-		body = { status = "completed", output = { { type = "message", content = { { type = "output_text", text = "ready" } } } } }
+		body = { object = "response", id = "resp-sampling-fixture", model = "gpt-6-sol", status = "completed",
+			output = { { type = "message", id = "msg-sampling-fixture", role = "assistant", status = "completed",
+				content = { { type = "output_text", text = "ready" } } } } }
 	else body = { choices = { { message = { role = "assistant", content = "ready" }, finish_reason = "stop" } } } end
 	return { StatusCode = 200, Body = f.h.json.encode(body) }
 end

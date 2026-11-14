@@ -17,6 +17,13 @@ local surfaces = {
 	{ name = "Context", open = function(f)
 		return f.env.require("ui/chat/context").open(f.env.require("agent/session").current())
 	end },
+	{ name = "Master Vault editor", workspace = true, open = function(f)
+		return f.env.require("ui/vault_editor").open({ title = "Workspace note", content = "A reusable local reference." })
+	end },
+	{ name = "Micro-goals", workspace = true, open = function(f)
+		return f.env.require("ui/goals").open(f.env.require("agent/session").current())
+	end },
+	{ name = "UI mods", workspace = true, open = function(f) return f.env.require("ui/mods").open() end },
 }
 
 for _, size in ipairs({ { 1000, 800 }, { 320, 568 }, { 844, 220 } }) do
@@ -55,6 +62,9 @@ for _, size in ipairs({ { 1000, 800 }, { 320, 568 }, { 844, 220 } }) do
 				and position.X + bounds.X <= size[1] + 1 and position.Y + bounds.Y <= size[2] + 1)
 			check("long content retains scrolling", modal.scroll.instance.ScrollingEnabled ~= false
 				and modal.scroll.instance.Size.Y.Offset < 1600)
+			if not mobile and surface.workspace then
+				check("workspace forms use the available height for long content", modal.card.Size.Y.Offset > theme.size.modalTall)
+			end
 			bodyLayout.AbsoluteContentSize = f.h.dt.Vector2.new(240, 160)
 			f.h.sched.advance(0.2)
 			check("shrinking content releases the extra height", modal.card.Size.Y.Offset == shortHeight)
@@ -64,5 +74,23 @@ for _, size in ipairs({ { 1000, 800 }, { 320, 568 }, { 844, 220 } }) do
 		end)
 	end
 end
+
+case("workspace fitting honors an explicit height ceiling", function()
+	local f = F.ui(1000, 800)
+	f.env.require("ui/responsive").init(f.env.root)
+	local overlay, P = f.env.require("ui/overlay"), f.env.require("ui/primitives")
+	local modal = assert(overlay.modal({ title = "Bounded workspace", scroll = true, fitContent = true, height = 260 }))
+	P.text(modal.content, { text = "Retained workspace content", auto = "Y" })
+	P.button(modal.footer, { text = "Close", onClick = modal.close })
+	local layout = modal.content:FindFirstChildOfClass("UIListLayout")
+	layout.AbsoluteContentSize = f.h.dt.Vector2.new(240, 1600)
+	f.h.sched.advance(0.2)
+	check("an explicit ceiling limits a populated workspace form", modal.card.Size.Y.Offset <= 260
+		and modal.scroll.instance.Size.Y.Offset > 0 and modal.scroll.instance.Size.Y.Offset < 1600)
+	layout.AbsoluteContentSize = f.h.dt.Vector2.new(240, 30)
+	f.h.sched.advance(0.2)
+	check("short content can shrink below the explicit ceiling", modal.card.Size.Y.Offset < 260)
+	modal.close(); f.h.sched.advance(0.2); f.healthy(); f.close()
+end)
 
 suite.finish()

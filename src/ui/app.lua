@@ -24,12 +24,14 @@ return function(env)
 	local providers = env.require("provider/registry")
 	local usage = env.require("agent/usage")
 
-	-- Chat and Cowork are the two the sidebar's mode switch offers; the rest are
-	-- reached from the app menu or from the sidebar's More section.
+	-- Chat, Cowork and Code share the mode switch. Master Vault has its own row;
+	-- the remaining destinations are reached from the app menu or sidebar More.
 	local PANELS = {
 		{ id = "chat", label = "Chat", icon = "code" },
 		{ id = "cowork", label = "Cowork", icon = "terminal" },
 		{ id = "code", label = "Code", icon = "terminal" },
+		{ id = "vault", label = "Master Vault", icon = "book" },
+		{ id = "mods", label = "Mod workspace", icon = "sliders" },
 		{ id = "agents", label = "Subagents", icon = "spark" },
 		{ id = "providers", label = "Providers", icon = "sliders" },
 		{ id = "tools", label = "Tools", icon = "worktree" },
@@ -37,7 +39,7 @@ return function(env)
 		{ id = "logs", label = "Logs", icon = "document" },
 	}
 
-	local M = { panel = "chat", built = false, history = { entries = {}, index = 0 },
+	local M = { panel = config.get("ui.panel", "chat"), built = false, history = { entries = {}, index = 0 },
 		suppressInitialShow = env.context and env.context.ui == false }
 	local credentialGate, accessSyncing
 	local function credentialAccessRequired()
@@ -235,10 +237,16 @@ return function(env)
 			end
 		end), "app.modeChanged")
 
+		local themePending = false
 		local rebuildForTheme, cancelThemeRebuild = clock.debounce(function()
+			themePending = false
 			M.rebuild("theme")
 		end, 0.2)
-		local stopTheme = theme.changed:connect(rebuildForTheme)
+		local stopTheme = theme.changed:connect(function() themePending = true; rebuildForTheme() end)
+		function M.flushAppearance()
+			if not themePending or M.disposed then return end
+			themePending = false; cancelThemeRebuild(); M.rebuild("ui-mod")
+		end
 		dispose.add(function() stopTheme(); cancelThemeRebuild() end, "app.themeChanged")
 
 		-- Two settings decide what a transcript row *shows* rather than how it looks, so
@@ -724,6 +732,8 @@ return function(env)
 			end
 			M.setLauncherBusy(sessions.busyCount() > 0)
 		end
+		local modRunner = env.loadedModules and env.loadedModules["runtime/ui_mod_runner"]
+		if modRunner then modRunner.notifyMount(M.screen) end
 	end
 
 	-- Config is the only source of truth for this.
@@ -1072,6 +1082,8 @@ return function(env)
 		chat = buildChatPanel,
 		cowork = function(parent) return env.require("ui/panels/cowork").new(parent) end,
 		code = function(parent) return env.require("ui/panels/code").new(parent) end,
+		vault = function(parent) return env.require("ui/panels/vault").new(parent) end,
+		mods = function(parent) return env.require("ui/panels/mods").new(parent, M) end,
 		agents = function(parent) return env.require("ui/panels/agents").new(parent) end,
 		providers = function(parent) return env.require("ui/panels/providers").new(parent) end,
 		tools = function(parent) return env.require("ui/panels/tools").new(parent) end,
@@ -1277,6 +1289,15 @@ return function(env)
 		return env.require("ui/commands").open(M, query)
 	end
 
+	function M.showGoals()
+		if not M.syncCredentialAccess() then return end
+		return env.require("ui/goals").open(sessions.current())
+	end
+	function M.showUiMods()
+		if not M.syncCredentialAccess() then return end
+		return env.require("ui/mods").open({ getSession = sessions.current })
+	end
+
 	function M.showShortcuts()
 		if not M.syncCredentialAccess() then return end
 		return env.require("ui/shortcuts").open()
@@ -1313,6 +1334,8 @@ return function(env)
 		end
 		options[#options + 1] = { divider = true }
 		options[#options + 1] = { label = "Find a command", value = "commands", shortcut = "Ctrl+K" }
+		options[#options + 1] = { label = "Micro-goals", value = "microGoals", icon = "check" }
+		options[#options + 1] = { label = "Manage UI mods", value = "uiMods", icon = "sliders" }
 		options[#options + 1] = { label = "New conversation", value = "new", icon = "plus" }
 		options[#options + 1] = { label = "Search conversations", value = "search", icon = "search" }
 		options[#options + 1] = { label = "Conversation folders", value = "folders" }
@@ -1408,6 +1431,10 @@ return function(env)
 					M.manageFolders()
 				elseif value == "commands" then
 					M.showCommands()
+				elseif value == "microGoals" then
+					M.showGoals()
+				elseif value == "uiMods" then
+					M.showUiMods()
 				elseif value == "export" then
 					M.exportConversation()
 				elseif value == "unload" then
@@ -1420,8 +1447,9 @@ return function(env)
 						onConfirm = function()
 							local globals = (type(getgenv) == "function") and getgenv() or nil
 							local live = globals and globals.UAI
-							if live and live.destroy then
-								local finished, why = live.destroy()
+							local exit = env.exitClient or (live and live.destroy)
+							if type(exit) == "function" then
+								local finished, why = exit()
 								if finished == false then overlay.toast(why or "UAI could not finish unloading. Try again.", "warn", 5) end
 							else
 								if config.vaultStatus().busy then overlay.toast("Finish or cancel credential storage before unloading UAI.", "warn", 5); return end
@@ -1504,8 +1532,9 @@ return function(env)
 						onConfirm = function()
 							local globals = (type(getgenv) == "function") and getgenv() or nil
 							local live = globals and globals.UAI
-							if live and live.destroy then
-								local finished, why = live.destroy()
+							local exit = env.exitClient or (live and live.destroy)
+							if type(exit) == "function" then
+								local finished, why = exit()
 								if finished == false then overlay.toast(why or "UAI could not finish unloading. Try again.", "warn", 5) end
 							else
 								if config.vaultStatus().busy then overlay.toast("Finish or cancel credential storage before unloading UAI.", "warn", 5); return end

@@ -4,6 +4,7 @@ return function(env)
 	local M = {}
 	M.items = {
 		{ id = "scriptGoal", label = "Script-making goal", detail = "Define, inspect, plan, build, validate and review script progress", kind = "action" },
+		{ id = "microGoals", label = "Micro-goals", detail = "Focus on small tasks, dependencies, progress and completion evidence", kind = "action" },
 		{ id = "chat", label = "Open Chat", detail = "Conversations and the message composer", kind = "panel" },
 		{ id = "code", label = "Open Code", detail = "Editor, files, explorer, remotes, history and scripts", kind = "panel" },
 		{ id = "providers", label = "Providers library", detail = "Add a provider, endpoint, API key or model", kind = "panel" },
@@ -11,6 +12,9 @@ return function(env)
 		{ id = "agents", label = "Monitor subagents", detail = "Background tasks, progress and reports", kind = "panel" },
 		{ id = "cowork", label = "Open Cowork", detail = "Browser workspace and local bridge connection", kind = "panel" },
 		{ id = "logs", label = "Open Logs", detail = "Requests, transport failures and diagnostics", kind = "panel" },
+		{ id = "vault", label = "Open Master Vault", detail = "Search Markdown recipes, fixes, remote contracts and project knowledge", kind = "panel" },
+		{ id = "mods", label = "Open Mod workspace", detail = "Custom appearance, scripted extensions and mod panels", kind = "panel" },
+		{ id = "uiMods", label = "Manage UI mods", detail = "Create, preview, edit, apply, disable, import and export shareable mods", kind = "action" },
 		{ id = "new", label = "New conversation", detail = "Choose a title and folder", kind = "action" },
 		{ id = "search", label = "Search conversations", detail = "Find retained messages and replies", kind = "action" },
 		{ id = "folders", label = "Manage conversation folders", detail = "Organize chats without changing their game context", kind = "action" },

@@ -1,6 +1,7 @@
 -- Focused native MCP ownership, dispatch, permissions and cancellation checks.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local desktop = require("automatic_bridge_fixture")
 local suite = F.suite("MCP bridge")
 local check, case = suite.check, suite.case
 local function setup()
@@ -127,7 +128,7 @@ case("harness calls cannot overlap a user preparing an attachment", function()
 	owner.preparing = nil; f.mcp.clear(); f.healthy(); f.close()
 end)
 
-case("manual bridge worker replacement refreshes state and closes old MCP work", function()
+case("desktop worker replacement refreshes state and closes old MCP work", function()
 	local envMock, json = require("env"), require("json")
 	local h = envMock.new()
 	local instance, snapshots, latest = "worker-one", 0, nil
@@ -144,8 +145,7 @@ case("manual bridge worker replacement refreshes state and closes old MCP work",
 		return { StatusCode = 204, Body = "" }
 	end
 	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.2)
-	app.config.set("bridge.autoDiscover", false)
-	app.config.set("bridge.port", 8795); app.config.set("bridge.token", "mcp-fixture"); app.config.set("bridge.enabled", true)
+	local discovery = desktop.connect(h, app, { instance = "worker-one" })
 	h.settle(1.5)
 	local sessions = app.env.require("agent/session")
 	local active, owner = sessions.current()
@@ -159,7 +159,8 @@ case("manual bridge worker replacement refreshes state and closes old MCP work",
 	instance = "worker-two"; h.settle(5)
 	check("same-token worker replacement closes external ownership", sessions.get(owner.id) == nil)
 	check("fresh worker receives snapshot and full capabilities", snapshots > before and latest and latest.mcp.schema == 1)
-	check("replacement preserves active conversation and manual token", sessions.current() == active and app.config.get("bridge.token") == "mcp-fixture")
+	check("replacement preserves active conversation and in-memory desktop credentials", sessions.current() == active
+		and app.env.require("net/bridge_connection").get().token == discovery.token and app.config.get("bridge.token") == nil)
 	app.destroy(); h.settle(0.2); check("worker replacement releases callbacks cleanly", #h.errors() == 0)
 end)
 

@@ -59,6 +59,8 @@ return function(env)
 			elseif entry.id == "export" then app.exportConversation()
 			elseif entry.id == "focus" then app.focusComposer()
 			elseif entry.id == "shortcuts" then app.showShortcuts()
+			elseif entry.id == "microGoals" then app.showGoals()
+			elseif entry.id == "uiMods" then app.showUiMods()
 			elseif entry.id == "tutorial" then env.require("ui/tutorial").open() end
 			if entry.id == "scriptGoal" then env.require("ui/code/workflow").open() end
 		end

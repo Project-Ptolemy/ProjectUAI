@@ -49,6 +49,11 @@ end)
 
 case("dirty histories and pending follow-ups save once despite repeated cleanup", function()
 	local f = F.new()
+	local providers = f.env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label = "unload-fixture", "Unload fixture"
+	provider.baseUrl, provider.apiKey, provider.model = "https://unload.fixture/v1", "fixture-key", "fixture-model"
+	assert(providers.save(provider, { force = true }))
 	local sessions, fs = f.env.require("agent/session"), f.env.require("runtime/fsx")
 	local changed = assert(sessions.newThread({ id = "changed" }))
 	local failed = assert(sessions.newThread({ id = "failed-save" }))

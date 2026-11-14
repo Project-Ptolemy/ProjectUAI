@@ -2,6 +2,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 io.stdout:setvbuf("no")
 local envMock = require("env")
+local authenticate = require("password_fixture")
 local passed, failed = 0, 0
 local function check(label, value) assert(value, label); passed = passed + 1 end
 local function scenario(label, run)
@@ -13,7 +14,10 @@ local function boot(width, height, desktop)
 	h.services.UserInputService.TouchEnabled = not desktop
 	h.services.UserInputService.MouseEnabled = desktop == true
 	h.setViewport(width, height)
-	local app = assert(h.boot(arg[1] or "dist/uai.lua")); h.settle(1); app.app.show("chat")
+	local app = assert(h.boot(arg[1] or "dist/uai.lua"))
+	-- These form fixtures begin after the independent first-run tutorial.
+	app.env.require("ui/tutorial").markSeen()
+	authenticate(h, app); h.settle(1); app.app.show("chat")
 	return h, app
 end
 local function healthy(h)

@@ -26,7 +26,7 @@ function contrast(foreground, background) {
 
 (async () => {
   const bridge = await startBridge();
-  let browser, page, heartbeat, sequence = 0;
+  let browser, page, heartbeat, releaseHeldReceipt, sequence = 0;
   const auth = { Authorization: 'Bearer ' + bridge.token, 'content-type': 'application/json' };
   const post = async (route, body) => {
     const response = await fetch(bridge.base + route, { method: 'POST', headers: auth, body: JSON.stringify(body) });
@@ -59,7 +59,7 @@ function contrast(foreground, background) {
     const context = await browser.newContext({ viewport: { width: 390, height: 568 }, colorScheme: 'light', reducedMotion: 'reduce' });
     page = await context.newPage(); page.setDefaultTimeout(12000);
     const errors = [], outcomes = new Map();
-    let commandError = null, commandUncertain = false, unauthorized = false, receiptDelay = 0, commandCount = 0;
+    let commandError = null, commandUncertain = false, unauthorized = false, receiptGate = null, commandCount = 0;
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/command', route => {
       if (unauthorized) return route.fulfill({ status: 401, body: 'Invalid token' });
@@ -70,7 +70,7 @@ function contrast(foreground, background) {
     });
     await page.route('**/api/commands/*', async route => {
       const { error, uncertain } = outcomes.get(new URL(route.request().url()).pathname.split('/').at(-1)) || {};
-      if (receiptDelay) await new Promise(resolve => setTimeout(resolve, receiptDelay));
+      if (receiptGate) await receiptGate;
       return route.fulfill({ json: { state: 'completed', result: error ? { ok: false, error, uncertain } : { ok: true, data: { ok: true } } } });
     });
     const { navigate, openSidebar, openWorkspace } = navigation(page);
@@ -262,7 +262,7 @@ function contrast(foreground, background) {
     for (const value of ['https://opencode.ai/zen/v1', 'https://opencode.ai/inference/v1/responses',
       'https://puai-proxy.davidzk.tech/opencode/v1', 'https://puai-free-gateway.renern.workers.dev/opencode/v1']) {
       await endpoint.fill(value);
-      assert.match(await disclosure.textContent(), /direct desktop workaround.*installed OpenCode CLI.*UAI Relay app/s);
+      assert.match(await disclosure.textContent(), /Project UAI Desktop Bridge.*verified free API-key route.*Direct executor access depends on the host transport.*installed OpenCode CLI.*UAI Relay app/s);
       assert.doesNotMatch(await disclosure.textContent(), /can retry|90,000|API keys pass/);
       assert.equal(await disclosure.locator('a').getAttribute('href'), 'https://discord.gg/9xYyyYuKap');
     }
@@ -362,7 +362,11 @@ function contrast(foreground, background) {
     const threadRequest = requestFor('thread');
     await openSidebar(); await page.locator('.thread > button').first().click();
     assert.equal((await threadRequest).postDataJSON().id, 'audit');
-    await page.waitForFunction(() => document.body.dataset.page === 'chat');
+    // Opening history can already close the workspace. Wait for the thread
+    // receipt to finish its navigation rather than accepting that earlier Chat.
+    await page.waitForFunction(() => document.body.dataset.page === 'chat'
+      && document.querySelector('#sidebarToggle').getAttribute('aria-expanded') === 'false'
+      && document.activeElement.id === 'input');
     assert.equal(await page.locator('#sidebarToggle').getAttribute('aria-expanded'), 'false');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'input');
 
@@ -423,13 +427,17 @@ function contrast(foreground, background) {
 
     // Double submits are suppressed, and a finished old action cannot close a new dialog.
     await page.setViewportSize({ width: 1280, height: 800 });await openDialog('provider');
-    const before = commandCount;receiptDelay = 700;
+    const before = commandCount, pendingRequest = requestFor('provider:save');
+    receiptGate = new Promise(resolve => { releaseHeldReceipt = resolve; });
     await page.getByLabel('Name', { exact: true }).fill('Pending provider');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const pendingId = (await pendingRequest).postDataJSON().commandId;
     await page.locator('#modalForm').evaluate(node => node.requestSubmit());
     assert.equal(await page.locator('#modal').getAttribute('aria-busy'), 'true');
     await closeModal();await openDialog('model');
-    await page.waitForTimeout(850);receiptDelay = 0;
+    const pendingResponse = page.waitForResponse(response => response.url().endsWith('/api/commands/' + pendingId));
+    receiptGate = null;releaseHeldReceipt();releaseHeldReceipt = null;await (await pendingResponse).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
     assert.equal(commandCount, before + 1, 'a pending form submits once');
     assert.equal(await page.locator('#modalTitle').textContent(), 'Models & reasoning', 'an old save cannot dismiss a replacement modal');
     assert.equal(await page.locator('#modal').evaluate(node => node.open), true);
@@ -495,6 +503,6 @@ function contrast(foreground, background) {
     }
     throw error;
   } finally {
-    clearInterval(heartbeat); await browser?.close(); await bridge.stop();
+    clearInterval(heartbeat); releaseHeldReceipt?.(); await browser?.close(); await bridge.stop();
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

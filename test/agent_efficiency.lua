@@ -138,7 +138,9 @@ case("compaction sends smaller history and accounts for its own request", functi
 	end
 	local before = session.ctx.tokens()
 	f.run(function() return f.env.require("agent/loop").run(session, "Continue repairing the boat") end)
-	check("one bounded summary request precedes the main request", summaryRequest and mainRequest and summaryRequest.maxTokens <= 512
+	check("one bounded summary request precedes the main request", summaryRequest and mainRequest
+		and summaryRequest.maxTokens > 0 and summaryRequest.maxTokens <= 3072
+		and summaryRequest.maxTokens < config.get("agent.contextTokens")
 		and summaryRequest.outputCeiling == summaryRequest.maxTokens)
 	check("the main request has the merged note and reduced context", has(mainRequest.messages[2].content, "preserve the dock")
 		and f.env.require("agent/usage").estimateMessages(mainRequest.messages) < before * 0.5)
@@ -168,12 +170,17 @@ case("main and child prompts share the canonical workspace without synchronous n
 	place.id, place.name, place.resolved = 42, "Harbor \240\159\154\162", true
 	local workspace = f.env.require("runtime/workspace").describe()
 	local prompt = f.env.require("agent/prompt")
+	local function canonicalRules(text)
+		return has(text, "check_luau and run_luau share one namespace")
+			and has(text, "Pass files/... or pastes/...")
+			and has(text, "never add an app root or extra files/.")
+			and has(text, "files/files/... is a real legacy folder")
+	end
 	for index = 1, 3 do
 		local main, child = prompt.build(), prompt.subagent("Repair the boat")
 		check("both agents receive the same verbatim path", has(main, "Current game files: " .. workspace.path .. "/")
 			and has(child, "Current game files: " .. workspace.path .. "/"))
-		check("both prompts replace obsolete prefix workarounds", has(main, "supersedes old path-workaround memories") and has(child, "supersedes old path-workaround memories")
-			and has(main, "check_luau and run_luau share one namespace") and has(child, "real legacy folder"))
+		check("both prompts replace obsolete prefix workarounds", canonicalRules(main) and canonicalRules(child))
 		check("pace applies to parent and child", has(main, "Do not overthink routine steps") and has(child, "Do not overthink routine steps"))
 		check("both agents can choose bulk reads without broad game setup", has(main, "file_read_many") and has(child, "file_read_many")
 			and has(main, "Avoid whole-game inventories") and has(child, "Avoid whole-game inventories"))

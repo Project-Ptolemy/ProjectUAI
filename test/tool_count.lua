@@ -3,12 +3,15 @@ package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
 local suite = F.suite("Provider tool count")
 local case, check = suite.case, suite.check
-local function setup()
+local function setup(protocol)
 	local f = F.new()
 	local registry = f.env.require("provider/registry")
 	local record = registry.blank("custom")
-	record.id, record.label, record.model = "tool-count", "Tool count fixture", "unknown-model"
-	record.baseUrl, record.apiKey = "https://fixture.test/v1", "fixture-key"
+	record.id, record.label = "tool-count", "Tool count fixture"
+	-- Responses requires a supported origin and model; HTTP stays fully mocked.
+	record.model = protocol == "responses" and "gpt-6-sol" or "unknown-model"
+	record.baseUrl = protocol == "responses" and "https://api.openai.com/v1" or "https://fixture.test/v1"
+	record.apiKey = "fixture-key"
 	assert(registry.save(record, { force = true }))
 	local tools = {}
 	for index = 1, 163 do tools[index] = { type = "function", ["function"] = {
@@ -50,7 +53,7 @@ end)
 
 case("both protocols describe and execute overflow tools through the real agent loop", function()
 	for _, protocol in ipairs({ "openai", "responses" }) do
-		local f, record = setup(); f.tools({})
+		local f, record = setup(protocol); f.tools({})
 		f.env.require("runtime/config").set("agent.toolProfile", "all")
 		local writes, requests, events = 0, 0, {}
 		for index = 1, 163 do
@@ -85,9 +88,12 @@ case("both protocols describe and execute overflow tools through the real agent 
 					or { content = "", tool_calls = { { id = "overflow_" .. requests, type = "function",
 						["function"] = { name = router.name, arguments = f.h.json.encode(args) } } } }, finish_reason = complete and "stop" or "tool_calls" } } }) }
 			end
-			return { StatusCode = 200, Body = f.h.json.encode({ object = "response", status = "completed", output = complete
-				and { { type = "message", content = { { type = "output_text", text = "Finished" } } } }
-				or { { type = "function_call", call_id = "overflow_" .. requests, name = router.name, arguments = f.h.json.encode(args) } } }) }
+			return { StatusCode = 200, Body = f.h.json.encode({ object = "response", id = "response_" .. requests,
+				model = record.model, status = "completed", output = complete
+				and { { type = "message", id = "message_" .. requests, role = "assistant", status = "completed",
+					content = { { type = "output_text", text = "Finished" } } } }
+				or { { type = "function_call", id = "call_" .. requests, call_id = "overflow_" .. requests, status = "completed",
+					name = router.name, arguments = f.h.json.encode(args) } } }) }
 		end
 		local session = assert(f.env.require("agent/session").create({ ephemeral = true, maxTurns = 5 }))
 		session.systemPrompt = "Use the overflow catalogue to inspect and call fixture_163."
@@ -166,7 +172,7 @@ end)
 
 case("a stricter provider refusal retries once and persists its scoped limit", function()
 	for _, protocol in ipairs({ "openai", "responses" }) do
-		local f, record, tools = setup()
+		local f, record, tools = setup(protocol)
 		local counts = {}
 		f.h.http.handler = function(req)
 			local body = f.h.json.decode(req.body)
@@ -175,8 +181,10 @@ case("a stricter provider refusal retries once and persists its scoped limit", f
 			check("every repaired request retains the final original tool", router.parameters.properties.name.enum[#router.parameters.properties.name.enum] == "fixture_163")
 			if #counts == 1 then return { StatusCode = 400, Body = f.h.json.encode({ error = { message =
 				"Invalid 'tools': array too long. Expected an array with maximum length 64, but got an array with length 128 instead." } }) } end
-			if protocol == "responses" then return { StatusCode = 200, Body = f.h.json.encode({ object = "response", status = "completed",
-				output = { { type = "message", content = { { type = "output_text", text = "ok" } } } } }) } end
+			if protocol == "responses" then return { StatusCode = 200, Body = f.h.json.encode({ object = "response",
+				id = "response_" .. #counts, model = record.model, status = "completed",
+				output = { { type = "message", id = "message_" .. #counts, role = "assistant", status = "completed",
+					content = { { type = "output_text", text = "ok" } } } } }) } end
 			return { StatusCode = 200, Body = f.h.json.encode({ choices = { { message = { content = "ok" }, finish_reason = "stop" } } }) }
 		end
 		local adapter = f.env.require("provider/" .. protocol)

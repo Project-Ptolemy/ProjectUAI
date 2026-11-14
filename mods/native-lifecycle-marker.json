@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "script",
+  "id": "native-lifecycle-marker",
+  "name": "Native lifecycle marker",
+  "description": "Use full native root access with guarded cleanup on remount and disable.",
+  "author": "Project UAI",
+  "sources": [{"label":"Project UAI UI mod context and lifecycle","url":"https://github.com/Project-Ptolemy/ProjectUAI/blob/main/docs/UI_MODS.md#script-lifecycle-and-context"}],
+  "source": "return function(context)\n\tcontext:OnMount(function(root)\n\t\tif not root or not context:IsAlive() then return end\n\t\tlocal before = root:GetAttribute(\"ProjectUaiModExample\")\n\t\troot:SetAttribute(\"ProjectUaiModExample\", \"active\")\n\t\treturn function()\n\t\t\tif root:GetAttribute(\"ProjectUaiModExample\") == \"active\" then\n\t\t\t\troot:SetAttribute(\"ProjectUaiModExample\", before)\n\t\t\tend\n\t\tend\n\tend)\nend\n"
+}

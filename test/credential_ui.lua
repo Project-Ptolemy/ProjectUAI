@@ -100,9 +100,9 @@ case("ordinary and diagnostic copies omit credentials while private copy require
 		and not private:find("fixture-header-secret", 1, true) and not private:find("fixture-query-secret", 1, true)
 		and not private:find("fixture-body-secret", 1, true) and not private:find("fixture-url-secret", 1, true)
 		and f.util.decode(private).credentialsIncluded == true)
-	check("private copy restores exact provider credentials and retains connection tokens", restoredPrivate.providers.list[1].apiKey == f.record.apiKey
+	check("private copy restores provider credentials and phone pairing without a desktop token", restoredPrivate.providers.list[1].apiKey == f.record.apiKey
 		and restoredPrivate.providers.list[1].headers["X-Custom-Access"] == "fixture-header-secret"
-		and restoredPrivate.bridge.token == "fixture-bridge-token" and restoredPrivate.relay.token == "fixture-relay-token")
+		and restoredPrivate.bridge.token == nil and restoredPrivate.relay.token == "fixture-relay-token")
 	click(f, "ExportClipboard")
 	local diagnostic = f.h.sandbox.__clipboard
 	check("diagnostic export uses the same credential exclusions", not diagnostic:find("fixture-key-", 1, true)

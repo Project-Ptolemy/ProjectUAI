@@ -235,6 +235,11 @@ return function(env)
 	function M.list(path, opts)
 		if not M.enabled or not caps.fn.listfiles then return {}, caps.reason("fs") end
 		opts = opts or {}
+		local maxEntries = opts.maxEntries
+		if maxEntries ~= nil and (type(maxEntries) ~= "number" or maxEntries ~= maxEntries
+			or maxEntries < 1 or maxEntries > 16384 or maxEntries ~= math.floor(maxEntries)) then
+			return {}, "maxEntries must be an integer from 1 to 16384"
+		end
 		-- The empty path is the root of whatever is being listed -- the whole app
 		-- folder, or the whole scope. sanitise() refuses it because an empty path is
 		-- no path at all for every other operation; here it is the one thing that
@@ -255,8 +260,11 @@ return function(env)
 		local ok, entries = pcall(caps.fn.listfiles, full)
 		if not ok then return {}, tostring(entries) end
 		if type(entries) ~= "table" then return {}, "host returned an invalid file listing" end
-		local out, rejected, seen = {}, 0, {}
-		for _, entry in ipairs(entries) do
+		local out, rejected, seen, clipped = {}, 0, {}, false
+		-- Bound normalization and existence probes after the host returns its list.
+		-- The host's listfiles call itself cannot be paged or cancelled here.
+		for index, entry in ipairs(entries) do
+			if maxEntries and index > maxEntries then clipped = true; break end
 			local normal = tostring(entry):gsub("\\", "/"):gsub("/+$", "")
 			local candidates, checked = {}, {}
 			local function consider(relative)
@@ -288,6 +296,7 @@ return function(env)
 			else rejected = rejected + 1 end
 		end
 		table.sort(out, function(a, b) return a.path < b.path end)
+		if clipped then return out, "host listing reached maxEntries; listing is incomplete" end
 		return out, rejected > 0 and "host listing contains ambiguous, inaccessible or unsupported paths; listing is incomplete" or nil
 	end
 
@@ -319,6 +328,8 @@ return function(env)
 	-- verbatim.
 	local CLIENT_STATE = {
 		["code"] = true,
+		["vault"] = true,
+		["ui_mods"] = true,
 		["config.json"] = true,
 		["config.vault.pending.json"] = true,
 		["stats.json"] = true,

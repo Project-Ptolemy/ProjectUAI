@@ -12,11 +12,11 @@ return function(env)
 		{
 			name = "scripting_docs",
 			risk = "read",
-			description = "Read the offline guide to the live Roblox environment and script development. Start with quickstart; select environment/capabilities, native workflows, shared state/concurrency, executor APIs with sUNC references, paths, inspection, Luau, cleanup, UI, debugging, projects, editor or verification as needed. Reuse retained sections. No network, filesystem access or execution required.",
+			description = "Read the offline guide to the live Roblox environment and script development. Start with quickstart; select environment/capabilities, native workflows, shared state/concurrency, executor APIs with sUNC references, paths, inspection, Luau, cleanup, UI, native_ui_mods for mod context/cleanup, debugging, projects, editor or verification as needed. Reuse retained sections. No network, filesystem access or execution required.",
 			parameters = {
 				type = "object",
 				properties = {
-					section = { type = "string", enum = { "index", "quickstart", "environment_model", "capabilities_and_permissions", "task_routing", "paths_and_tool_calls", "inspection", "native_workflows", "shared_state_and_concurrency", "luau", "executor_apis", "execution_and_cleanup", "ui_scripts", "debugging", "projects", "editor_and_actions", "verification", "tool_reference", "maintaining_the_guide" }, description = "index lists topics; quickstart supplies the normal workflow. Read relevant sections and their continuations, not the whole guide as setup." },
+					section = { type = "string", enum = { "index", "quickstart", "environment_model", "capabilities_and_permissions", "task_routing", "project_knowledge_and_micro_goals", "paths_and_tool_calls", "inspection", "native_workflows", "shared_state_and_concurrency", "luau", "executor_apis", "execution_and_cleanup", "ui_scripts", "native_ui_mods", "debugging", "projects", "editor_and_actions", "verification", "tool_reference", "maintaining_the_guide" }, description = "index lists topics; quickstart supplies the normal workflow. Read relevant sections and their continuations, not the whole guide as setup." },
 					offset = { type = "integer", minimum = 1, description = "Continue the same section from the returned nextOffset until eof." },
 					limit = { type = "integer", minimum = 256, maximum = 16000, description = "Bytes in this page, also bounded by the result budget. Default 3500." },
 				},

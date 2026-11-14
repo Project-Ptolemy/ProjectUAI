@@ -3,6 +3,15 @@
   'use strict';
   const PAINT_MS = 60, MAX_LIVE = 32, MAX_TEXT = 8 * 1024 * 1024;
 
+  function rateText(outputTokens, requestMs) {
+    if (!Number.isFinite(outputTokens) || !Number.isInteger(outputTokens) || outputTokens < 0 || outputTokens > 1e12 ||
+        !Number.isFinite(requestMs) || requestMs <= 0) return null;
+    const rate = outputTokens / (requestMs / 1000);
+    if (!Number.isFinite(rate)) return null;
+    const measured = rate >= 1e6 ? rate.toExponential(2).replace(/\.?0+e/, 'e') : rate.toFixed(1);
+    return (rate > 0 && rate < 0.1 ? '<0.1' : measured) + ' tk/s request avg';
+  }
+
   function create(deps) {
     const live = new Map(), committed = new Map(), anchors = new Map(), pendingReasoning = new Map();
     let anonymous = 0;
@@ -348,13 +357,13 @@
         contentState(entry, e.text);
         state(entry, 'complete'); entry.body.removeAttribute('aria-busy'); reasoningState(entry, false);
         entry.status?.remove(); entry.gap?.remove();
-        deps.onFinal?.(entry, e.text || '', e.model);
+        deps.onFinal?.(entry, e.text || '', e.model, e);
         entry.text = entry.reasoning = ''; live.delete(entry.key); committed.set(entry.key, entry);
         if (pendingReasoning.get(entry.sessionId) === entry) pendingReasoning.delete(entry.sessionId);
       } else {
         const created = identify(deps.createAgentMessage(e.model || deps.defaultModel()), e);
         created.authoritative = true; created.finalText = e.text || ''; created.node.dataset.responseState = 'complete'; contentState(created, e.text);
-        created.body.innerHTML = deps.md(e.text || ''); deps.onFinal?.(created, e.text || '', e.model);
+        created.body.innerHTML = deps.md(e.text || ''); deps.onFinal?.(created, e.text || '', e.model, e);
         if (identity(e)) committed.set(created.key, created);
       }
       trimCommitted(); signal();
@@ -468,6 +477,6 @@
       has: id => [...live.keys(), ...committed.keys()].some(value => value.endsWith(':' + id)) };
   }
 
-  root.UAIStreamRenderer = { create };
+  root.UAIStreamRenderer = { create, rateText };
   if (typeof module !== 'undefined') module.exports = root.UAIStreamRenderer;
 })(typeof window !== 'undefined' ? window : globalThis);

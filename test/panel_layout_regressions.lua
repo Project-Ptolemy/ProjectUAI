@@ -22,7 +22,8 @@ end
 local signal = env.require("runtime/signal")
 local util = env.require("runtime/util")
 local values = {}
-local config = { changed = signal.new("config") }
+local config = { changed = signal.new("config"),
+	vaultStatus = function() return { enabled = false, locked = false, ready = true } end }
 function config.get(path, default)
 	local value = values[path]
 	if value == nil then return default end
@@ -120,7 +121,13 @@ cache["provider/models"] = { list = function(record) return record.models end,
 	isFree = function() return false end,
 	discover = function() h.sandbox.task.wait(0.3); return { "fetched" }, "Fetched" end }
 cache["provider/chat"] = { STYLES = { { value = "openai", label = "Chat" } },
-	styleOf = function() return "openai" end, endpointOf = function(record) return record.baseUrl .. "/chat/completions" end }
+	styleOf = function() return "openai" end, protocolOf = function() return "openai" end,
+	supportsSocket = function() return false end,
+	endpointOf = function(record) return record.baseUrl .. "/chat/completions" end }
+cache["net/transport"] = { target = function() return nil end }
+cache["provider/availability"] = { describe = function(record)
+	return { message = record.enabled == false and "Disabled" or "API key required", ready = false }
+end }
 cache["provider/traits"] = { badge = function() return nil end }
 local providerPanel = env.require("ui/panels/providers")
 local parent = mount()
@@ -171,6 +178,7 @@ cache["agent/permissions"] = permissions
 local tool = { name = string.rep("long_tool_", 8), group = "test", risk = "read", description = "Test tool", parameters = {} }
 cache["agent/registry"] = { GROUP_LABELS = { test = "Test" }, stats = function() return { total = 1, byGroup = { test = 1 }, unavailable = {} } end,
 	list = function() return { tool } end, missingCapability = function() return nil end,
+	examples = function() return "" end,
 	groupEnabled = function() return true end, groupLabel = function(group) return group end }
 cache["agent/schema"] = { describe = function() return "No parameters" end }
 parent = mount()
@@ -270,8 +278,9 @@ local bridge = { changed = signal.new("bridge"), status = function() return { ru
 cache["net/bridge"] = bridge
 parent = mount()
 env.require("ui/panels/cowork").rows(parent)
-local copy = find(parent, "CopyBridgeUrl")
-check("cowork actions wrap on narrow cards", copy.Parent:FindFirstChildOfClass("UIListLayout").Wraps == true)
+local reconnect = find(parent, "Reconnect")
+check("cowork connection actions wrap on narrow cards", reconnect.Parent:FindFirstChildOfClass("UIListLayout").Wraps == true
+	and find(parent, "DisconnectCowork") ~= nil)
 parent:Destroy()
 check("cowork releases both state subscriptions", bridge.changed:count() == 0 and sessions.listChanged:count() == 0)
 

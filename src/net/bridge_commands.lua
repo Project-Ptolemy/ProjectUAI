@@ -138,7 +138,8 @@ return function(env)
 		elseif kind == "thread:isolate" then session.setEphemeral(command.value == true)
 		elseif kind == "ask:answer" then
 			local asks = env.require("ui/panels/ask")
-			if not asks.answer(command.id, tostring(command.text or "")) then error("Question is no longer pending", 0) end
+			local text = tostring(command.text or "")
+			if not asks.answer(command.id, text) then error("Question is no longer pending", 0) end
 		elseif kind == "config:export" then
 			local text, err = env.require("runtime/config_transfer").export()
 			if not text then error(err, 0) end

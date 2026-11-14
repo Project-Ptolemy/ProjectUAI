@@ -1,6 +1,7 @@
 -- Image references must survive the Lua pipeline without becoming text markers.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local desktop = require("automatic_bridge_fixture")
 local suite = F.suite("Image input")
 local check, case = suite.check, suite.case
 local function image(sessionId)
@@ -40,8 +41,12 @@ case("context persistence and both adapters preserve image content", function()
 end)
 
 case("image-only sends retain readable history and pass attachments to the loop", function()
-	local f = F.new(); local config = f.env.require("runtime/config")
-	config.set("bridge.enabled", true, { quiet = true })
+	local f = F.new(); desktop.inject(f.env)
+	local providers = f.env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label, provider.model = "image-fixture", "Image fixture", "vision-fixture"
+	provider.baseUrl, provider.apiKey = "https://provider.invalid/v1", "fixture-key"
+	assert(providers.save(provider, { force = true }))
 	local session = f.env.require("agent/session").newThread()
 	local captured
 	f.loaded["agent/loop"] = { run = function(target, text, images)
@@ -56,7 +61,7 @@ end)
 
 case("image requests always use the relay even with Game runtime selected", function()
 	local f = F.new(); local config = f.env.require("runtime/config")
-	config.set("bridge.enabled", true, { quiet = true }); config.set("bridge.runtime", "game")
+	desktop.inject(f.env); config.set("bridge.runtime", "game")
 	local http = f.env.require("net/http"); local captured = {}
 	http.send = function(spec)
 		captured[#captured + 1] = spec

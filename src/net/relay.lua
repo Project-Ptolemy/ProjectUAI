@@ -15,7 +15,7 @@ return function(env)
 	local function noRelay()
 		return { status = 599, body = util.encode({ error = { message =
 			"This request needs a local relay. Start the Project UAI Companion app on this device, "
-			.. "or enable the web bridge in Cowork settings." } }), headers = {}, via = "web", terminal = true }, nil
+			.. "or open UAI Bridge on Windows and click Start Cowork." } }), headers = {}, via = "web", terminal = true }, nil
 	end
 
 	local function unusableResponse(problem)
@@ -97,7 +97,7 @@ return function(env)
 			if target == "companion" then
 				return failure("The companion relay is not paired. Open Cowork settings and pair again.")
 			end
-			return failure("Web runtime needs the bridge token in Cowork settings.")
+			return failure("Desktop credentials are unavailable. Open UAI Bridge, click Start Cowork, then reconnect from Cowork settings.")
 		end
 		local info, helloProblem
 		local helloDeadline = target == "companion" and math.min(deadline, clock.ms() + 15000) or deadline
@@ -135,7 +135,7 @@ return function(env)
 				return failure("The companion relay could not complete its local connection check. " .. tostring(helloProblem)
 					.. " No inference was submitted.")
 			end
-			return failure("Web runtime cannot connect. Start the updated bridge/server.js and check its token.")
+			return failure("Web runtime cannot connect. Open UAI Bridge, click Start Cowork, then reconnect from Cowork settings.")
 		end
 		local capability = type(info.capabilities) == "table" and info.capabilities.inferencePreview
 		local previews = target == "cowork" and type(spec.onFrame) == "function"

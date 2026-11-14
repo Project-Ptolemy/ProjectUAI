@@ -10,13 +10,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const root = path.resolve(__dirname, '..');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'dist/uai.manifest.json'), 'utf8')).buildId.split('-')[0];
-// Public download versions are independent of future source-tree candidates.
-const publishedDesktopVersion = '3.8.0';
+// Desktop and companion packages keep their independently versioned source inputs.
+const publishedDesktopVersion = fs.readFileSync(path.join(root, 'desktop/src/UaiBridge/UaiBridge.csproj'), 'utf8').match(/<Version>(\d+\.\d+\.\d+)<\/Version>/)?.[1];
+assert(publishedDesktopVersion, 'Desktop release version is declared');
 const relayVersion = fs.readFileSync(path.join(root, 'companion/app/build.gradle.kts'), 'utf8').match(/\bversionName\s*=\s*"(\d+\.\d+\.\d+)"/)?.[1];
 assert.ok(relayVersion, 'relay release version is declared');
 const downloadAssets = new Map([
-  ['UAI-Bridge-' + publishedDesktopVersion + '-win-x64.exe', publishedDesktopVersion],
-  ['UAI-Relay-' + relayVersion + '.apk', relayVersion],
+  ['UAI-Bridge-' + publishedDesktopVersion + '-win-x64.exe', { version: publishedDesktopVersion, tag: 'v' + publishedDesktopVersion }],
+  ['UAI-Relay-' + relayVersion + '.apk', { version: relayVersion, tag: 'relay-v' + relayVersion }],
 ]);
 const loader = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/ProjectUAI/main/dist/uai.lua"))()';
 const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml',
@@ -168,9 +169,10 @@ async function copyAndDownloads(page) {
     if (/\/releases\/tag\//.test(url.pathname)) assert.equal(url.pathname.split('/')[5], 'v' + version, 'release link matches the published client version');
     if (/\/releases\/download\//.test(url.pathname)) {
       const asset = url.pathname.split('/').at(-1);
-      assert.ok(downloadAssets.has(asset), 'download names a verified published desktop or relay asset');
-      assert.equal(url.pathname.split('/')[5], 'v' + downloadAssets.get(asset), 'download tag matches its component release version');
-      assert.ok(link.card.includes('v' + downloadAssets.get(asset)), 'download card labels the actual published asset version');
+      assert.ok(downloadAssets.has(asset), 'download names a declared desktop or relay asset');
+      const component = downloadAssets.get(asset);
+      assert.equal(url.pathname.split('/')[5], component.tag, 'download tag matches its component release tag');
+      assert.ok(link.card.includes('v' + component.version), 'download card labels the actual published asset version');
     }
     assert.ok(link.name, 'download links have accessible text');
   }

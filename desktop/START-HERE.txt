@@ -1,6 +1,6 @@
-UAI BRIDGE 3.8.0 - WINDOWS 10/11 (64-BIT)
+UAI BRIDGE 4.0.0 - WINDOWS 10/11 (64-BIT)
 
-1. Open UAI-Bridge-3.8.0-win-x64.exe directly. Official published downloads:
+1. Open UAI-Bridge-4.0.0-win-x64.exe directly. Official published downloads:
    https://github.com/Project-Ptolemy/ProjectUAI/releases/latest
 2. On Workspace, if Node.js is missing, choose Get Node.js or Manual setup,
    then Check again. Click Start Cowork.
@@ -85,8 +85,10 @@ The desktop executable also supports --mcp-stdio for
 harnesses that launch local MCP commands. Roblox retains tool permissions.
 
 If Roblox is not connecting, open UAI > Cowork. Turn on "Find desktop app
-automatically" and turn off "Manual bridge enabled". Discovery checks port
-28791 on this computer every four seconds. Tokens refresh automatically.
+automatically" and choose Reconnect. Discovery checks port 28791 on this computer
+every four seconds. Tokens refresh automatically and stay in memory. Disconnect
+suspends discovery until you choose Reconnect. Older manual connection settings
+are discarded when the client loads.
 
 Minimize keeps the app on the Windows taskbar. Closing the window stops the
 owned bridge and exits. The app never hides itself in the system tray.

@@ -15,6 +15,10 @@ for _, mobile in ipairs({ false, true }) do
 	h.setViewport(mobile and 390 or 1280, mobile and 844 or 820)
 	local app = assert(h.boot(arg[1] or "dist/uai.lua"))
 	h.settle(1)
+	local allowed
+	h.sched.spawn(function() allowed = app.config.continueWithoutEncryption() end)
+	h.settle(1)
+	assert(allowed and app.config.vaultStatus().ready, "Bridge UI fixture must complete credential setup")
 	local responsive = app.env.require("ui/responsive")
 	local config = app.config
 	check("motion starts enabled despite platform preference", responsive.reduceMotion == false)

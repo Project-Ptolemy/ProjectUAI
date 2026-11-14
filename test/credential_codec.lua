@@ -26,7 +26,7 @@ local function snapshot(remember)
 			toolsCap = { model = "fixture-model", limit = 2, scope = "dummy-tools-scope-secret" },
 			opencodeSession = "dummy-session-secret",
 		} } }, identity = { claudeUa = true, extraHeaders = { ["X-Global-Auth"] = "dummy-identity-secret" } },
-		bridge = { token = "bridge-fixture-kept" }, relay = { token = "relay-fixture-kept" } }
+		bridge = { enabled = true, port = 8790, token = "bridge-fixture-kept", autoDiscover = true }, relay = { token = "relay-fixture-kept" } }
 end
 
 case("JSON values and every byte value roundtrip through bounded byte arrays", function()
@@ -87,7 +87,8 @@ case("remembered provider configuration reconstructs exact connection data", fun
 		and encoded.bridge.token == input.bridge.token and encoded.relay.token == input.relay.token)
 	local safe = credentials.sanitise(encoded)
 	check("sanitised exports remove both credential envelopes and pairing secrets", safe.providers.list[1].storedCredentials == nil
-		and safe.identity.storedCredentials == nil and safe.bridge.token == "" and safe.relay.token == "")
+		and safe.identity.storedCredentials == nil and safe.bridge.enabled == nil and safe.bridge.port == nil and safe.bridge.token == nil
+		and safe.bridge.autoDiscover == true and safe.relay.token == "")
 	f.healthy(); f.close()
 end)
 

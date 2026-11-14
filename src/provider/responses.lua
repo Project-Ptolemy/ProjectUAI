@@ -1,4 +1,4 @@
--- The OpenAI Responses adapter, for models that only speak /responses.
+-- The OpenAI Responses adapter, for documented model and tool routes.
 --
 -- Zen serves some models (muse-spark contributor builds) exclusively on the
 -- Responses protocol: /chat/completions answers ModelProtocolUnsupported for
@@ -23,12 +23,73 @@ return function(env)
 	local toolCatalog = env.require("provider/tool_catalog")
 
 	local M = {}
+	local HISTORY_ITEMS, HISTORY_BYTES, HISTORY_NODES = 256, 2097152, 16384
+	M.limits = { historyItems = HISTORY_ITEMS, historyBytes = HISTORY_BYTES, historyNodes = HISTORY_NODES }
+	local function directOpenai(record)
+		return registry.isDirectOpenaiResponses(record)
+	end
+	local function historyScope(record)
+		if not directOpenai(record) then return nil end
+		-- Compatibility keys retain query parameters for live route ownership.
+		-- Conversation files need only a stable comparison token, never that URL.
+		local digest = env.require("runtime/credential_sha256").digest("ProjectUAI Responses history v1\n" .. registry.compatibilityKey(record))
+		if type(digest) ~= "string" or #digest ~= 32 then error("Could not fingerprint Responses history scope", 0) end
+		return "sha256:" .. (digest:gsub(".", function(char) return string.format("%02x", char:byte()) end))
+	end
+
+	-- Opaque reasoning tokens must survive unchanged. Reject malformed or oversized
+	-- data rather than truncating it into an unusable tool-history signature.
+	function M.itemsCopy(items)
+		if not util.isArray(items) or #items > HISTORY_ITEMS then return nil, "Invalid Responses history item count" end
+		local bytes, nodes, seen = 0, 0, {}
+		local function copy(value, depth)
+			nodes = nodes + 1
+			if nodes > HISTORY_NODES or depth > 16 then error("Responses history exceeds its structure limit", 0) end
+			local kind = type(value)
+			if kind == "string" then
+				if not util.validUtf8(value) then error("Invalid Responses history text", 0) end
+				bytes = bytes + #value + 8
+				if bytes > HISTORY_BYTES then error("Responses history exceeds its 2 MiB limit", 0) end
+				return value
+			elseif kind == "number" then
+				if value ~= value or math.abs(value) == math.huge then error("Invalid Responses history number", 0) end
+				bytes = bytes + 24; return value
+			elseif kind == "boolean" then bytes = bytes + 8; return value
+			elseif kind ~= "table" then error("Invalid Responses history value", 0) end
+			if seen[value] then error("Invalid cyclic Responses history", 0) end
+			seen[value] = true
+			local out, fields, array = {}, 0, util.isArray(value)
+			for key, child in pairs(value) do
+				fields = fields + 1
+				if fields > HISTORY_ITEMS then error("Responses history exceeds its field limit", 0) end
+				if array then
+					if key < 1 or key ~= math.floor(key) then error("Invalid Responses history array", 0) end
+				elseif type(key) ~= "string" or #key > 128 or not util.validUtf8(key) then
+					error("Invalid Responses history field", 0)
+				end
+				bytes = bytes + (type(key) == "string" and #key or 8) + 8
+				out[key] = copy(child, depth + 1)
+			end
+			seen[value] = nil
+			return out
+		end
+		local ok, out = pcall(function()
+			for _, item in ipairs(items) do
+				if type(item) ~= "table" or type(item.type) ~= "string" or #item.type > 80
+					or not item.type:match("^[a-z_]+$") then error("Invalid Responses history item type", 0) end
+			end
+			local cloned = copy(items, 0)
+			if #util.encode(cloned) > HISTORY_BYTES then error("Responses history exceeds its 2 MiB limit", 0) end
+			return cloned
+		end)
+		return ok and out or nil, not ok and tostring(out) or nil
+	end
 
 	local RESPONSES_KEY = "responses_protocol"
 	function M.key() return RESPONSES_KEY end
 
 	function M.eligible(record)
-		return registry.isOpencode(record) or agentrouter.matches(record)
+		return directOpenai(record) or registry.isOpencode(record) or agentrouter.matches(record)
 	end
 
 	-- Models verified to speak only the Responses lane (live 200 on
@@ -38,6 +99,7 @@ return function(env)
 	-- would never fire there.
 	function M.wantsResponses(record)
 		if not M.eligible(record) then return false end
+		if directOpenai(record) then return true end
 		if agentrouter.matches(record) then return agentrouter.protocol(record) == "responses" end
 		if registry.isOpencodeGo(record) then return registry.opencodeGoProtocol(record) == "responses" end
 		return tostring(record and record.model or ""):find("muse-spark", 1, true) ~= nil
@@ -103,10 +165,11 @@ return function(env)
 		return false
 	end
 
-	-- Direct Responses endpoint. The desktop bridge recognizes this official URL
-	-- and translates it through the installed CLI; no OpenCode proxy remains.
+	-- OpenCode uses its official inference route. Direct OpenAI and AgentRouter
+	-- retain their supported saved routes and query parameters.
 	function M.endpointFor(record)
-		if registry.isOpencodeGo(record) or agentrouter.matches(record) then return registry.endpoint(record, "/responses") end
+		if directOpenai(record) or registry.isOpencodeGo(record) or agentrouter.matches(record) then return registry.endpoint(record, "/responses") end
+		if not registry.isOpencode(record) then return nil end
 		local parsed = urls.parse(record.baseUrl or "")
 		local query = parsed and parsed.query
 		local base = "https://opencode.ai/inference/v1" .. (query and query ~= "" and ("?" .. query) or "")
@@ -128,8 +191,9 @@ return function(env)
 	-- Chat history into Responses input items. Text passes through; assistant
 	-- tool calls become function_call items and tool answers become
 	-- function_call_output items so multi-turn agent loops keep working.
-	function M.inputFor(messages)
+	function M.inputFor(messages, record)
 		local input, instructions = {}, {}
+		local scope = historyScope(record)
 		for _, message in ipairs(messages or {}) do
 			local role = message.role
 			if role == "system" or role == "developer" then
@@ -141,6 +205,10 @@ return function(env)
 					call_id = tostring(message.tool_call_id or message.id or ""),
 					output = textOf(message.content),
 				}
+			elseif role == "assistant" and scope and message.responsesItems and message.responsesScope == scope then
+				local items, why = M.itemsCopy(message.responsesItems)
+				if not items then error(why, 0) end
+				for _, item in ipairs(items) do input[#input + 1] = item end
 			elseif role == "assistant" and message.toolCalls and #message.toolCalls > 0 then
 				if util.trim(textOf(message.content)) ~= "" then
 					input[#input + 1] = { role = "assistant", content = textOf(message.content) }
@@ -206,19 +274,48 @@ return function(env)
 		return out
 	end
 
+	local function toolDefaults(record, body)
+		agentrouter.toolDefaults(record, body)
+		if not directOpenai(record) then return end
+		if type(body.tools) == "table" then
+			local explicit = {}
+			for index, tool in ipairs(body.tools) do
+				explicit[index] = util.deepCopy(tool)
+				if tool.type == "function" and tool.strict == nil then explicit[index].strict = false end
+			end
+			body.tools = explicit
+		end
+		local choice = body.tool_choice
+		if type(choice) == "table" and type(choice["function"]) == "table" then
+			body.tool_choice = { type = "function", name = choice["function"].name }
+		end
+	end
+
 	function M.buildBody(record, request)
 		request = request or {}
-		local input, instructions = M.inputFor(request.messages)
+		local direct = directOpenai(record)
+		local input, instructions = M.inputFor(request.messages, record)
 		if registry.isOpencodeZen(record) then
 			instructions = env.require("provider/opencode_context").instructions(instructions)
 		end
 		local body = {
 			model = record.model,
 			input = input,
-			-- The lane is streamed, always: the free tier requires it and the
-			-- whole-body JSON shape is never what this route is asked for.
+			-- OpenCode's free lane requires SSE. Direct OpenAI retains the normal
+			-- stream preference below.
 			stream = true,
 		}
+		if direct then
+			local stream = request.stream
+			if stream == nil then stream = record.stream ~= false and config.get("agent.stream", true) end
+			if env.require("net/transport").streamForced() then stream = true end
+			body.stream, body.store = stream, false
+			local level = env.require("provider/openai").effortFor(record, request)
+			local reasoning = {}
+			if level then reasoning.effort = level end
+			if config.get("ui.showReasoning", true) ~= false then reasoning.summary = "auto" end
+			if next(reasoning) then body.reasoning = reasoning end
+		end
 		if instructions ~= "" then body.instructions = instructions end
 		local tools = M.toolsFor(request.tools) or {}
 		local names = {}
@@ -231,6 +328,7 @@ return function(env)
 		end
 		local openai = env.require("provider/openai")
 		if #tools > 0 then body.tools = tools end
+		if direct and body.tools then body.parallel_tool_calls = request.parallelToolCalls ~= false end
 		if request.toolChoice ~= nil then body.tool_choice = request.toolChoice end
 		-- The lane has its own spelling and rejections: max_output_tokens rather
 		-- than max_tokens, and no reasoning_effort (the server answers unknown
@@ -244,12 +342,42 @@ return function(env)
 		agentrouter.responsesDefaults(record, request, body)
 		for key, value in pairs(record.params or {}) do body[key] = value end
 		for key, value in pairs(request.extra or {}) do body[key] = value end
+		if direct and body.model ~= record.model then error("Direct Responses model override must match the selected model", 0) end
 		local toolCeiling = openai.toolCeiling(record)
 		if type(body.tools) == "table" and #body.tools > toolCeiling then
 			openai.limitTools(body, toolCeiling, registry.isOpencode(record))
 		end
-		agentrouter.toolDefaults(record, body)
-		env.require("provider/sampling").apply(record, request, body, { defaultOmit = true })
+		toolDefaults(record, body)
+		local sampling = env.require("provider/sampling")
+		sampling.apply(record, request, body, { defaultOmit = true })
+		if direct then
+			local effort = type(body.reasoning) == "table" and body.reasoning.effort
+			local omitLogprobs = effort ~= "none" and sampling.state(record).override ~= "send"
+			if omitLogprobs then
+				body.temperature, body.top_p, body.top_k, body.top_logprobs, body.logprobs = nil, nil, nil, nil, nil
+			end
+			-- Stateless reasoning/tool continuations require the original encrypted
+			-- reasoning items even when their human-readable summaries are hidden.
+			local include, retained = {}, {}
+			for _, field in ipairs(type(body.include) == "table" and body.include or {}) do
+				if type(field) == "string" and field ~= "" and not retained[field]
+					and (not omitLogprobs or field ~= "message.output_text.logprobs") then
+					include[#include + 1], retained[field] = field, true
+				end
+			end
+			if not retained["reasoning.encrypted_content"] then include[#include + 1] = "reasoning.encrypted_content" end
+			body.include = include
+		end
+		-- Apply temporary and documented reply limits after raw parameters, too.
+		local final = tonumber(body.max_output_tokens)
+		local cap = tonumber(request.outputCeiling)
+		if cap and cap == cap and cap >= 1 and cap < math.huge then
+			final = final and final == final and final > 0 and math.min(final, cap) or cap
+		end
+		if final and final == final and final > 0 and final < math.huge then
+			if documented and documented > 0 then final = math.min(final, documented) end
+			body.max_output_tokens = math.floor(final)
+		end
 		return body
 	end
 
@@ -293,7 +421,7 @@ return function(env)
 	function M.parse(body)
 		local completion = sse.completionDiagnostic("responses")
 		local content, reasoning, slots, order = {}, {}, {}, {}
-		local usage, model, id, streamError, frames = nil, nil, nil, nil, 0
+		local usage, model, id, streamError, frames, responsesOutput = nil, nil, nil, nil, 0, nil
 		local completed = false
 		local function slotFor(itemId, callId, outputIndex)
 			local keys = {}
@@ -392,6 +520,7 @@ return function(env)
 				-- text already streamed as deltas, so a non-empty final output
 				-- replaces the accumulated partials rather than doubling them.
 				if type(response.output) == "table" then
+					responsesOutput = response.output
 					local finalContent, finalReasoning, finalCalls, finalError = assembleOutput(response.output)
 					if finalError then error(finalError, 0) end
 					if finalContent ~= "" then content = { finalContent } end
@@ -430,6 +559,7 @@ return function(env)
 			model = model,
 			id = id,
 			usage = usage,
+			responsesOutput = responsesOutput,
 			frames = frames,
 			streamError = streamError or (not completed and completion.error() or nil),
 		}
@@ -455,6 +585,7 @@ return function(env)
 			model = decoded.model,
 			id = decoded.id,
 			usage = usage,
+			responsesOutput = decoded.output,
 			frames = 0,
 			streamError = responseError or (outputError and ("malformed_stream: " .. outputError) or nil),
 		}
@@ -470,13 +601,15 @@ return function(env)
 		local owns = handoff and handoff.owns or env.require("provider/sampling").owner(record)
 		local problem = registry.protocolProblem(record)
 		if problem then return nil, problem end
+		if not M.eligible(record) then return nil, "Responses is unavailable for this endpoint and model" end
 		request = util.copy(request or {})
 		handoff = handoff or {}
 		if request.onRetry then
 			local callback = request.onRetry
 			request.onRetry = function(info) if not pcall(callback, info) then log.warn("provider", "retry callback failed safely") end end
 		end
-		local body = M.buildBody(record, request)
+		local prepared, body = pcall(M.buildBody, record, request)
+		if not prepared then return nil, "Unable to prepare Responses request: " .. tostring(body) end
 		local url = M.endpointFor(record)
 		-- Share the live-verified desktop fingerprint with Chat, including stable
 		-- conversation affinity and explicit saved compatibility overrides.
@@ -485,7 +618,8 @@ return function(env)
 		local accounting = env.require("runtime/request_accounting").new(record, request)
 		local rotationsLeft = math.min(handoff.rotationsLeft or math.max(#pool - 1, 0), math.max(#pool - 1, 0))
 		local function headersFor()
-			return headerMap.merge(registry.authHeaders(record, currentKey or ""), registry.opencodeHeaders(record, request), record.headers)
+			local defaults = directOpenai(record) and { Accept = body.stream and "text/event-stream" or "application/json" } or {}
+			return headerMap.merge(defaults, registry.authHeaders(record, currentKey or ""), registry.opencodeHeaders(record, request), record.headers)
 		end
 		local started = clock.ms()
 		local relayUnlimited = handoff.relayUnlimited
@@ -538,7 +672,7 @@ return function(env)
 		if toolLimit and body.tools and #body.tools > toolLimit and owns() and registry.compatibilityKey(record) == scope then
 			local openai = env.require("provider/openai")
 			openai.limitTools(body, toolLimit, registry.isOpencode(record))
-			agentrouter.toolDefaults(record, body)
+			toolDefaults(record, body)
 			openai.rememberToolCeiling(record, toolLimit)
 			if request.onRetry then request.onRetry({ attempt = 1, attempts = 2, wait = 0, reason = "limited tool declarations with catalogue preserved", status = res.status }) end
 			res, err = fire()
@@ -548,6 +682,7 @@ return function(env)
 			if request.onRetry then request.onRetry({ attempt = 1, attempts = 2, wait = 0, reason = "omitted unsupported temperature", status = res.status }) end
 			res, err = fire()
 		end
+		if not owns() or registry.compatibilityKey(record) ~= scope then return nil, "aborted" end
 		if not res or not res.ok then
 			local message = env.require("provider/openai").errorText(res, err)
 			registry.markFail(record, message)
@@ -568,8 +703,19 @@ return function(env)
 				registry.markFail(record, message)
 				return nil, message, res
 			end
+			if directOpenai(record) and (decoded.object ~= "response" or type(decoded.status) ~= "string") then
+				local message = "malformed_stream: direct Responses body needs a response object and completion status"
+				registry.markFail(record, message)
+				return nil, message, res
+			end
 			parsed = M.fromResponse(decoded)
 		end
+		if directOpenai(record) and not parsed.streamError then
+			local items, why = M.itemsCopy(parsed.responsesOutput)
+			if not items then parsed.streamError = "malformed_stream: " .. tostring(why)
+			else parsed.responsesItems, parsed.responsesScope = items, historyScope(record) end
+		end
+		parsed.responsesOutput = nil
 		accounting.attach(parsed)
 		if parsed.streamError then
 			registry.markFail(record, parsed.streamError)

@@ -11,6 +11,7 @@ end
 local h = envMock.new()
 h.setViewport(1280, 820)
 local app = assert(h.boot("dist/uai.lua"))
+require("password_fixture")(h, app)
 h.settle(1)
 
 local sidebar = assert(h.byName("Sidebar"), "missing sidebar")

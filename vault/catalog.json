@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "entries": [
+    "project-knowledge.md",
+    "script-lifecycle.md",
+    "ui-library-lifecycle.md",
+    "remote-contract.md",
+    "remote-fixtures.md",
+    "instance-configuration.md",
+    "bugfix-record.md",
+    "guarded-file-edits.md",
+    "multi-file-project.md",
+    "behavioral-testing.md",
+    "runtime-inspection.md",
+    "embedding-scopes.md",
+    "neural-network.md"
+  ]
+}

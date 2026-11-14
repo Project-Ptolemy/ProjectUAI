@@ -51,13 +51,18 @@ local settings = {}
 cache["runtime/config"] = {
 	get = function(path, default) if settings[path] ~= nil then return settings[path] end return default end,
 	set = function(path, value) settings[path] = value end,
+	vaultStatus = function() return { required = false, ready = true, locked = false, busy = false } end,
 	changed = signal.new("config"),
 }
 cache["runtime/caps"] = { clipboard = false }
 cache["ui/icons"] = { draw = function() end, check = function() end, close = function() end, chevron = function() end }
 cache["ui/brand"] = { draw = function() end }
 cache["agent/session"] = { current = function() return { send = function() return true end } end }
-cache["provider/registry"] = { active = function() return { label = "Provider" } end }
+cache["provider/registry"] = {
+	active = function() return { label = "Provider" } end,
+	admissionProblem = function() return nil end,
+	changed = signal.new("providers"),
+}
 local responsive = env.require("ui/responsive")
 local P = env.require("ui/primitives")
 local theme = env.require("ui/theme")
@@ -208,11 +213,19 @@ check("ready thumbnails replace the initial after preload", avatar:FindFirstChil
 h.sched.advance(4)
 check("successful avatars stop retrying", thumbnailCalls == 2 and preloadCalls == 2)
 avatar:Destroy()
+check("ready headshots are cached for later identity lookups", profile.identity().image == resolvedImage)
+
+local function freshIdentity(offset)
+	local identity = profile.identity()
+	identity.userId = h.localPlayer.UserId + offset
+	identity.image = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", identity.userId)
+	return identity
+end
 
 thumbnailCalls = 0
 h.services.Players.GetUserThumbnailAsync = function() thumbnailCalls = thumbnailCalls + 1; error("thumbnail unavailable") end
 h.services.ContentProvider.PreloadAsync = function() error("image fetch failed") end
-local failedAvatar = profile.avatar(root, profile.identity(), theme.size.profileAvatar)
+local failedAvatar = profile.avatar(root, freshIdentity(1), theme.size.profileAvatar)
 h.sched.advance(4)
 check("failed thumbnail requests stay bounded and retain the initial", thumbnailCalls == 3 and failedAvatar:FindFirstChild("AvatarInitial").Visible)
 failedAvatar:Destroy()
@@ -222,7 +235,7 @@ local nativeCancel, avatarCancellations = h.sandbox.task.cancel, 0
 h.sandbox.task.cancel = function(thread) avatarCancellations = avatarCancellations + 1; return nativeCancel(thread) end
 h.services.Players.GetUserThumbnailAsync = function() h.sched.wait(1); finishedFetch = true; return resolvedImage, true end
 h.services.ContentProvider.PreloadAsync = function() latePreload = true end
-local closedAvatar = profile.avatar(root, profile.identity(), theme.size.profileAvatarLarge)
+local closedAvatar = profile.avatar(root, freshIdentity(2), theme.size.profileAvatarLarge)
 h.sched.advance(0.1)
 closedAvatar:Destroy()
 h.sched.advance(2)

@@ -28,12 +28,18 @@ return function(env)
 	--          interface can mark it rather than implying the client picked it.
 	local FIVE = { "low", "medium", "high", "xhigh", "max" }
 	local FOUR = { "low", "medium", "high", "max" }
+	local SIX = { "none", "low", "medium", "high", "xhigh", "max" }
 
 	local TRAITS = {
 		-- Explicit Responses effort scales from the official model references.
 		-- Context and reply limits continue to come from provider-scoped metadata.
-		["gpt-6.1-sol"] = { effort = FIVE, default = "medium", exact = true },
-		["gpt-6-astra"] = { effort = FIVE, exact = true },
+		["gpt-6.1-sol"] = { sampling = false, effort = FIVE, default = "medium", exact = true },
+		["gpt-6-astra"] = { sampling = false, effort = FIVE, exact = true },
+		["gpt-6.1-terra"] = { effort = SIX, default = "medium", exact = true },
+		["gpt-6-sol"] = { effort = SIX, default = "medium", exact = true },
+		["gpt-6-luna"] = { effort = SIX, default = "medium", exact = true },
+		["gpt-5.6-sol"] = { effort = SIX, default = "medium", exact = true },
+		["gpt-5.6"] = { effort = SIX, default = "medium", exact = true },
 		["gemini-2.5-pro"] = { effort = { "low", "medium", "high" }, thinking = "gemini-budget", thinkingMax = 32768 },
 		["gemini-2.5-flash"] = { effort = { "low", "medium", "high" }, thinking = "gemini-budget", thinkingMax = 24576 },
 		["gemini-2.5-flash-image"] = {},
@@ -47,7 +53,18 @@ return function(env)
 		["gemini-3.6-flash"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level" },
 		["gemini-3.7-flash"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level" },
 		["gemini-3.8-flash"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level", default = "medium" },
-		["gemini-4-argon"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level", default = "medium" },
+		-- Gemini 4 shares input/thinking/output in one window. Its 64K streaming
+		-- ceiling does not raise Carbon/Argon's separate 32K non-streaming hop.
+		["gemini-4-carbon"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level",
+			default = "medium", nonStreamingOutput = 32768, exact = true },
+		["gemini-4-argon"] = { sampling = false, effort = { "low", "medium", "high" }, thinking = "gemini-level",
+			default = "medium", nonStreamingOutput = 32768, exact = true },
+		["gemini-4-hydrogen"] = { sampling = false, effort = { "low", "medium", "high", "xhigh" },
+			thinking = "gemini-level", default = "high", exact = true },
+		["claude-fable-5-2"] = { sampling = false, effort = FIVE, thinking = "adaptive", default = "high", alwaysThinks = true, exact = true },
+		["claude-mythos-5-2"] = { sampling = false, effort = FIVE, thinking = "adaptive", default = "high", alwaysThinks = true, exact = true },
+		["claude-fable-5.2"] = { sampling = false, effort = FIVE, thinking = "adaptive", default = "high", alwaysThinks = true, exact = true },
+		["claude-mythos-5.2"] = { sampling = false, effort = FIVE, thinking = "adaptive", default = "high", alwaysThinks = true, exact = true },
 		["claude-fable-5-1"] = { context = 1000000, output = 128000, sampling = false,
 			effort = FIVE, thinking = "adaptive", default = "high", alwaysThinks = true },
 		["claude-mythos-5-1"] = { context = 1000000, output = 128000, sampling = false,
@@ -152,7 +169,7 @@ return function(env)
 	-- The nearest level this model actually has, never rounding up: asking for
 	-- "xhigh" on a scale that stops at "high" must land on "high" rather than
 	-- spending "max", because the setting is a ceiling the user chose.
-	local RANK = { minimal = 0, low = 1, medium = 2, high = 3, xhigh = 4, max = 5 }
+	local RANK = { none = -1, minimal = 0, low = 1, medium = 2, high = 3, xhigh = 4, max = 5 }
 
 	function M.nearestEffort(model, wanted)
 		local levels = M.effortLevels(model)

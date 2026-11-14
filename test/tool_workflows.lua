@@ -57,12 +57,13 @@ scenario("main and child prompts select relevant skills and retain a readable in
 	assert(skills.save("Disabled", "Do not read", "A disabled body."))
 	skills.setEnabled("Disabled.md", false)
 	for _, text in ipairs({ prompt.build({}), prompt.subagent("Inspect the scene") }) do
+		local normalized = text:gsub("%s+", " "):lower()
 		check("skill guidance precedes the environment", text:find("Skills:", 1, true) < text:find("Environment:", 1, true))
-		check("explicit and relevant skills are selected", contains(text, "explicitly requested/relevant skills") and contains(text, "Skip unrelated/disabled skills"))
-		check("unchanged bodies survive resume without forced reads", contains(text, "Reuse retained bodies") and not contains(text, "read EVERY"))
-		check("continuations and lost skill context must be reread", contains(text, "follow all pages") and contains(text, "loss through compaction"))
+		check("explicit and relevant skills are selected", contains(normalized, "read requested/relevant skills") and contains(normalized, "skip disabled/unrelated"))
+		check("unchanged bodies survive resume without forced reads", contains(normalized, "reuse bodies in context") and not contains(text, "read EVERY"))
+		check("continuations and lost skill context must be reread", contains(normalized, "follow all pages") and contains(normalized, "reread after changes or compaction loss"))
 		check("the inventory identifies enabled filenames without disabled bodies", contains(text, "First.md") and not contains(text, "Disabled.md") and not contains(text, "A complete skill body."))
-		check("unavailable skills do not create retry loops", contains(text, "Report denied/unavailable reads once"))
+		check("unavailable skills do not create retry loops", contains(normalized, "report denied/unavailable reads once"))
 	end
 end)
 

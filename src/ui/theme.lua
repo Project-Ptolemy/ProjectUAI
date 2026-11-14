@@ -23,8 +23,20 @@ return function(env)
 	local seasonal = env.require("runtime/seasonal_theme")
 	local clock = env.require("runtime/clock")
 	local dispose = env.require("runtime/dispose")
+	local mods = env.require("runtime/ui_mods")
 
 	local M = { changed = signal.new("theme") }
+	local modSignature = ""
+	local function modAppearance()
+		return not (env.context and env.context.safeMode) and mods.appearance() or {}
+	end
+	local function signature(value)
+		local rows = {}
+		for _, key in ipairs({ "theme", "accent", "density", "fontScale", "interfaceFont", "codeFont", "codeTheme", "transcriptWidth" }) do
+			rows[#rows + 1] = key .. "=" .. tostring(value[key])
+		end
+		return table.concat(rows, "|")
+	end
 
 	local function rgb(r, g, b)
 		return Color3.fromRGB(r, g, b)
@@ -508,15 +520,22 @@ return function(env)
 
 	-- Recomputed whenever density, accent or text scale changes.
 	function M.rebuild()
-		local accentName = config.get("ui.accent", "claude")
+		local overrides = modAppearance()
+		modSignature = signature(overrides)
+		local function preference(key, fallback)
+			local value = overrides[key]
+			if value ~= nil then return value end
+			return config.get("ui." .. key, fallback)
+		end
+		local accentName = preference("accent", "claude")
 		local accent = ACCENTS[accentName] or ACCENTS.claude
-		M.themeName = seasonal.resolve(config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
+		M.themeName = seasonal.resolve(preference("theme", "default"), config.get("ui.seasonalThemes", true))
 		local holiday = SEASONAL[M.themeName]
 		local neutral = holiday and holiday.neutral or NEUTRAL
 		if holiday then accent = holiday.accent end
-		local density = config.get("ui.density", "comfortable")
+		local density = preference("density", "comfortable")
 		local compact = density == "compact"
-		local textScale = util.clamp(tonumber(config.get("ui.fontScale", 1)) or 1, 0.85, 1.4)
+		local textScale = util.clamp(tonumber(preference("fontScale", 1)) or 1, 0.85, 1.4)
 		local spaceScale = compact and 0.78 or 1
 		local sizeScale = compact and 0.86 or 1
 		-- One interface, rendered with smaller native metrics on handheld devices.
@@ -537,10 +556,10 @@ return function(env)
 		-- always works, `face` is the FontFace that carries the weight axis and is
 		-- applied over the top when the client has one. A stored id naming a family this
 		-- client does not have falls back to the first that resolved rather than to nil.
-		local family = INTERFACE_FONTS[config.get("ui.interfaceFont", M.defaultInterfaceFont)]
+		local family = INTERFACE_FONTS[preference("interfaceFont", M.defaultInterfaceFont)]
 			or INTERFACE_FONTS[M.defaultInterfaceFont]
 			or INTERFACE_FONTS[INTERFACE_ORDER[1]]
-		local monoFamily = CODE_FONTS[config.get("ui.codeFont", M.defaultCodeFont)]
+		local monoFamily = CODE_FONTS[preference("codeFont", M.defaultCodeFont)]
 			or CODE_FONTS[M.defaultCodeFont]
 			or CODE_FONTS[CODE_ORDER[1]]
 
@@ -571,7 +590,7 @@ return function(env)
 		-- claiming a weight the client is not rendering.
 		M.hasFontFace = faces.regular ~= nil
 
-		local codeThemeName = config.get("ui.codeTheme", "dark")
+		local codeThemeName = preference("codeTheme", "dark")
 		local code = CODE_THEMES[codeThemeName] or CODE_THEMES.dark
 		M.codeThemeName = CODE_THEMES[codeThemeName] and codeThemeName or "dark"
 		if holiday and M.codeThemeName == "dark" then
@@ -752,7 +771,7 @@ return function(env)
 			medium = M.size.readingMedium,
 			wide = M.size.reading,
 		}
-		M.readingName = config.get("ui.transcriptWidth", "wide")
+		M.readingName = preference("transcriptWidth", "wide")
 		if not widths[M.readingName] then M.readingName = "wide" end
 		M.size.reading = widths[M.readingName]
 
@@ -846,12 +865,16 @@ return function(env)
 			M.rebuild()
 		end
 	end), "theme.configChanged")
+	dispose.add(mods.changed:connect(function()
+		if signature(modAppearance()) ~= modSignature then M.rebuild() end
+	end), "theme.modChanged")
 
 	-- Mounted applications own this watcher. A calendar check only rebuilds when
 	-- the effective palette changes, leaving ordinary minutes and manual themes idle.
 	function M.watchSeasonal(screen)
 		local stop = clock.interval(60, function()
-			local name = seasonal.resolve(config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
+			local overrides = modAppearance()
+			local name = seasonal.resolve(overrides.theme or config.get("ui.theme", "default"), config.get("ui.seasonalThemes", true))
 			if name ~= M.themeName then M.rebuild() end
 		end)
 		screen.Destroying:Connect(stop)

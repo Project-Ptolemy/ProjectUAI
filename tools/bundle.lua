@@ -17,6 +17,7 @@ for _, option in ipairs(arg or {}) do
 end
 
 dofile("tools/build_script_docs.lua")(checkOnly)
+dofile("tools/build_master_vault.lua")(checkOnly)
 
 do
 	local fh = io.open("tools/pack_icons.lua", "r")

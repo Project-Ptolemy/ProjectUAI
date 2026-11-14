@@ -370,9 +370,8 @@ return function(env)
 		if type(out.identity) == "table" then out.identity.storedCredentials = nil end
 		out.security = type(out.security) == "table" and out.security or {}
 		out.security.rememberCredentials = false
-		for _, name in ipairs({ "bridge", "relay" }) do
-			if type(out[name]) == "table" then out[name].token = "" end
-		end
+		if type(out.bridge) == "table" then out.bridge.enabled, out.bridge.port, out.bridge.token = nil, nil, nil end
+		if type(out.relay) == "table" then out.relay.token = "" end
 		return out
 	end
 	return M

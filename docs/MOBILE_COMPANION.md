@@ -19,6 +19,12 @@ Scope decision for the original companion project: Android only, with PC bridge
 behavior unchanged. The 3.1.0 bridge release extends the client behavior below;
 the original app design and historical implementation plan follow afterward.
 
+Release 4.0.0 changes PC Cowork to automatic desktop discovery on port 28791.
+The native client discards old manual enable, port and token settings; desktop
+credentials stay in memory. Phone relay pairing remains independent under
+`relay.*`. The historical plan below retains the earlier Cowork field names;
+use the [desktop guide](../desktop/README.md) for current connection setup.
+
 ## Current companion transport and diagnostics
 
 Companion **3.7.2 (version code 9)** repairs provider connection fallback. The

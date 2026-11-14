@@ -151,7 +151,8 @@ case("OpenCode desktop keeps its direct workaround without the retired proxy", f
 	end
 	local result, why = f.complete()
 	check("direct Chat and Responses retained", not result and f.h.http.requestCount == 2)
-	check("desktop and mobile guidance", has(why, "direct desktop workaround") and has(why, "UAI Relay app") and has(why, "https://discord.gg/9xYyyYuKap"))
+	check("desktop and mobile guidance", has(why, "Project UAI Desktop Bridge") and has(why, "API-key access")
+		and has(why, "UAI Relay app") and has(why, "https://discord.gg/9xYyyYuKap"))
 	check("saved URL stays official", f.registry.get(record.id).baseUrl == "https://opencode.ai/zen/v1")
 	f.healthy(); f.close()
 end)

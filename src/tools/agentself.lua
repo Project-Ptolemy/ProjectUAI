@@ -565,7 +565,7 @@ return function(env)
 			-- drift apart -- the loop gives up a fraction before the registry kills the
 			-- call, so the model hears "nobody answered" rather than "did not finish".
 			timeout = ASK_TIMEOUT + 5,
-			description = "Ask the user one question and wait for their answer. Use when a request is genuinely ambiguous -- two ways to read it, a choice of targets, a preference you cannot infer -- and answering it wrong would waste work. Offer concrete options when the plausible answers are few; omit them for an open question. The answer comes back as this call's result. You cannot ask from a subagent.",
+			description = "Always use ask_user for questions, clarifications and required user choices, including when Allow everything is enabled. Ask when missing information materially changes the work; tool approval does not answer a user question. Offer concrete options when useful, or omit them for an open question. Wait for this call's actual answer before work that requires it. You cannot ask from a subagent; report missing decisions to the parent.",
 			parameters = {
 				type = "object",
 				properties = {
@@ -586,7 +586,7 @@ return function(env)
 			run = function(args, ctx)
 				local session = ctx and ctx.session or nil
 				if session and session.headless then
-					return H.fail("a subagent has no user to ask. Answer with your best reading of the task, or state what you could not determine.")
+					return H.fail("a subagent has no user to ask. Report required missing decisions to the parent; continue independent work within the assigned scope.")
 				end
 				local question = util.trim(tostring(args.question or ""))
 				if question == "" then return H.fail("a question is required") end
@@ -603,37 +603,69 @@ return function(env)
 				-- event carrying a resolve closure, exactly the shape the permission
 				-- prompt already uses. Nothing here trusts a listener to exist -- with
 				-- none, the wall is the timeout and the model is told nobody answered.
-				local answered, reply = false, nil
+				local settled, reply, reason = false, nil, nil
+				local observers, beganAt = {}, clock.ms()
+				local function settle(why, text)
+					if settled then return false end
+					settled, reply, reason = true, text, why
+					-- This request-local channel survives the registry ending its scoped
+					-- emitter. Detach observers before notifying synchronous listeners.
+					local pending = observers
+					observers = {}
+					for _, observer in ipairs(pending) do
+						local fn = observer.fn
+						observer.fn = nil
+						if fn then pcall(fn, reason) end
+					end
+					return true
+				end
+				local function stopped()
+					if settled then return true end
+					if ctx and ctx.aborted and ctx.aborted() then settle("aborted"); return true end
+					if clock.since(beganAt) >= ASK_TIMEOUT * 1000 then settle("timeout"); return true end
+					return false
+				end
 				local function resolve(text)
-					if answered then return end
-					answered = true
-					reply = text
+					if stopped() then return false end
+					return settle("answered", text)
+				end
+				local function subscribeSettled(fn)
+					if type(fn) ~= "function" then return function() return false end end
+					stopped()
+					if settled then pcall(fn, reason); return function() return false end end
+					local observer = { fn = fn }
+					observers[#observers + 1] = observer
+					return function()
+						if not observer.fn then return false end
+						observer.fn = nil
+						for index, candidate in ipairs(observers) do
+							if candidate == observer then table.remove(observers, index); break end
+						end
+						return true
+					end
 				end
 
-				if ctx and ctx.emit then
+				if ctx and ctx.emit and not stopped() then
 					ctx.emit("ask:user", {
 						id = util.uid("ask"),
 						question = question,
 						options = options,
 						resolve = resolve,
+						subscribeSettled = subscribeSettled,
 					})
 				end
 
-				local waited = 0
-				while not answered and waited < (ASK_TIMEOUT) do
-					if ctx and ctx.aborted and ctx.aborted() then
-						resolve("The turn was stopped before you answered.")
-						return "The user stopped the turn. Ask again in a new message if the question still matters."
-					end
-					waited = waited + (clock.wait(0.1) or 0.1)
-				end
+				while not stopped() do clock.wait(0.1) end
 
-				if not answered then
-					return "Nobody answered within ten minutes. Continue with your best reading of the request, and say you had to assume an answer."
+				if reason == "aborted" then
+					return "The user stopped the turn. Ask again in a new message if the question still matters."
+				end
+				if reason == "timeout" then
+					return "Nobody answered within ten minutes. No answer or consent was given. Continue independent work; report required decisions as unfinished. For optional preferences, state any reasonable assumption."
 				end
 				local text = util.trim(tostring(reply or ""))
 				if text == "" then
-					return "The user dismissed the question without answering. Continue with your best reading, and say you had to assume an answer."
+					return "The user dismissed the question without answering. No answer or consent was given. Continue independent work; report required decisions as unfinished. For optional preferences, state any reasonable assumption."
 				end
 				return "The user answered: " .. text
 			end,
@@ -708,7 +740,7 @@ return function(env)
 		{
 			name = "dispatch_agent",
 			risk = "write",
-			description = "Start a self-contained task in a background subagent and immediately receive its id. Keep doing your own independent work while it runs; check agent_status periodically and collect its report before your final answer. Give each worker a distinct scope and avoid concurrent edits to the same file or runtime state. A subagent cannot ask questions, so include the full task and completion criteria. Set background=false only when this tool call must wait for the report.",
+			description = "Delegate a self-contained task to a background subagent and immediately receive its id. Choose preset=read for Read only investigation or preset=full for Full access to authorized writes and execution. Both retain the parent's tool scope and permission rules. Keep doing independent work; check agent_status periodically and collect its report before your final answer. Give each worker a distinct scope and avoid concurrent edits to the same file or runtime state. A subagent cannot ask questions, so include the full task and completion criteria. Set background=false only when this call must wait for the report.",
 			timeout = function(args) return args and args.background == false and subagent.toolTimeout() or 10 end,
 			parameters = {
 				type = "object",
@@ -720,7 +752,7 @@ return function(env)
 					preset = {
 						type = "string",
 						enum = { "read", "web", "game", "full" },
-						description = "Which tools it gets. 'read' cannot change anything; 'full' can. Unset uses the configured default, which is 'full'.",
+						description = "read = Read only, including Vault and micro-goal inspection; full = Full access to reads, writes and execution within the parent's allowed scope. web/game retain their focused tool groups. Permission rules and denials still apply. Unset uses the configured default (full on a new install).",
 					},
 					turns = { type = "integer", description = "Step limit, 1-30. Default 14.", minimum = 1, maximum = 30 },
 					background = { type = "boolean", description = "Defaults to true: return an id immediately so you can continue working. False waits for the report." },

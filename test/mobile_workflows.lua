@@ -2,6 +2,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 io.stdout:setvbuf("no")
 local envMock = require("env")
+local authenticate = require("password_fixture")
 local newSignal = require("instance").newSignal
 local passed, failed = 0, 0
 local function check(label, value) assert(value, label); passed = passed + 1 end
@@ -14,7 +15,13 @@ local function boot(width, height)
 	h.services.UserInputService.TouchEnabled = true
 	h.services.UserInputService.MouseEnabled = false
 	h.setViewport(width, height)
-	local app = assert(h.boot(arg[1] or "dist/uai.lua")); h.settle(1); app.app.show("chat")
+	local app = assert(h.boot(arg[1] or "dist/uai.lua")); authenticate(h, app)
+	local providers = app.env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label, provider.model = "mobile-fixture", "Mobile fixture", "fixture-model"
+	provider.baseUrl, provider.apiKey = "https://mobile.fixture/v1", "fixture-key"
+	assert(providers.save(provider, { force = true }))
+	h.settle(1); app.app.show("chat")
 	return h, app
 end
 local function healthy(h)
@@ -128,9 +135,14 @@ scenario("context and many attachments cannot displace the input above a keyboar
 	check("many attachments cannot cover input", composer.shell.AbsoluteSize.Y <= app.app.chatPanel.root.AbsoluteSize.Y)
 	check("tight keyboard space hides only the attachment preview", not strip.Visible and #composer.attachments == 20)
 	h.click(h.byName("ComposerOptions", composer.shell)); h.click(h.byName("Option_attachments"))
-	check("hidden attachments remain manageable", h.byName("Option_20") ~= nil)
-	h.click(h.byName("Option_20"))
+	local overlay = app.env.require("ui/overlay")
+	local attachmentDialog = overlay.open[#overlay.open]
+	local remove = h.byName("RemoveDraftAttachment_20", attachmentDialog.card)
+	check("hidden attachments remain manageable", remove and remove:IsDescendantOf(attachmentDialog.scroll.instance)
+		and attachmentDialog.scroll.instance.ScrollingEnabled)
+	h.click(remove)
 	check("removal edits only the chosen attachment", #composer.attachments == 19 and composer.attachments[19].label:find("19.txt", 1, true))
+	attachmentDialog.close(); h.settle(0.3)
 	keyboard(h, 0); h.setViewport(390, 844); h.settle(0.3)
 	check("context preference returns after keyboard dismissal", h.byName("ContextStrip", composer.shell).Visible)
 	healthy(h); app.unload()
@@ -156,7 +168,10 @@ scenario("shared conversation search opens a result without losing drafts or sum
 		and field.CursorPosition == 8 and field.SelectionStart == 3)
 	check("search finds its unique matching conversation", h.textOf(h.byName("Result_1", search.card)):find("Project 14", 1, true) ~= nil
 		and h.byName("Result_2", search.card) == nil)
-	field.Text = "Project 2"
+	-- Unquoted words also match Project 12; select the intended title as a phrase.
+	field.Text = '"Project 2"'
+	check("quoted search selects only the intended conversation", h.textOf(h.byName("Result_1", search.card)):match("^[^\n]+") == "Project 2"
+		and h.byName("Result_2", search.card) == nil)
 	local focusCalls = 0
 	app.app.chatPanel.composer.focus = function() focusCalls = focusCalls + 1 end
 	h.click(h.byName("Result_1", search.card))

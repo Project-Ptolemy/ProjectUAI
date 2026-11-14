@@ -1,6 +1,6 @@
 # Project UAI
 
-**3.8.0** · [Release notes](docs/RELEASE_3_8_0.md)
+**4.0.0 — a major release** · [Release notes](docs/RELEASE_4_0_0.md)
 
 An open-source AI workspace inside Roblox: chat with your chosen model, inspect
 the game, build scripts, and run tools. Use it on its own or embed it in a host script.
@@ -30,12 +30,24 @@ calls before they run. Stop cancels further work, but does not undo applied chan
 
 ## What you can do
 
+- **Keep technical knowledge:** [Master Vault](docs/MASTER_VAULT.md) stores
+  searchable Markdown recipes, bug fixes, remote contracts and project notes,
+  with bundled starters, sources and game/project scopes. It works locally.
+- **Work toward an objective:** [Micro-goals](docs/MICRO_GOALS.md) keep dependent
+  tasks, completion criteria, results and blockers with each conversation.
+- **Customize UAI:** [UI mods](docs/UI_MODS.md) support appearance presets,
+  workspace panels and unrestricted native scripts, with source review,
+  version history, portable exports and safe-mode recovery.
+- **Delegate work:** choose **Read only** or **Full access** for subagents.
+  Each worker retains the parent conversation's tool scope and explicit denials.
 - **Chat and organize:** conversation folders, retained-history search, Markdown
   exports, command search, and background agent progress.
 - **Build scripts:** a shared Code workspace with files, syntax checks, source
   history, saved step-by-step goals, project starters and managed execution.
 - **Connect your tools:** the optional local bridge provides Cowork in a browser,
   MCP access, installed CLI routes, and [Obsidian vault support](docs/OBSIDIAN.md).
+  Roblox discovers the Windows desktop app automatically; manual native bridging
+  has been removed.
 - **Build your own interface:** use [Project UAI UI LIB](docs/UI_LIBRARY.md), or
   connect the full client through the [embedding SDK](docs/EMBEDDING.md).
 
@@ -49,6 +61,9 @@ focused. Search settings, actions and conversation titles without leaving a draf
 | First message and provider setup | [Getting started](docs/GETTING_STARTED.md) |
 | Search, organize and export chats | [Conversations](docs/CONVERSATIONS.md) |
 | Keyboard navigation | [Shortcuts](docs/SHORTCUTS.md) |
+| Build a reusable technical knowledge base | [Master Vault](docs/MASTER_VAULT.md) |
+| Plan, pause and resume focused tasks | [Micro-goals](docs/MICRO_GOALS.md) |
+| Customize and share the native application | [UI mods](docs/UI_MODS.md) |
 | Connect a local Obsidian vault | [Obsidian](docs/OBSIDIAN.md) |
 | Browser workspace and bridge | [Bridge setup](bridge/README.md) |
 | Windows launcher | [Desktop app](desktop/README.md) |

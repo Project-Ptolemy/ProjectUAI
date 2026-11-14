@@ -1,5 +1,63 @@
 # Changelog
 
+## 4.0.0 - a major release
+
+November 14, 2026. Client, bridge package and Windows desktop: **4.0.0**.
+UI LIB remains **1.6.0**, embedding SDK **1.1.0**, Android companion **3.7.2**.
+
+This release starts a new direction for updates: persistent agent workspaces,
+reusable technical knowledge and progress backed by recorded results.
+
+- **Master Vault:** a native, executor-local Markdown knowledge base for recipes,
+  bug fixes, remote contracts, instance configurations, project notes and references.
+  Search by text, type, status and scope; record sources and verification evidence.
+  Bundled starter notes can be copied and adapted without overwriting user notes.
+- **Knowledge editing:** create, edit, import and export notes with revision and
+  full-content conflict checks. Unconfirmed writes retain recovery drafts and
+  require reviewing the current file before another save.
+- **Micro-goals:** persistent conversation objectives with small dependent tasks,
+  completion criteria, evidence and blockers. A native board supports explicit
+  editing, pause, resume and ordering; restoring a board never starts inference.
+- **UI mods:** native appearance presets, custom workspace panels and unrestricted
+  full-access Lua scripts. Save/import stage disabled definitions; Apply directly
+  activates the exact saved revision under normal tool permissions. Edit retained
+  versions, export portable JSON, share it and import it on another client.
+- **Mod recovery:** owned cleanup and remount callbacks, exact-source preflight,
+  tracked outstanding startup/callback work, and an explicit safe-mode loader.
+  Scripted selections never execute automatically after a fresh load.
+- **Delegation:** the main agent can assign **Read only** or **Full access** workers;
+  parent scope and saved denials remain authoritative in either preset.
+- **Response rate:** completed native and Cowork replies show a subdued
+  `tk/s request avg` from provider output counts and request wall time.
+  Missing measurements stay hidden; buffered replay never estimates speed.
+- **Automatic desktop connection:** removed manual native bridge ports, tokens,
+  Enabled controls and executor bridge downloads. Discovery uses the running
+  Windows app; legacy manual values are stripped from settings and transfers.
+- **Agent continuity:** vault discovery and goal state use existing permissions,
+  tool families and bounded result pages. Retrieved notes remain historical data,
+  with current user instructions and observations taking precedence.
+- **Questions in every permission mode:** system instructions require `ask_user`
+  for genuine questions and required decisions even under **Allow everything**.
+  Dismissal or timeout supplies no answer or consent.
+- **Models and pricing:** refreshed 1,855 exact model/provider entries across
+  15 providers from the November 14 feeds and reviewed official references.
+  Added current model limits, context tiers and reasoning settings; scheduled
+  rates remain unknown and introductory estimates expire at their published end.
+  Documented direct OpenAI GPT-6 tool routes use Responses with signed history.
+- **Storage:** migration preserves Vault notes and UI mod packages. Changed builds
+  wait for their native work and retain unsaved knowledge, goal and mod forms.
+- **Browser tool forms:** tools with an argument named `id` now submit correctly;
+  footer actions retain their intended form association.
+- **Workspace polish:** Master Vault, Micro-goals and UI mods have sidebar icons.
+  Their forms fit the current contents and usable viewport, with scrolling for
+  long editors, metadata and history.
+
+Validation uses external offline harnesses, deterministic build checks and the
+official Luau compiler. This release has no in-game validation; synthetic checks
+do not establish Roblox rendering, executor compatibility or live server behavior.
+See [release notes](docs/RELEASE_4_0_0.md) and
+[verification record](docs/TESTING_4.0.0.md).
+
 ## 3.8.0 - October 31, 2026 - Everyday work, easier
 
 Client, bridge, browser workspace and Windows desktop: **3.8.0**.

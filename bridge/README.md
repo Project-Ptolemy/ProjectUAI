@@ -8,8 +8,7 @@ complete Node setup, click **Start
 Cowork**, and load the updated UAI script. The browser opens and Roblox connects
 automatically on dedicated port **28791**. No terminal or token copying is needed.
 
-The terminal workflow below needs **Node.js 18 or newer** and has no production
-npm dependencies. It retains port 8790 and manual pairing.
+The bridge needs **Node.js 18 or newer** and has no production npm dependencies.
 
 Join the [Project UAI Discord](https://discord.gg/9xYyyYuKap) for help, provider
 availability updates and new free options. Add Project UAI Free explicitly from
@@ -122,32 +121,20 @@ and reasoning counts remain available separately for UAI's usage accounting.
 
 ## Start in three steps
 
-1. **Download and start.** In Roblox, open **UAI → Cowork → Download bridge files**.
-   Open a terminal in your executor's workspace folder—the folder containing
-   `UAI`—and run:
+1. **Start the desktop app.** Download the Windows executable from the
+   [official release](https://github.com/Project-Ptolemy/ProjectUAI/releases/latest).
+   Open **Workspace**, finish Node.js setup if requested, then click **Start Cowork**.
+2. **Connect Roblox.** Load the updated UAI script on this computer. In
+   **UAI → Cowork**, keep **Find desktop app automatically** enabled. Use
+   **Reconnect** if discovery was disconnected. Credentials refresh automatically
+   and stay in memory.
+3. **Open Cowork.** Choose **Open Cowork** in the desktop app, select a provider
+   and model, then send a message. Keep Roblox and the app open while you work.
+   Use **Stop bridge** in the app to end the desktop connection.
 
-   ```powershell
-   node UAI/bridge/start.txt
-   ```
-
-   From a Git checkout instead, open a terminal in the repository folder and run
-   `node bridge/server.js`.
-2. **Connect Roblox.** The terminal prints a **Token**, a port (normally `8790`),
-   and a browser link. Paste the token into **UAI → Cowork**, match the port,
-   and turn **Enabled** on.
-3. **Open the browser link.** Choose a provider and model, then send a message.
-   Keep Roblox and the terminal open while you work. Press `Ctrl+C` in the
-   terminal when you want to stop the bridge.
-
-No `npm install` or manual file renaming is needed. The download uses `.txt`
-files because some executors block executable file extensions. Node checks their
-sizes and Git blob hashes, restores their original names inside the downloaded
-package, and starts the bridge. Downloads use one pinned revision and a new
-package folder; the launcher changes only after all downloaded files are saved.
-
-After a manual restart, open the **new** browser link and paste the **new** token into
-Roblox. To use a different port, append `--port 8791` to the start command and
-enter that port in Roblox too.
+**Disconnect** in Roblox suspends discovery until **Reconnect**. Turning off
+automatic discovery saves that choice. Older saved manual port, token and enable
+values are discarded when the client loads or imports configuration.
 
 ## Automatic updates
 
@@ -163,23 +150,21 @@ update state before any restart it causes. The cache keeps the active version
 and recent entries, and prunes stale predecessors and quarantine folders.
 
 Publish `dist/bridge-release.json` and `dist/uai-bridge-package.json` on the same
-official `bridge-v3.8.1` GitHub release. This bridge/web patch updates independently
-of the Windows 3.8.0 shell and Android 3.7.1 companion. Reload the corrected Lua
-client for the request-context and Code fixes. Generate
-the bundles with
+official `bridge-v4.0.0` GitHub release. Release 4.0.0 supplies the client, bridge,
+web UI and Windows app together; the Android companion retains its separate
+release. Generate the bundles with
 `node tools/build_bridge.js` after reviewing final bridge/web inputs, inspect
 the outputs, then run `node tools/build_bridge.js --check` and focused tests.
 Later releases must bump `bridge/release.js` and use the matching release tag.
 The release builder embeds OpenCode, MCP and support helpers into the original
-permitted root filenames so installed 3.1 updaters can verify and activate 3.8.1. Checkout,
+permitted root filenames so compatible installed updaters can verify and activate 4.0.0. Checkout,
 executor downloads and desktop payloads retain the separate source modules.
 
-The 3.8.0 release supplied matching client, bridge, web and Windows app versions;
-bridge/web 3.8.1 is an independent patch. Existing compatible installs receive
-bridge and web updates while idle.
+Existing compatible installs receive bridge and web updates while idle.
 Refresh an open browser page to load changed web assets. The desktop's **Copy
 client script** uses its embedded client; update the desktop app to refresh that
-copy. See the [3.8.0 verification record](../docs/POLISH_2026_10.md),
+copy. See the [4.0.0 release guide](../docs/RELEASE_4_0_0.md),
+[3.8.0 verification record](../docs/POLISH_2026_10.md),
 [3.6.5 verification](../docs/TESTING_3.6.5.md) and the earlier
 [bridge 3.6.2 record](../docs/TESTING_3.6.2.md).
 
@@ -240,8 +225,8 @@ and applies it on restart. An old 1.0 desktop ZIP needs one manual upgrade first
 - **Connection, Providers, Tools, Subagents, Chat loops, Memory & skills, and
   Activity** open in a modal workspace above your conversation. Switch views in
   its top navigation; nested provider and tool dialogs return to the same view.
-  Connection shows the browser, bridge, and Roblox status with guided setup and
-  quick access to the bridge token. Close the workspace to return to your draft.
+  Connection shows the browser, bridge, and Roblox status with desktop setup
+  guidance. Close the workspace to return to your draft.
 - **Settings** opens a focused modal above your conversation. General offers
   Light, Dark, System, and Roblox theme previews. Appearance, Agent, Advanced,
   and Data organize your remaining preferences; changes save as you go.
@@ -268,7 +253,8 @@ and applies it on restart. An old 1.0 desktop ZIP needs one manual upgrade first
   when dismissed. Client animations are permanently enabled; browser system
   reduced-motion preferences still apply to browser transitions.
   Exported conversations include picture metadata, not image bytes. A full
-  configuration export includes API keys.
+  configuration copy excludes credentials by default; private copies require
+  the explicit credentials choice.
 
 Commands can arrive immediately while Roblox's long poll is waiting. Desktop
 polls can wait 18 seconds; touch-only mobile clients request one-second polls
@@ -281,23 +267,21 @@ guarantee; executor scheduling and the provider's response time also matter.
 
 | What you see | What to do |
 | --- | --- |
-| `node` is not recognized | Install Node.js 18+, close the terminal, and open a new terminal. |
-| The start file cannot be found | Open the terminal in the executor workspace containing `UAI`. Download the files again if `UAI/bridge/start.txt` is missing. |
-| Download failed | Retry in Cowork. A failed download keeps the existing launcher; HTTP, file read/write, and folder creation are required. |
-| Package verification failed | Download again. Do not edit or rename the downloaded `.txt` files. |
-| Roblox is waiting to connect | Keep the terminal open. Check the port, paste its latest token, then enable Cowork. Both must run on this computer. |
-| The token no longer works | The bridge may have restarted. Use its latest token and browser link. |
+| Node.js is missing | Use **Get Node.js** or **Manual setup** on the app's Workspace page, then **Check again**. |
+| The desktop app cannot start Cowork | Check its startup details and verify that port 28791 is available. |
+| Roblox is waiting to connect | Keep Roblox and UAI Bridge open on this computer. Click **Start Cowork** in the app, enable automatic discovery in Roblox, then choose **Reconnect**. |
+| The browser asks for a token | Choose **Open Cowork** in the desktop app to open its current authenticated link. |
 | Live responses are unavailable | Check that Cowork says connected and Web runtime, then check provider SSE support. Non-streaming providers still return a complete reply. |
 | A picture is expired or unavailable | Attach it again. Pictures expire after 15 minutes of inactivity and disappear when the bridge stops. |
 | The bridge is reconnecting | Keep your draft in the tab and restart/reconnect the bridge. Review the conversation if a delivery receipt was lost. |
 | A deadline error appears | Use the highlighted Discord tutorial link. Cowork imposes no overall deadline, but an upstream provider or transport can still fail. |
-| OpenCode reports `FreeTierError` | Keep the direct desktop workaround enabled, or install/update OpenCode Desktop and restart Cowork for the native route. On mobile, use the UAI Relay app from Discord. [Discord help](https://discord.gg/9xYyyYuKap). |
+| OpenCode reports `FreeTierError` | Use the current UAI client with Project UAI Desktop Bridge for the verified free API-key route. Direct executor access depends on the host transport. The bridge also supports a separately installed OpenCode CLI for free models. On mobile, use the UAI Relay app from Discord. [Discord help](https://discord.gg/9xYyyYuKap). |
 
 ## Development and tests
 
 `server.js` owns authenticated loopback routes, command receipts and browser SSE.
 `inference.js` owns provider requests and bounded preview replay. `picture-store.js`
-keeps validated image bytes in memory. `launcher.js` restores executor downloads.
+keeps validated image bytes in memory. `launcher.js` restores existing distribution packages.
 `opencode.js` owns the external native server, temporary sessions and MCP handoff;
 `support.js` supplies consistent Discord error help.
 `supervisor.js` owns the worker process, token and idle replacement;
@@ -305,18 +289,29 @@ keeps validated image bytes in memory. `launcher.js` restores executor downloads
 `web/` contains the dependency-free UI, Markdown, previews, pictures, themes and
 asynchronous draft storage. Roblox remains authoritative in both runtimes.
 
+Checkout development can start `node bridge/server.js --desktop` to expose the
+same automatic discovery route on port 28791. Native Cowork setup uses desktop
+discovery; the client has no bridge file downloader or token/port inputs.
+
 All bridge tests live in `tests/`. Shared utilities are in `tests/helpers/` and
 synthetic game/image inputs in `tests/fixtures/`. The JPEG/WebP fixtures are real
 encoded images; tests generate valid PNG chunks without additional dependencies.
 
-Finish implementation, documentation and test edits before running verification:
+Manually audit implementation, documentation and test changes, then build:
 
 ```powershell
 luajit tools/bundle.lua --native
+node tools/build_bridge.js
 node tools/build_site.js
+```
+
+Inspect the generated client, bridge and site outputs before verification:
+
+```powershell
+node tools/build_bridge.js --check
 node --test bridge/tests/opencode-native.test.js bridge/tests/opencode.test.js bridge/tests/desktop.test.js bridge/tests/security.test.js bridge/tests/streaming.test.js bridge/tests/updater.test.js
 luajit test/web_runtime.lua
-luajit test/bridge_install.lua
+luajit test/desktop_bridge.lua
 ```
 
 For real browser checks, install Playwright **outside this repository**, including

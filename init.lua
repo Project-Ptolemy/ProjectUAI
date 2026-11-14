@@ -20,7 +20,7 @@ end
 local hostContext = ...
 local replacementConfig, replacementVault
 
-local VERSION = "3.8.0"
+local VERSION = "4.0.0"
 local FOLDER = "UAI"
 local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 
@@ -29,7 +29,7 @@ local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 local globalTable = (type(getgenv) == "function") and getgenv() or nil
 if globalTable and type(globalTable.UAI) == "table" then
 	local existing = globalTable.UAI
-	if existing.alive or existing.reloadBlocked then
+	if existing.alive or existing.reloadBlocked or existing.unloading then
 		local function notice(message)
 			local shown, toast = pcall(function()
 				local overlay = existing.env.loadedModules and existing.env.loadedModules["ui/overlay"]
@@ -41,6 +41,10 @@ if globalTable and type(globalTable.UAI) == "table" then
 			notice("The previous client did not finish unloading. Rejoin before loading the update.")
 			return existing
 		end
+		if existing.unloading then
+			notice("The previous client is still finishing cleanup. Wait for it to finish before loading UAI again.")
+			return existing
+		end
 		-- Reuse and replacement both begin a fresh password challenge. Retaining
 		-- the live key permits safe saves and accepted replies, never new work.
 		if existing.config and existing.config.requireVault then
@@ -50,6 +54,10 @@ if globalTable and type(globalTable.UAI) == "table" then
 		if existing.build == BUILD then
 			local options = type(hostContext) == "table" and hostContext
 				or (type(globalTable.UAI_CONTEXT) == "table" and globalTable.UAI_CONTEXT) or {}
+			if options.safeMode == true and type(existing.recoverUi) == "function" then
+				local called, recovered, why = pcall(existing.recoverUi)
+				if not called or not recovered then notice(why or "UI mod recovery could not finish; stop outstanding mod work and retry.") end
+			end
 			if options.reuse ~= true and type(existing.toggle) == "function" then pcall(existing.toggle) end
 			return existing
 		end
@@ -58,6 +66,12 @@ if globalTable and type(globalTable.UAI) == "table" then
 			if existing.config.vaultStatus and existing.config.vaultStatus().busy then return true end
 			local runner = existing.env.loadedModules and existing.env.loadedModules["tools/code_runner"]
 			if runner and runner.busy and runner.busy() then return true end
+			local knowledge = existing.env.loadedModules and existing.env.loadedModules["runtime/master_vault"]
+			if knowledge and knowledge.isBusy and knowledge.isBusy() then return true end
+			for _, id in ipairs({ "runtime/ui_mods", "runtime/ui_mod_runner", "agent/ui_mod_activation" }) do
+				local work = existing.env.loadedModules and existing.env.loadedModules[id]
+				if work and work.isBusy and work.isBusy() then return true end
+			end
 			for _, session in ipairs(existing.sessions.list()) do
 				if session.busy then return true end
 			end
@@ -77,6 +91,18 @@ if globalTable and type(globalTable.UAI) == "table" then
 			if workspace and workspace.preflightReplacement then
 				local preserved, why = workspace.preflightReplacement()
 				if not preserved then return "Update ready. " .. tostring(why) end
+			end
+			local vaultEditor = existing.env.loadedModules and existing.env.loadedModules["ui/vault_editor"]
+			if vaultEditor and vaultEditor.listDrafts and #vaultEditor.listDrafts() > 0 then
+				return "Update ready. Save or discard your Master Vault drafts before running the loader again."
+			end
+			local goalsEditor = existing.env.loadedModules and existing.env.loadedModules["ui/goals"]
+			if goalsEditor and goalsEditor.hasDrafts and goalsEditor.hasDrafts() then
+				return "Update ready. Save or discard your Micro-goals form before running the loader again."
+			end
+			local modEditor = existing.env.loadedModules and existing.env.loadedModules["ui/mods"]
+			if modEditor and modEditor.hasDrafts and modEditor.hasDrafts() then
+				return "Update ready. Save or discard your UI mod drafts before running the loader again."
 			end
 			for _, session in ipairs(existing.sessions.list()) do
 				local ctx = session.ctx or {}
@@ -272,6 +298,7 @@ local function start()
 	-- built from stored values.
 	if boot then boot.stage("prepare", "Checking capabilities and loading preferences.") end
 	local caps = env.require("runtime/caps")
+	env.caps = caps
 	local log = env.require("runtime/log")
 	local config = env.require("runtime/config")
 
@@ -311,7 +338,7 @@ local function start()
 		for _, entry in ipairs(swept) do
 			if not tostring(entry.path or ""):find("/", 1, true) then
 				local name = tostring(entry.name or "")
-				local clientOwns = name == "files" or name == "pastes" or name == "skills"
+				local clientOwns = name == "files" or name == "pastes" or name == "skills" or name == "vault" or name == "ui_mods"
 					or name == "sessions" or name == "export" or name == "icons"
 					or name == "config.json" or name == "config.vault.pending.json" or name == "stats.json"
 				if not clientOwns then pending = pending + 1 end
@@ -384,8 +411,8 @@ local function start()
 	env.onMountPhase = nil
 
 	-- After the interface, because the bridge attaches to whichever thread is
-	-- active and the interface is what establishes that on a fresh install. A
-	-- manual bridge is opt-in; the desktop app is discovered on its own local port.
+	-- active and the interface is what establishes that on a fresh install.
+	-- The desktop app is discovered automatically on its dedicated local port.
 	local bridge = env.require("net/bridge")
 
 	-- The handle a host script (or the user, from a console) can drive.
@@ -446,11 +473,22 @@ local function start()
 		--
 		--     getgenv().UAI.destroy()
 		destroy = function()
+			if handle.unloading then return false, "The client is still finishing cleanup." end
 			if not handle.alive then return 0 end
 			if config.vaultStatus().busy then
 				return false, "Finish or cancel credential storage before unloading UAI."
 			end
-			handle.alive = false
+			local knowledge = env.loadedModules and env.loadedModules["runtime/master_vault"]
+			if knowledge and knowledge.isBusy and knowledge.isBusy() then
+				return false, "Finish the Master Vault write before unloading UAI."
+			end
+			for _, id in ipairs({ "runtime/ui_mods", "runtime/ui_mod_runner", "agent/ui_mod_activation" }) do
+				local work = env.loadedModules and env.loadedModules[id]
+				if work and work.isBusy and work.isBusy() then
+					return false, "Finish or disable the UI mod application, write or native startup before unloading UAI."
+				end
+			end
+			handle.unloading, handle.alive = true, false
 			-- Invalidate all turns immediately. The disposer owns cancellation and
 			-- final dirty saves once; aborting here used to rewrite every history and
 			-- refresh the sidebar, then repeat the same work during disposal.
@@ -460,6 +498,7 @@ local function start()
 			handle.uiMounted = false
 			handle.cleanupFailed = not screenOk or #(failed or {}) > 0
 			pcall(function() config.saveNow() end)
+			handle.unloading = false
 			if globalTable and globalTable.UAI == handle then globalTable.UAI = nil end
 			log.info("boot", string.format("unloaded -- %d cleanups run", ran or 0))
 			for _, problem in ipairs(failed or {}) do
@@ -470,7 +509,30 @@ local function start()
 		unload = function() return handle.destroy() end,
 	}
 	env.exitClient = function() return handle.destroy() end
+	env.getClient = function() return handle end
+	env.prepareUiMod = function()
+		if not handle.alive or not app or app.disposed then return false, "The mod interface is unavailable" end
+		app.flushAppearance()
+		return true
+	end
 	handle.sdk = env.require("embedding/sdk").attach(handle)
+	handle.safeMode = env.context.safeMode == true
+	handle.disableUiMods = function()
+		if not handle.alive then return { ok = false, text = "The client is unloaded" } end
+		return env.require("agent/ui_mod_activation").disable()
+	end
+	handle.recoverUi = function()
+		if not handle.alive then return false, "The client is unloaded" end
+		env.context.safeMode, handle.safeMode = true, true
+		local disabled = handle.disableUiMods()
+		-- Recreate base tokens even when a script edited the theme tables directly.
+		env.require("ui/theme").rebuild()
+		app.flushAppearance()
+		if env.require("runtime/ui_mod_runner").isBusy() then
+			return false, "Safe mode is active and registered resources were released. Raw or native mod work is still outstanding; wait for it to finish."
+		end
+		return disabled.ok, disabled.text
+	end
 	-- Pairing and discovery wait until setup/unlock succeeds. Warm challenges
 	-- retain accepted transport ownership; those modules gate new admissions.
 	local linksStarted = false

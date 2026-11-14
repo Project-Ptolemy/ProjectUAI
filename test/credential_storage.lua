@@ -66,7 +66,7 @@ case("new installs remember encoded credentials and reconstruct them on cold loa
 	check("cold load reconstructs exact keys, pool metadata and custom connection settings", same(config.data, expected)
 		and config.storageError == nil and config.data.providers.list[1].storedCredentials == nil)
 	check("cold-load rewrite stays encoded", excludes(f.h.files["UAI/config.json"], PRIVATE))
-	check("bridge and relay pairing are unchanged", config.data.bridge.token == "bridge-secret" and config.data.relay.token == "relay-secret")
+	check("desktop pairing is retired while phone relay pairing survives", config.data.bridge.token == nil and config.data.relay.token == "relay-secret")
 	f.healthy(); f.close()
 end)
 
@@ -79,7 +79,7 @@ case("optional session-only storage omits connection credentials", function()
 	local raw = f.h.files["UAI/config.json"]
 	local saved = util.decode(raw)
 	check("disk contains no private provider credential copies", excludes(raw, PRIVATE))
-	check("connector pairing is unchanged", saved.bridge.token == "bridge-secret" and saved.relay.token == "relay-secret")
+	check("saved settings omit desktop credentials and retain phone relay pairing", saved.bridge.token == nil and saved.relay.token == "relay-secret")
 	check("live keys, policy and custom connection values survive", config.data == snapshot and snapshot.providers.list[1].apiKey:find("first-private-key", 1, true)
 		and snapshot.providers.list[1].selectedKey == 2 and snapshot.providers.list[1].headers["X-Arbitrary"] == "header-secret")
 	check("stripped provider remains valid to import", f.env.require("runtime/config_transfer").validate(saved) ~= nil)

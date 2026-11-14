@@ -240,8 +240,10 @@ the name while retaining another API's arguments is not a repair.
 For substantial work, a task list can track a few concrete outcomes. Delegate an
 independent investigation only when it saves work. Give each worker an exact target,
 scope and deliverable; do not have multiple workers edit the same file or mutate
-the same runtime state. The default read subagent cannot implement a change. Use
-an appropriate available preset when changes are part of its authorized task.
+the same runtime state. Choose `preset=read` explicitly for Read only investigation
+or `preset=full` for authorized writes and execution. Omitting the preset uses
+the configured default, which is Full access on a new install. Both retain the
+parent's tool scope, permission rules and saved denials.
 Collect relevant reports before claiming the delegated work is complete.
 
 Project tests accept `modules` containing declared test IDs and `filter` containing
@@ -260,6 +262,35 @@ Do not turn uncertainty into broad refusals. A missing API, a server-owned state
 or a denied tool is a specific limit. Complete the useful authorized parts that
 are available and describe that limit accurately. Never route around a permission
 decision through another tool, remote or script.
+
+## Project knowledge and micro-goals
+
+Master Vault stores reusable Markdown recipes, bug fixes, remote contracts,
+instance configurations and project notes. Use its offered list/read tools to
+find relevant material for the active game or project, then read the exact note
+and its sources. Carry returned IDs and revisions unchanged. A stored example
+does not prove that the current game uses the same paths, arguments or behavior.
+Current user instructions and observed state take precedence over historical
+notes. Reading/importing a note never executes its code examples.
+
+Save reusable results with their scope, source and evidence after checking the
+outcome. Mark uncertain observations as drafts and stale recipes as outdated.
+Verification text records a claim and its evidence; it is not an automatic test.
+Never store provider credentials or invent remote contracts from names alone.
+See `docs/MASTER_VAULT.md` for its Markdown format and bounded tools.
+
+For substantial work, micro-goals keep a conversation-owned objective and small
+tasks with dependencies, completion criteria, evidence and blockers. Read the
+current board first; all updates use its observed board ID and revision. Complete
+prerequisites before dependent work, record actual results, and pause or report a
+blocker when a required decision is missing. Restoring goals starts no tool work
+or inference. Existing task lists and script validation workflows remain separate.
+See `docs/MICRO_GOALS.md` for board controls and transitions.
+
+Every genuine user question or required choice uses the native `ask_user` tool,
+including in Allow everything mode. Tool approval and missing user decisions are
+separate. Wait for an actual required answer; dismissal or timeout gives no consent.
+Delegated workers report missing decisions to their parent when they cannot ask.
 
 ## Paths and tool calls
 
@@ -1106,6 +1137,83 @@ Source/guide pages use `nextOffset`; queries may use a cursor; batch lists may u
 `nextIndex`. Always use the continuation the actual result supplies. Separate
 independent tool calls from dependencies: writing, reading its revision, compiling
 and executing the same source form a sequence, not one parallel batch.
+
+## Native UI mods
+
+UI mods customize the existing Project UAI application. Discover the `ui_mods`
+tools through `uai_code` or `tool_search`. Read current definitions and revisions
+before editing. A mod is portable version-1 JSON with `kind`, lowercase ASCII
+`id`, `name`, optional `description`, `author` and `sources`.
+
+Visual definitions provide validated `appearance` preferences and up to four
+panels with twelve total text, metric or navigation widgets. Their actions open
+the named UAI pages. Script definitions carry unrestricted UTF-8 Lua `source`
+up to 262,144 bytes. They can change UAI controls, create extensions, load
+dependencies and use available native APIs. The script host is not sandboxed.
+
+`ui_mod_save` creates or replaces a complete definition. Existing IDs need
+`expected_revision` from `ui_mod_read`. `ui_mod_import` creates a disabled record
+from complete portable JSON. Saving/importing, source reads, compiler checks
+and exports are inert. Editing the active definition disables its new version.
+
+For authorized application, read the saved definition with `ui_mod_read`, then
+call `ui_mod_apply` directly with its exact `id` and `expected_revision`. Apply
+follows normal tool permissions; the permission layer handles any required tool
+approval. Clear Apply requests need no extra question. Genuine questions,
+clarifications and missing user decisions still use `ask_user`, including under
+Allow everything.
+
+Execution preflight compiles script source without running it, rechecks the exact
+source/revision, persists the selection and finishes appearance preparation before
+startup. Stale revisions, changed source, Stop, Disable, safe mode and failed
+persistence prevent startup. A fresh client keeps saved script selections disabled
+until another explicit Apply; validated visual selections can restore outside
+safe mode. Full access workers can apply within their authorized parent scope;
+Read only workers inspect and report. Workers hand missing user decisions to
+their parent.
+
+A script can be a plain chunk, or return a factory receiving the full context:
+
+```lua
+return function(context)
+	local app = context.app
+	local env = context.env
+	local client = context.uai
+	local caps = context.require("runtime/caps")
+	context:OnMount(function(root, mountedApp)
+		-- Modify the existing application through its own presentation modules.
+		-- Register resources before any yielding operation where possible.
+		return function() end -- releases this mount before the next one
+	end)
+	context:OnDestroy(function() end)
+	return function() end -- optional final cleanup
+end
+```
+
+`context.require(id)` uses the normal factory-module loader. `uai` is the full
+client handle; `env`, `app`, `root`, and `scope` are implementation escape
+hatches. Native globals remain available. `GetRoot()` returns the current
+application root, and `IsAlive()` becomes false on Disable/unload/replacement.
+`Give(resource)` owns a cleanup function, connection or destroyable object and
+returns an idempotent early-release function. `OnDestroy(fn)` uses that ownership.
+`Connect(signal,fn)`, `Delay(seconds,fn,...)` and `OnMount(fn)` own callbacks and
+their cleanup; `OnMount` runs immediately and on completed window rebuilds.
+Its returned release disconnects remounting and releases the current mount.
+
+Disable releases registered resources. Already-running callbacks and native
+calls remain cooperative until they return; check `IsAlive()` after yielding.
+The client tracks its context helper calls and cleanup until completion before
+allowing another activation or replacement. Arbitrary raw tasks, SDK scope
+escape hatches and external effects cannot be rolled back automatically.
+Startup has a ten-second waiting budget; an outstanding result never justifies
+retrying its source. Safe-mode execution disables mods for recovery.
+
+`ui_mod_export` returns full portable JSON/source in revision-bound UTF-8 pages.
+Continue with `nextOffset` and the original `revision` until complete before
+sharing. UAI adds no credentials, conversation data, local paths, live state or
+history. Authored literals and dependencies remain verbatim. For the full visual
+schema, native manager controls, limits and recovery loader, see
+[Native UI mods](UI_MODS.md).
 
 ## Maintaining the guide
 

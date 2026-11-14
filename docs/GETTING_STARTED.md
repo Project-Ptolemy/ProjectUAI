@@ -47,14 +47,21 @@ On touch devices, Return inserts a newline and **Send** submits.
 
 - **Chat:** conversations, attachments, model selection and permission mode.
 - **Code:** shared documents, files, source history, Explorer and remotes.
+- **Master Vault:** local Markdown recipes, technical notes, sources and starter guides.
+- **Micro-goals:** a persistent objective and small tasks for the current conversation.
+- **UI mods:** customize the native application and import/export shareable definitions.
 - **Tools:** available tool names, parameters, capabilities and permissions.
 - **Subagents:** delegated work, progress and reports.
-- **Cowork:** connect the local bridge and use the browser workspace.
+- **Cowork:** discover the Windows desktop app and use the browser workspace.
 - **Logs:** application events and request diagnostics.
 
 Use **Find a command** in the app menu, or **Ctrl+K** when you are not typing,
 to find settings and actions. The profile menu's **Tutorial** reopens the introduction.
 Read [Conversations](CONVERSATIONS.md) for organization, search and export.
+See [Master Vault](MASTER_VAULT.md) to retain technical knowledge and
+[Micro-goals](MICRO_GOALS.md) to plan focused work. Clarifying questions use
+`ask_user` even when tool permissions are set to Allow everything.
+See [UI mods](UI_MODS.md) for full-access scripts, source review and recovery.
 
 ## Return later
 

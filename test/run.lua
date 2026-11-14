@@ -10,6 +10,7 @@ package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
 local json = require("json")
 local authenticate = require("password_fixture")
+local desktop = require("automatic_bridge_fixture")
 
 local suite = { passed = 0, failed = 0, scenarios = 0, failures = {} }
 local filters, nativeOnly = {}, false
@@ -3123,7 +3124,7 @@ scenario("native replies use configured model limits without an executor ceiling
 			check("Messages API HTTP preserves its configured output budget", sent[#sent].max_tokens, 128000)
 		end
 		if not nativeOnly then
-		handle.config.set("bridge.enabled", true, { quiet = true })
+		desktop.inject(handle.env)
 		handle.config.set("bridge.runtime", "web", { quiet = true })
 		local relayed
 		handle.env.require("net/http").send = function(spec)
@@ -3573,6 +3574,18 @@ scenario("the web bridge relays a browser message into the session", function()
 	local harness, handle = bootWith({
 		handler = function(entry)
 			local url = tostring(entry.url)
+			if url:find("/api/hello", 1, true) then
+				return { StatusCode = 200, Body = json.encode({ protocol = 2, instance = "browser-message-fixture" }) }
+			end
+			if url:match("/api/inference$") then
+				local input = json.decode(entry.body)
+				return { StatusCode = 202, Body = json.encode({ id = input.id, state = "running" }) }
+			end
+			local inferenceId = url:match("/api/inference/([^/?]+)$")
+			if inferenceId then
+				return { StatusCode = 200, Body = json.encode({ id = inferenceId, state = "completed", status = 200,
+					body = chatBody({ content = "This place is Mock Place 123456789." }) }) }
+			end
 			if url:find("/api/agent/inbox") then
 				inboxCalls = inboxCalls + 1
 				if inboxCalls == 1 then
@@ -3595,8 +3608,7 @@ scenario("the web bridge relays a browser message into the session", function()
 		end,
 	})
 
-	handle.config.set("bridge.token", ("a"):rep(64))
-	handle.config.set("bridge.enabled", true)
+	desktop.connect(harness, handle, { instance = "browser-message-fixture" })
 	harness.settle(10)
 
 	local bridge = handle.env.require("net/bridge")
@@ -3651,8 +3663,7 @@ scenario("unloading stops the bridge", function()
 		end,
 	})
 
-	handle.config.set("bridge.token", ("b"):rep(64))
-	handle.config.set("bridge.enabled", true)
+	desktop.connect(harness, handle, { token = ("b"):rep(64) })
 	harness.settle(6)
 
 	local bridge = handle.env.require("net/bridge")
@@ -3668,8 +3679,8 @@ scenario("unloading stops the bridge", function()
 
 	-- Re-enabling the setting afterwards must not bring the threads back: the
 	-- subscription watching that setting is drained along with them.
-	handle.config.set("bridge.enabled", false)
-	handle.config.set("bridge.enabled", true)
+	handle.config.set("bridge.autoDiscover", false)
+	handle.config.set("bridge.autoDiscover", true)
 	harness.settle(6)
 	check("a config write does not restart it", bridge.running, false)
 	check("still nothing polling", inboxCalls, before)
@@ -4166,11 +4177,10 @@ scenario("cowork is the web bridge rather than a slogan", function()
 	truthy("the cowork panel builds", panel ~= nil)
 	contains("and explains how to connect", harness.textOf(panel), "Looking for UAI Bridge")
 
-	handle.config.set("bridge.token", ("c"):rep(64))
-	handle.config.set("bridge.enabled", true)
+	desktop.connect(harness, handle, { token = ("c"):rep(64) })
 	harness.settle(6)
 	local text = harness.textOf(harness.byName("Cowork"))
-	contains("turning it on reports the connection", text, "Connected")
+	contains("desktop discovery reports the connection", text, "Connected")
 	contains("and which conversation is shared", text, "sharing:")
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
@@ -5025,6 +5035,9 @@ scenario("a bullet sits on the line it belongs to, and output has room", functio
 			}) }
 		end,
 	})
+	-- The mock cannot derive a flex layout's viewport. Supply measured room so
+	-- all typography being asserted is inside the virtualized drawing range.
+	harness.byName("Transcript").AbsoluteWindowSize = harness.dt.Vector2.new(640, 600)
 	handle.sessions.current().send("what can you do")
 	harness.settle(12)
 
@@ -5535,6 +5548,9 @@ scenario("each turn says who said it, and the reply says with what", function()
 			return { StatusCode = 200, Body = chatBody({ content = "Two things, then.", model = answeredModel or json.decode(entry.body).model }) }
 		end,
 	})
+	-- Both short turns fit within this supplied viewport; unmounted history has
+	-- no byline controls to query under the mock's unsolved flex geometry.
+	harness.byName("Transcript").AbsoluteWindowSize = harness.dt.Vector2.new(640, 600)
 
 	handle.sessions.current().send("what is in the workspace")
 	harness.settle(10)
@@ -5557,10 +5573,11 @@ scenario("each turn says who said it, and the reply says with what", function()
 	check("separate model attribution", harness.byName("ModelAttribution", agentByline).Text, "claude-opus-5")
 
 	answeredModel = "some/resolved-model"
-	handle.providers.setModel(handle.providers.active().id, "some/other-model")
+	truthy("changing the selected model succeeds", handle.providers.setModel(handle.providers.active().id, "some/other-model"))
 	harness.settle(1)
 	handle.sessions.current().send("and now")
 	harness.settle(10)
+	check("the second response retains the provider's model", handle.sessions.current().ctx.last("assistant").model, answeredModel)
 	local bylines = harness.allByName("ModelAttribution", harness.byName("Transcript"))
 	check("a second reply names the model reported by the provider",
 		bylines[#bylines].Text, answeredModel)
@@ -6302,7 +6319,12 @@ scenario("a first-run client discovers optional providers without installing the
 	check("OpenCode Zen is recommended", zen.tier, "free")
 	check("and labelled by what is free", catalog.badge(zen), "Free models")
 	check("pointing at the Zen relay", zen.baseUrl, "https://opencode.ai/zen/v1")
-	contains("OpenCode explains direct desktop support", zen.note, "without a bridge")
+	contains("OpenCode describes the verified desktop bridge route", zen.note,
+		"Project UAI Desktop Bridge for the verified free API-key route")
+	contains("OpenCode qualifies direct executor access by transport", zen.note,
+		"Direct executor access depends on the host transport")
+	contains("OpenCode keeps a separate installed CLI route", zen.note,
+		"separately installed OpenCode CLI for free models")
 	contains("OpenCode highlights its mobile relay requirement", zen.noteHighlight, "UAI Relay app")
 
 	harness.click(harness.byName("StartBrowse")); harness.settle(1)
@@ -6751,15 +6773,18 @@ scenario("a subagent has no ask tool and knows what it is", function()
 	contains("it says what it is", brief, "subagent of UAI")
 	contains("and that nobody can answer it", brief, "You cannot ask the user questions")
 	contains("with what to do instead", brief, "Report exact targets, findings, changes, checks")
-	contains("and where dumped files belong", brief, "and its dump/ for")
+	contains("and where dumped files belong", brief, "dump/ for inspected source")
+	local workspace = handle.env.require("runtime/workspace").describe()
+	contains("with the exact current game directory", brief, "Current game files: " .. workspace.path .. "/")
+	contains("and its exact dump directory", brief, "Current game dumps: " .. workspace.path .. "/dump/")
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
 end)
 
--- The prompt blocks: denial handling, the date, and ask-early are all in the
+-- The prompt blocks: denial handling, the date, and native questions are all in the
 -- assembled prompt the next request carries.
-scenario("the system prompt teaches denials, dates and asking early", function()
+scenario("the system prompt teaches denials, dates and tool questions", function()
 	local sent = {}
 	local harness, handle = bootWith({
 		handler = function(entry)
@@ -6770,24 +6795,36 @@ scenario("the system prompt teaches denials, dates and asking early", function()
 			return { StatusCode = 200, Body = chatBody({ content = "Fine." }) }
 		end,
 	})
-	handle.config.set("permissions.mode", "auto")
+	handle.config.set("permissions.mode", "full")
 	handle.sessions.current().send("hello")
 	harness.settle(6)
 
 	local promptText = tostring(sent[1].messages[1].content)
-	contains("permission decisions are respected", promptText, "Respect permission decisions")
-	contains("which must not be retried", promptText, "never\n  retry denied calls")
-	contains("questions resolve material ambiguity", promptText, "missing information materially")
+	local normalizedPrompt = promptText:gsub("%s+", " ")
+	contains("permission decisions and scopes are respected", normalizedPrompt, "Respect denials and scopes")
+	contains("denials cannot be bypassed with another route", normalizedPrompt,
+		"never bypass them through another tool or script")
+	contains("later explicit authorization can change a decision", normalizedPrompt,
+		"A later explicit authorization can change a decision")
+	contains("questions use ask_user even under Allow everything", normalizedPrompt,
+		"Always use ask_user for every question, clarification, meaningful user choice or consent request, even under Allow everything (full)")
+	contains("questions belong in native calls", normalizedPrompt, "Questions belong in native calls, not prose")
+	contains("tool approval requires no duplicate question", normalizedPrompt,
+		"The permission layer handles tool approval; add no duplicate approval question")
+	contains("the requested full mode reaches the model", promptText, "Permission mode: full")
 	-- The date comes from the real clock rather than the mock's virtual one, so the
 	-- assertion is on the shape of the line rather than a fixed date.
 	truthy("the date is stated", promptText:find("Date: %d%d%d%d%-%d%d%-%d%d %d%d:%d%d UTC") ~= nil,
 		"no Date line in the prompt")
-	contains("and copied references must be exact", promptText, "Copy exact paths, IDs, revisions and enum values from evidence")
+	contains("and copied references must be exact", normalizedPrompt, "Copy exact paths, IDs, revisions and enums from evidence")
 	-- The per-game workspace layout: authored scripts in the game folder root,
 	-- dumps in its dump/ subfolder, and the whole thing a default rather than a fence.
-	contains("game work has a per-place home", promptText, "Use the exact Current game files path")
-	contains("dumps are kept apart from authored code", promptText, "and its dump/ for")
-	contains("explicit user paths override the default", promptText, "honor explicit user paths")
+	local workspace = handle.env.require("runtime/workspace").describe()
+	contains("game work has a per-place home", promptText, "Current game files: " .. workspace.path .. "/")
+	contains("the exact dump directory is supplied", promptText, "Current game dumps: " .. workspace.path .. "/dump/")
+	contains("scripts use the current game directory", normalizedPrompt, "Use Current game files for scripts")
+	contains("dumps are kept apart from authored code", normalizedPrompt, "dump/ for inspected source")
+	contains("explicit user paths override the default", normalizedPrompt, "honor explicit paths")
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
@@ -7427,7 +7464,7 @@ scenario("the what's new modal renders every release on wide and narrow viewport
 	contains("and the improved ones", text, "Improved")
 	contains("and the fixed ones", text, "Fixed")
 	local latest = changelog.latest()
-	check("the release candidate is the latest entry", latest.version, "3.8.0")
+	check("the release candidate is the latest entry", latest.version, "4.0.0")
 	local latestCard = harness.byName("Release_" .. latest.version, modal.content)
 	truthy("the latest release has its own card", latestCard ~= nil)
 	local latestText = harness.textOf(latestCard)

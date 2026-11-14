@@ -239,7 +239,11 @@ suite.case("main and subagent prompts explain the project workflow and limits", 
 	local f = fixture(); local prompt = f.env.require("agent/prompt")
 	for _, text in ipairs({ prompt.build(), prompt.subagent("Build a script") }) do
 		check("project workflow is present", text:find("project_scaffold", 1, true) and text:find("project_patch_read", 1, true) and text:find("script_test", 1, true))
-		check("review and coverage limits are present", text:find("Review changes before checks", 1, true) and text:find("not Luau type inference", 1, true) and text:find("share native game state", 1, true))
+		local normalized = text:gsub("%s+", " ")
+		check("review build inspection and affected tests remain ordered", normalized:find("Review inputs, project_build, inspect output, script_test affected cases", 1, true))
+		check("native tests state their shared-state scope", normalized:find("Tests share native state", 1, true))
+		check("mock checks state unavailable rendering input and server coverage", normalized:find("mocks do not prove rendering/input/server behavior", 1, true))
+		check("static analysis states its syntax and type limits", normalized:find("script_analyze checks syntax/literal dependencies, not types", 1, true))
 	end
 	f.close()
 end)

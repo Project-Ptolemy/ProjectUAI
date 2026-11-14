@@ -34,16 +34,17 @@ return function(env)
 		return record.status == "running" or record.status == "queued"
 	end
 
-	-- What a preset actually grants, in the group names the Tools panel uses. `full` is
-	-- the absence of a filter rather than a list, which is worth saying in those words:
-	-- it is the one preset that can change the game.
+	-- Show access level alongside the groups, with parent scope and permission
+	-- limits visible even when a full worker has no additional preset filter.
 	local function describePreset(id)
 		local groups = subagent.PRESETS[id]
-		if groups == nil then return "every tool this client has" end
+		if id == "full" then return "Full access: reads, writes and execution within the parent's permitted tools" end
+		if id == "read" then return "Read only: inspect permitted tools across every topic; writes and execution are excluded" end
+		if groups == nil then return "Unknown access preset" end
 		local names = {}
 		for group in pairs(groups) do names[#names + 1] = registry.groupLabel(group) end
 		table.sort(names)
-		return table.concat(names, ", ")
+		return "Focused access: " .. table.concat(names, ", ")
 	end
 
 	function M.new(parent)
@@ -538,9 +539,9 @@ return function(env)
 		})
 		P.text(presets, {
 			name = "PresetsHint",
-			text = "The model picks one of these per dispatch. 'read' is the default and cannot "
-				.. "change anything; a delegated write is hard to attribute afterwards, which is "
-				.. "why it has to be asked for.",
+			text = "The main agent can choose Read only for investigation or Full access for authorized edits and execution. "
+				.. "Each worker retains the parent conversation's tool scope and your permission rules. "
+				.. "An omitted choice uses the configured default.",
 			role = "caption",
 			color = theme.color.textTertiary,
 			wrap = true,
@@ -548,9 +549,10 @@ return function(env)
 			layoutOrder = 2,
 		})
 		local presetOrder = { "read", "web", "game", "full" }
+		local presetLabels = { read = "Read only", web = "Web", game = "Game", full = "Full access" }
 		for index, id in ipairs(presetOrder) do
 			C.keyValue(presets, {
-				key = id,
+				key = presetLabels[id],
 				value = describePreset(id),
 				color = id == "full" and theme.color.warn or theme.color.textSecondary,
 				layoutOrder = index + 2,

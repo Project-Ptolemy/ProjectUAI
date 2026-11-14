@@ -1,6 +1,7 @@
 -- Relay waiters must not consume the native slots needed to poll their jobs.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock, json = require("env"), require("json")
+local desktop = require("automatic_bridge_fixture")
 local passed = 0
 local function check(label, value) assert(value, label); passed = passed + 1; print("ok " .. label) end
 
@@ -37,10 +38,7 @@ h.http.handler = function(req)
 	direct = direct + 1
 	return { StatusCode = 200, Body = "direct", delay = 0.5 }
 end
-app.config.set("bridge.port", 8795)
-app.config.set("bridge.token", "concurrency-fixture")
-app.config.set("bridge.enabled", true)
-h.settle(0.3)
+desktop.connect(h, app, { instance = "concurrent-bridge" })
 check("authenticated bridge selects Web", app.bridge.online and app.config.get("bridge.runtime") == "web")
 
 local results, errors = {}, {}

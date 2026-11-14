@@ -21,14 +21,13 @@ return function(env)
 	local alive = true
 	M.backgroundCount = 0
 
-	-- Groups a subagent may be given. Anything that changes the world is absent
-	-- from the read-only preset, which is the default: the point of a subagent is
-	-- usually to go and find out, and a delegated write is hard for the user to
-	-- attribute afterwards.
+	-- The parent selects read-only investigation or full access for authorized
+	-- writes/execution. Focused web/game presets remain compatible. The read preset
+	-- gets only read-risk tools below; every preset intersects parent scope.
 	M.PRESETS = {
-		read = { instance = true, world = true, players = true, perf = true, meta = true, web = true, net = true, fs = true, skills = true },
-		web = { web = true, net = true, skills = true },
-		game = { instance = true, world = true, players = true, gui = true, remotes = true, meta = true, skills = true },
+		read = nil,
+		web = { web = true, net = true, skills = true, master_vault = true },
+		game = { instance = true, world = true, players = true, gui = true, remotes = true, meta = true, skills = true, master_vault = true },
 		full = nil,
 	}
 
@@ -694,7 +693,7 @@ return function(env)
 		if not alive then return nil, "the client is unloading" end
 		if type(opts) ~= "table" then return nil, "dispatch options must be a table" end
 		local preset = opts.preset or "read"
-		if preset ~= "full" and M.PRESETS[preset] == nil then
+		if preset ~= "read" and preset ~= "full" and M.PRESETS[preset] == nil then
 			return nil, "unknown subagent preset; use read, web, game or full"
 		end
 		local parent = opts.parent
@@ -737,7 +736,8 @@ return function(env)
 			excluded.skills_write, excluded.skills_install, excluded.skills_delete = true, true, true
 		end
 		-- Groups contain both inspection and mutation tools. Capture an explicit
-		-- read allowlist so this preset cannot inherit writes from those groups.
+		-- read allowlist across all parent tools. Read only is an access level;
+		-- web/game retain additional topic filters.
 		local readTools
 		if preset == "read" then
 			readTools = {}

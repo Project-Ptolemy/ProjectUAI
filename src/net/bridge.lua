@@ -107,6 +107,14 @@ return function(env)
 		end
 		return out
 	end
+	local function scrubEvent(payload)
+		if payload.kind ~= "ask:user" then return scrub(payload, 0) end
+		-- Older retained questions can carry the retired mod-review protocol.
+		-- Ordinary questions expose their text/options without native source data.
+		local visible = util.copy(payload)
+		visible.uiModReview, visible.uiModReviewRequired, visible.uiModReviewRevision = nil, nil, nil
+		return scrub(visible, 0)
+	end
 
 	local queue = {}
 	local snapshotPending = nil
@@ -114,7 +122,7 @@ return function(env)
 
 	local function enqueue(payload)
 		if type(payload) ~= "table" or not FORWARD[payload.kind] then return end
-		local entry = scrub(payload, 0)
+		local entry = scrubEvent(payload)
 		entry.sessionId = payload.sessionId or attachedId
 		queue[#queue + 1] = entry
 		-- Dropping the oldest rather than the newest: a browser that reconnects gets
@@ -129,7 +137,7 @@ return function(env)
 	local function snapshotOf(session)
 		local out = {}
 		for _, payload in ipairs(session.log or {}) do
-			if FORWARD[payload.kind] then out[#out + 1] = scrub(payload, 0) end
+			if FORWARD[payload.kind] then out[#out + 1] = scrubEvent(payload) end
 		end
 		return out
 	end
@@ -517,8 +525,10 @@ return function(env)
 		local asks = env.require("ui/panels/ask")
 		local questions = {}
 		local function question(request)
-			if request then questions[#questions + 1] = { id = request.id, question = request.question,
-				options = request.options, sessionTitle = request.sessionTitle } end
+			if type(request) ~= "table" or request.settled == true then return end
+			local row = { id = request.id, question = request.question,
+				options = request.options, sessionTitle = request.sessionTitle }
+			questions[#questions + 1] = row
 		end
 		question(asks.current)
 		for _, request in ipairs(asks.queue) do question(request) end
@@ -672,7 +682,7 @@ return function(env)
 						clineModelIds = {}
 						local mcp = env.loadedModules and env.loadedModules["net/mcp"]
 						if mcp then mcp.clear() end
-						-- Automatic worker updates keep manual credentials. A new worker
+						-- Automatic worker updates retain discovered session credentials. A new worker
 						-- still needs a complete state, without resending any user action.
 						lastStateJson, lastStateAt = nil, 0
 						snapshotPending = snapshotOf(attach())
@@ -787,7 +797,7 @@ return function(env)
 		if M.running then return true end
 		if not caps.has("http") then return false, caps.reason("http") end
 		if util.trim(connection.get().token) == "" then
-			return false, "no token yet -- run bridge/server.js and paste the token it prints"
+			return false, "No desktop connection yet. Open UAI Bridge and click Start Cowork."
 		end
 
 		M.running = true
@@ -855,10 +865,8 @@ return function(env)
 		}
 	end
 
-	-- Any route that changes the setting takes effect, whether that is the Settings
-	-- panel, a console call or a host script, so the panel only has to write config
-	-- rather than orchestrate this. A port or token change aims the connection
-	-- somewhere new, so it is torn down and rebuilt rather than adjusted in place.
+	-- Discovery credentials and the opt-out take effect through one connection
+	-- event. A desktop restart replaces the worker and its captured request epoch.
 	dispose.add(connection.changed:connect(function()
 		if M.running then M.stop(true) end
 		if connection.enabled() then M.start() end

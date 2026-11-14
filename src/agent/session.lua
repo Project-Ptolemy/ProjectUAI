@@ -23,6 +23,7 @@ return function(env)
 	local draftStore = env.require("runtime/draft_store")
 	local transcriptSearch = env.require("runtime/transcript_search")
 	local workflow = env.require("runtime/script_workflow")
+	local goals = env.require("runtime/micro_goals")
 
 	local THREAD_DIR = "sessions"
 	-- Disk history survives eviction. Unsaved/ephemeral threads stay in memory.
@@ -635,6 +636,7 @@ return function(env)
 			session.abortFlag = false
 			session.title = "New chat"
 			session.workflow = nil
+			session.goals = nil
 			-- The plan goes with the conversation it belonged to.
 			state.clearTodos(session)
 			session.emit("cleared", {})
@@ -702,6 +704,43 @@ return function(env)
 			else cancelWorkflowSave(); session.persist() end
 			return true
 		end
+		function session.goalsSnapshot() return goals.snapshot(session.goals) end
+		function session.modMetrics()
+			local recorded = M.conversationUsage(session)
+			local record = env.require("provider/registry").active()
+			local budget = math.max(session.ctx.limitFor(record and record.model, record), 1)
+			local tasks, completed = session.goals and session.goals.tasks or {}, 0
+			for _, task in ipairs(tasks) do if task.status == "done" then completed = completed + 1 end end
+			local available = env.require("agent/registry").available({ only = session.toolFilter,
+				groups = session.toolGroups, exclude = session.toolExclude })
+			local tokens = (recorded.tokensIn or 0) + (recorded.tokensOut or 0)
+			return { tokens = recorded.estimated and (util.formatNumber(tokens) .. " (estimated)") or tokens, requests = recorded.requests or 0,
+				context = string.format("%.0f%% of compaction budget (estimated)", util.clamp(session.ctx.pressure(record) / budget, 0, 1) * 100),
+				goals = session.goals and (tostring(completed) .. "/" .. tostring(#tasks) .. " done") or "No objective", tools = #available }
+		end
+		function session.applyUiMod(id, revision)
+			if session.removed or not alive then return { ok = false, text = "Conversation is unavailable" } end
+			local registry = env.require("agent/registry")
+			registry.load()
+			return registry.dispatch({ id = util.uid("mod-apply"), name = "ui_mod_apply",
+				arguments = util.encode({ id = id, expected_revision = revision }) }, session.toolContext())
+		end
+		function session.disableUiMods()
+			if session.removed or not alive then return { ok = false, text = "Conversation is unavailable" } end
+			return env.require("agent/ui_mod_activation").disable()
+		end
+		function session.updateGoals(args)
+			if session.removed or not alive then return nil, "Conversation is unavailable" end
+			local value, why, detail = goals.change(session.goals, args)
+			if value == nil then return nil, why end
+			session.goals = value ~= false and value or nil
+			session.emit("goals:changed", { id = value and value.id or nil,
+				revision = value and value.revision or nil, status = value and value.status or nil })
+			M.listChanged:fire()
+			detail = detail or {}
+			detail.persisted = session.persist() == true
+			return value ~= false and goals.snapshot(value) or false, nil, detail
+		end
 
 		-- A title the agent chose for the thread, from what it turned out to be
 		-- about. Deliberately not `rename`: naming the conversation stays the
@@ -750,6 +789,7 @@ return function(env)
 			stats.busy = session.busy
 			stats.turns = session.turns
 			stats.todos = state.todoCounts(session)
+			stats.goals = goals.counts(session.goals)
 			return stats
 		end
 
@@ -1018,6 +1058,7 @@ return function(env)
 				metadata = metadata.snapshot(session.metadata),
 				draft = draftStore.snapshot(session.draft),
 				workflow = workflow.snapshot(session.workflow),
+				goals = goals.snapshot(session.goals),
 				todos = env.require("runtime/todo_snapshot").snapshot(session.todos),
 				context = session.ctx.serialise(),
 				transcript = session.transcript.snapshot(),
@@ -1069,6 +1110,14 @@ return function(env)
 				end
 				data.policy = validated
 			end
+			if data.goals ~= nil then
+				local validated, why = goals.restore(data.goals)
+				if not validated then
+					log.warn("session", "skipped saved conversation with invalid micro-goals", data.id .. ": " .. tostring(why))
+					return nil
+				end
+				data.goals = validated
+			end
 			return data
 		end
 		-- Keep only candidate metadata while finding the newest files; a host listing
@@ -1103,6 +1152,7 @@ return function(env)
 				session.metadata = metadata.restore(data.metadata)
 				session.draft = draftStore.restore(data.draft)
 				session.workflow = workflow.restore(data.workflow)
+				session.goals = goals.snapshot(data.goals)
 				session.todos = env.require("runtime/todo_snapshot").restore(data.todos)
 				session.createdAt = timestamp(data.createdAt)
 				session.updatedAt = timestamp(data.updatedAt)

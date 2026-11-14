@@ -1,17 +1,19 @@
 # Project UAI — contract
 
-Release: **Project UAI client, bridge/web UI and Windows desktop 3.8.0 —
-October 31, 2026**. This release adds focused tool families, persistent script
-goals, optional provider setup, separate Free/HCNSEC presets, native Obsidian
-browsing/editing, conversation and editor conveniences, and staged startup.
+Release: **Project UAI client, bridge package and Windows desktop 4.0.0 —
+November 14, 2026 — a major release**. The new update focus is persistent agent
+workspaces: native Master Vault knowledge, dependent micro-goals, shareable
+full-access UI mods, read/full delegation and explicit questions in every
+permission mode. Manual native bridging is retired in favor of desktop discovery.
+Completed responses carry measured request averages. Existing script workflows, tool
+families, provider setup, Obsidian integration and staged startup remain supported.
 The embedding SDK is **1.1.0** and standalone **UI LIB is 1.6.0**.
 The Android companion is **3.7.2 (version code 9)**. It can try another provider
 address after a failed connection without replaying a sent inference request.
 Its existing protocol and Kilo quota recovery remain compatible.
 
-Bridge/web 3.8.1 adds the November 2 OpenCode API-key transport fix; the client
-and Windows shell remain 3.8.0 with the corrected client build.
-Bridge 3.8.1 and Windows desktop 3.8.0 use verified automatic GitHub updates.
+Bridge/web 3.8.1 added the November 2 OpenCode API-key transport fix, retained in
+4.0.0. Bridge and Windows desktop 4.0.0 use verified automatic GitHub updates.
 Bridge worker replacement waits for idle work and retains its session token;
 desktop app updates stage for restart with a retained fallback. Desktop detects
 Node.js 18+ or downloads a verified LTS runtime per user instead of bundling Node.
@@ -89,6 +91,8 @@ end
 | `env.context` | table the host passed in; `{}` when standalone |
 | `env.info` | `{ name, version, folder, uaVersion }` |
 | `env.root` | the mounted app's `ScreenGui`, including credential-storage entry |
+| `env.getClient()` | lazy full client handle used by explicitly applied script mods |
+| `env.prepareUiMod()` | presentation adapter that finishes pending appearance reconstruction before mod startup |
 
 Cycles are a load error, not a hang. `runtime/*` must not require anything above
 it; `ui/*` must not require `agent/*` except through `agent/session`.
@@ -703,14 +707,25 @@ takes a typed id, and saving requires one.
 
 Model metadata is independent of discovery: the reviewed catalog enriches known
 ids but never adds models to a provider. `tools/data/model_metadata.json` records
-the source URLs, hashes and refresh date; `tools/sync_pricing.js` generates
+the source URLs, hashes and refresh date. Reviewed exact primary-source corrections
+live in `tools/data/model_official.json`; captured refresh verifies their document
+hashes and dates alongside the five feeds. `tools/sync_pricing.js` generates
 `provider/model_data`. Refresh uses verified TLS and fails on missing sources;
-offline generation and `--check` are deterministic. Prices match exact ids within
+offline generation and `--check` are deterministic. The November 14 snapshot has
+1,855 exact model/provider entries across 15 providers. Prices match exact ids within
 their provider, never a paid id inferred from a free alias. Rates include documented
 cache categories and context tiers. Unknown gateway prices stay unknown. Included
 Project UAI Free access costs zero; personal HCNSEC rates are not assumed. Context
 and reply limits use the same catalog, while protocol-specific request traits
 remain explicit. User-declared context overrides remain effective.
+Scheduled prices with unsupported conditions stay unknown. Introductory rates
+carry a UTC expiry; runtime cost estimates become unknown at that time while
+model limits remain available. Carbon/Argon's exact native Gemini routes cap
+non-streaming output at 32,768 and streaming output at 65,536 tokens.
+Exact native Anthropic Fable/Mythos 5.2 models require adaptive thinking and
+accept only automatic or disabled tool choice. Incompatible final thinking or
+forced-tool overrides fail before dispatch. Messages requests translate explicit
+tool choices into the native shape while retaining later raw-parameter precedence.
 
 Usage counters must be finite and nonnegative. Missing or invalid input/output
 counts use the labelled estimate for that side. Cache reads/writes stay within
@@ -765,6 +780,14 @@ Responses tool assembly binds item IDs, call IDs and output positions to one
 slot. Full argument events replace streamed fragments; nonempty final output
 replaces superseded partial calls. Streamed and whole responses enforce shared
 limits of 64 calls and 256,000 argument bytes. Exceeding either limit is terminal.
+Exact documented direct OpenAI GPT-6/6.1 tool routes select Responses and default
+to stateless requests, including their full official `/v1/responses` URLs.
+Encrypted reasoning is requested even when reasoning summaries are hidden.
+Original ordered output items, including encrypted reasoning,
+are retained for matching tool history and conversation reloads. The persisted
+scope is opaque and identifies the original protocol, endpoint and model. Replay
+is bounded to 256 items, 16,384 values, depth 16 and two MiB per retained response;
+malformed or oversized signed state fails before another dispatch.
 
 Generation settings live in `runtime/config` and are persisted in `UAI/config.json`:
 
@@ -1255,6 +1278,111 @@ explicit Apply. A cancelled review preserves the form draft and discards its
 untouched proposal; a partially applied checkpoint stays available for recovery.
 Its original conversation/operation lifetime gates reads and writes.
 
+## 5a. Persistent workspaces and UI mods
+
+Master Vault is executor-local technical knowledge, separate from credential
+storage, memory and bridge-backed Obsidian vaults. `runtime/master_vault` owns
+bounded discovery, Markdown parsing, opaque read revisions and verified writes;
+`tools/master_vault` owns permission-aware dispatch and paged evidence. Native
+UI presents notes and retained forms without executing fenced source.
+
+User notes use `UAI/vault/notes/<name>.md` and `note:` IDs; immutable bundled
+references use `starter:` IDs. `tools/build_master_vault.lua` generates the seed
+from the sourced `vault/` catalog before bundling. Body/file/header limits are
+64,000/80,000/12,000 UTF-8 bytes with at most 64 header lines, 12 tags and eight
+sources. Discovery admits at most 512 raw inventory entries, 256 notes and a
+4-MiB scan budget. The native listing call and whole-file allocation happen
+inside the host API before UAI can apply its processing caps. Incomplete coverage
+is explicit, and no new note is admitted against an incomplete inventory.
+
+Edits/deletes need the current opaque read revision and retained full original
+bytes. At most 64 read baselines/4 MiB stay retained; eviction and changed bytes
+invalidate tokens. Listing alone never authorizes mutation. Own writes serialize,
+reads refuse pending writes, overlap checks reject stale recovery, and resulting
+bytes/absence are verified. Native file APIs cannot guarantee atomicity against
+another application. Conflicts/uncertainty require explicit reread and review;
+no write repeats automatically. The eight-slot editor registry retains closed
+drafts, busy/uncertain notes and unreviewed imports until save or explicit discard.
+Saved notes survive updates; unfinished forms remain only in the current run.
+
+`runtime/micro_goals` owns versioned conversation objectives with at most 24
+tasks, eight dependencies per task and one active task. Stable IDs, revisions,
+cycle checks and legal transitions protect changes. Done tasks need evidence;
+blocked tasks need a reason. Reopening or changing prerequisite criteria resets
+affected dependent evidence. `session.goalsSnapshot()` and `updateGoals(args)`
+form the presentation boundary. Boards checkpoint with conversation history;
+ephemeral/child/no-filesystem boards stay in memory. Restoring, pausing or
+resuming a board never schedules inference or executes work. Context retains
+at most 2,400 bytes of relevant goal guidance; the full record is paged on demand.
+
+`ask_user` is mandatory for genuine questions and required decisions even under
+Allow everything. An unanswered/dismissed question supplies no answer or
+consent. Each question's `subscribeSettled(fn)` travels in its original local
+event; resolution, cancellation and timeout settle it once and reject late
+answers. Presentation removes that exact current/queued request even after
+dispatcher emission has expired. Read-only and Full access delegated workers
+retain parent scope and saved denials; headless workers report required decisions
+to the parent instead of inventing user responses.
+Read only admits parent-permitted read actions across all topics and excludes
+writes/execution. The compatible Web and Game presets retain their topic filters.
+
+UI mods use portable version-1 definitions with visual or script kind, stable
+lowercase ASCII IDs, names, descriptions and optional author/sources. Visual
+mods declare validated existing appearance enums plus at most four panels and
+twelve total text/metric/navigation widgets. Script mods contain unrestricted
+UTF-8 native Lua source up to 262,144 bytes and execute with full UAI, Roblox
+and executor access. They are not sandboxed. `runtime/ui_mod_document` owns
+strict JSON/schema validation; `runtime/ui_mods` owns storage and revisions;
+`agent/ui_mod_activation` owns exact-revision preparation; the runner owns
+execution and context helper lifetimes. UI modules never execute preview source.
+
+Definitions live at `UAI/ui_mods/store.json`: at most sixteen mods, three full
+prior versions each and 4 MiB total. Visual portable JSON is at most 32 KiB;
+script portable JSON is at most 768 KiB. Existing changes require exact opaque
+revisions. Save verifies bytes and retains last known good resident state on
+unconfirmed persistence. Editing active source disables its new revision.
+Imports stage disabled records and never compile, fetch dependencies or run
+source. Exports carry full verbatim authored fields/source, omitting internal
+selection, history, credentials, conversations and paths; authored literals
+are not redacted. Histories can be reviewed/exported or restored as fresh drafts.
+
+`ui_mod_apply` directly activates an exact saved revision under normal danger-tool
+permissions. It creates no dedicated `ask_user` review or automatic preview
+dialog. Allow everything permits authorized application; Full access workers
+retain the parent's scope and explicit denials. Actual questions and required
+user choices still use `ask_user` in every permission mode. Preflight compiles
+script source without executing it and rechecks the complete detached spec and
+revision. A selection must persist successfully, its appearance reconstruction
+must finish, and the exact selection must still be current before source starts.
+Canceled preparation or changed source/revisions cannot proceed. Fresh runtimes
+never automatically execute script selections; validated selected visual
+versions can restore outside safe mode.
+
+Script factories receive `uai`, `env`, `app`, `root`, `require` and an SDK scope.
+Colon methods Give/OnDestroy/Connect/Delay/OnMount/IsAlive/GetRoot supply owned
+resources and cooperative callbacks. OnMount runs immediately and once after
+each completed window build, releasing the prior mount; stale yielded mount
+results release immediately. Early release closes admission before cleanup.
+The runner owns read/compiler/cleanup/startup before any yield, freezes execution
+strings, and checks exact selection before both chunk and factory. Context helper
+callbacks and cleanup stay tracked until return. Disable immediately invalidates
+pending preparation/startup and releases registered resources, even if saving the
+disabled selection fails. Outstanding native work still owns the runtime after
+the ten-second startup wait and blocks another activation/unload/replacement.
+Raw tasks and implementation/SDK escape hatches are unrestricted, and arbitrary
+effects cannot be rolled back automatically.
+
+Loader context `safeMode=true` suppresses mod restoration/activation; same-build
+recovery calls `handle.recoverUi()`, disables mods and reconstructs base tokens.
+`handle.disableUiMods()` also exposes direct recovery. Safe mode lasts for the
+current client lifetime; unload and run a normal loader for a fresh execution.
+It preserves definitions and cannot undo arbitrary native effects. Migration
+protects both `vault` and `ui_mods`. Build replacement checks native work and
+unfinished Vault/goal/mod forms before saving and tearing down the old client.
+See the [Vault](docs/MASTER_VAULT.md), [goals](docs/MICRO_GOALS.md) and
+[UI mod](docs/UI_MODS.md) guides. `scripting_docs native_ui_mods` embeds the
+mod execution context on demand without adding the full guide to prompts.
+
 ## 6. Event stream
 
 Ordinary conversation sends may queue follow-ups while inference or a tool batch
@@ -1363,10 +1491,14 @@ retains blocking report delivery. Runtime `dispatch` and `followUp` stay blockin
 `start` and `startFollowUp` return the registered record immediately. Follow-up
 reuses the child's existing context, and `runs` counts these turns.
 
-The default `read` preset intersects its groups with an explicit read-risk tool
+The `read` preset intersects its groups with an explicit read-risk tool
 allowlist. It cannot acquire writes from a mixed group. Unknown preset names fail
 before a child is registered. `agent_status` reports delegated workers;
 `client_status` reports client diagnostics.
+
+Model-facing `dispatch_agent` uses the configured preset when it is omitted
+(`full` on a new install). Select `read` or `full` explicitly for a task; both
+retain the parent's tool scope, permission rules and saved denials.
 
 The parent continues independent work and calls `agent_status` every two or three
 work batches or roughly 15–30 seconds. Status reads belong to its own children,
@@ -1478,6 +1610,12 @@ lifetime model first/last-use dates and hour totals as well as current buckets.
   real timestamps in the transcripts already on disk.
 * A subagent's requests and tokens count toward the conversation that dispatched
   it; its messages do not, because nobody typed or read them.
+* Completed native and Cowork responses show a static `tk/s request avg` using
+  valid provider output tokens divided by the successful request's wall time.
+  Missing usage/duration stays hidden. Retained transcript primitives preserve
+  the result across reload; buffered SSE/preview delivery never estimates speed.
+  Native captions wrap below the reply, preserving model attribution. Very
+  large finite values use bounded scientific formatting.
 * Buckets are local, via `runtime/clock`: `dayKey`, `hourOf`, `dayNumber`. The
   conversion is arithmetic on the epoch plus this host's UTC offset, probed once
   from `DateTime`, because Roblox's pattern formatter is the only calendar API
@@ -1491,6 +1629,8 @@ Persisted files, all under one folder (`env.info.folder`, default `UAI/`):
 | `sessions/<id>.json` | `agent/session` | one conversation: context, transcript, title, place and timestamps; newest 64 restored, older disk history retained |
 | `sessions/.folders.1.json`, `.folders.2.json` | `runtime/conversation_folders` | alternating verified custom-folder catalogs; names, stable IDs and revision |
 | `stats.json` | `agent/stats` | per-day and per-model counters; days capped at 400 |
+| `vault/notes/*.md` | `runtime/master_vault` | local sourced technical knowledge, independent of credential encryption |
+| `ui_mods/store.json` | `runtime/ui_mods` | validated authored mod definitions/history/selection; scripts never auto-execute on fresh load |
 | `export/*.json` | the Import & export pane | a diagnostic settings copy with connection credentials excluded; review remaining personal text before sharing |
 
 ## 7. Design tokens
@@ -1580,6 +1720,10 @@ UI LIB and browser system accessibility preferences remain independently owned.
 Shared modal bodies use balanced vertical padding and consistent horizontal
 insets. Log details and the context breakdown fit their current contents up to
 the usable viewport height, scrolling when needed instead of reserving blank space.
+Workspace forms opt into `fitContent = true`: Master Vault, micro-goals and UI mods
+grow or shrink to their measured header, body and actions, capped by the usable
+viewport and any explicit height ceiling. Long forms retain body scrolling and
+the existing footer fallback in short keyboard space.
 
 The transcript canvas uses `UIListLayout.AbsoluteContentSize` plus vertical padding.
 Lightweight spacers preserve the measured size of unmounted dialogue. Drawing
@@ -1924,10 +2068,10 @@ checks justified by the change. Review each fix before rebuilding affected
 outputs and rerunning affected checks. Use native static checks, deterministic
 freshness checks and the official Luau compiler where applicable.
 
-The 3.3.0 plan and actual outcomes belong in
-[docs/TESTING_3.3.0.md](docs/TESTING_3.3.0.md). The entire native suite is not part
-of that release pass. `tools/test_native.js --verify-only` is a separate full-suite
-workflow, not a substitute for selected checks. The broader command reference
+The 4.0.0 plan and actual outcomes belong in
+[docs/TESTING_4.0.0.md](docs/TESTING_4.0.0.md). This major release uses the broader
+`tools/test_native.js --verify-only` workflow after focused new-feature checks,
+plus local bridge/browser/desktop verification. The broader command reference
 below includes independent product/site workflows; it does not require running
 them for every client change. Offline verification measures behavior and syntax,
 not native Roblox rendering, host input, live model quality or native performance.
@@ -1983,10 +2127,11 @@ Waiting stays within each exchange's deadline and Stop can independently send
 cancellation. Local admission failures remain terminal and identify capacity, not a
 provider timeout.
 
-The bridge's protocol, installation, browser workflow and verification are
-documented in [bridge/README.md](bridge/README.md). Executor downloads start with
-`node UAI/bridge/start.txt`; Git checkouts use `node bridge/server.js`. Bridge test
-fixtures and helpers live under `bridge/tests/` and are excluded from downloads.
+The bridge's protocol, automatic desktop setup, browser workflow and verification
+are documented in [bridge/README.md](bridge/README.md). Native executor downloads
+and manual connection fields are removed. The desktop app starts its embedded
+supervisor and the client discovers it automatically. Development/protocol
+fixtures live under `bridge/tests/` and are excluded from downloads.
 
 ### Obsidian vaults
 
@@ -2034,7 +2179,7 @@ automatic desktop-update preferences under the stable installation identity.
 Ctrl+1 through Ctrl+5 select Workspace, Connections, Updates, Settings and Tunnels
 through the same navigation commands. Current supported capability replies own
 OpenCode/Cline/Kilo status; missing, malformed or disconnected replies clear stale
-readiness and versions. Desktop 3.8.0 embeds the matching reviewed client and
+readiness and versions. Desktop 4.0.0 embeds the matching reviewed client and
 bridge, including all native/browser Obsidian payload modules.
 Integration switches apply at Start and remain disabled while running. Minimize
 retains the taskbar window; closing stops owned processes and exits. No tray icon
@@ -2043,8 +2188,9 @@ manual update checks and previously verified staged updates available.
 The launcher owns a bridge supervisor and its attached worker in
 `--desktop` mode on `127.0.0.1:28791`. Start opens Cowork after a structured ready
 message; Stop/Exit use owned stdin control, and a Windows Job Object prevents
-orphan processes. Manual CLI behavior remains on its configured port (8790 by
-default). The desktop-only discovery POST rejects browser Origin/Fetch Metadata
+orphan processes. A separately started development supervisor retains its protocol
+test entry points; the native client accepts only desktop discovery. The
+desktop-only discovery POST rejects browser Origin/Fetch Metadata
 headers, non-loopback peers, incorrect Host and missing protocol headers. Native
 local programs share this trust boundary; ordinary API routes retain bearer auth.
 
@@ -2080,9 +2226,11 @@ is required for MCP execution, and no mobile companion routes are added.
 
 `net/bridge_connection` holds the effective connection and temporary desktop
 credentials. `bridge.autoDiscover` defaults to true, probes every four seconds
-with a two-second deadline, skips touch-only mobile clients, and yields to an
-explicitly enabled manual bridge.
-The token is never persisted or copied into manual settings. Discovery validates
+with a two-second deadline and skips touch-only mobile clients. No manual native
+connection takes precedence or supplies an alternative endpoint. Legacy
+`bridge.enabled`, `bridge.port`, `bridge.token` and `bridge.requestTimeout`
+values are stripped on configuration load, save, replacement and transfer.
+The discovered token is never persisted. Discovery validates
 product, protocol, port, token and instance; stale completions after settings
 changes or unload cannot connect. `bridge.stop()` suspends discovery until sync
 or a connection-setting change. Commands, pictures and inference use the same

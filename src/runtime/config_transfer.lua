@@ -187,7 +187,7 @@ return function(env)
 		local merged = withDefaults(config.defaults, snapshot)
 		-- Accept older exports without resurrecting the retired motion setting.
 		merged.ui.reduceMotion = nil
-		merged.bridge.requestTimeout = nil
+		merged.bridge.requestTimeout, merged.bridge.enabled, merged.bridge.port, merged.bridge.token = nil, nil, nil, nil
 		local p = merged.providers
 		ok, err = array(p.list, "config.providers.list", provider)
 		if not ok then return nil, err end
@@ -284,7 +284,7 @@ return function(env)
 			permissionMode = snapshot.permissions.mode,
 			rules = util.count(snapshot.permissions.rules),
 			memory = #snapshot.memory.entries,
-			bridgeEnabled = snapshot.bridge.enabled,
+			bridgeAutoDiscover = snapshot.bridge.autoDiscover,
 			rememberCredentials = snapshot.security.rememberCredentials == true,
 		}
 	end

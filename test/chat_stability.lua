@@ -37,6 +37,12 @@ local function history(session, count)
 		session.emit("assistant:text", { text = "Answer " .. i, model = "fixture-model" })
 	end
 end
+local function completeStartup(h, handle)
+	local allowed
+	h.sched.spawn(function() allowed = handle.config.continueWithoutEncryption() end)
+	h.settle(1)
+	assert(allowed and handle.config.vaultStatus().ready, "Chat stability fixture must complete credential setup")
+end
 
 case("busy parallel agents cannot evict dialogue or split retained calls", function()
 	local f = F.new(); local sessions = f.env.require("agent/session"); local session = sessions.newThread()
@@ -227,6 +233,7 @@ case("discarded reasoning previews release their activity handles immediately", 
 	check("cleanup does not depend on evicting durable history", #session.log == 1 and has(f.h.textOf(view.scroll.instance), "Keep this conversation during retries"))
 	session.emit("assistant:reasoning", { text = "A retained completed trace" })
 	local run = view.run
+	f.h.click(run.thought.root:FindFirstChild("ReasoningHeader", true))
 	session.emit("assistant:preview", { streamId = "temporary", reasoning = "A discarded continuation" })
 	session.emit("assistant:complete", { streamId = "temporary" })
 	check("discarding a preview preserves an existing populated activity block", view.run == run and size(view.runs) == 1 and has(f.h.textOf(run.root), "A retained completed trace") and not has(f.h.textOf(run.root), "A discarded continuation"))
@@ -374,6 +381,7 @@ end)
 
 case("maximize, resize and recovery controls preserve a busy full application", function()
 	local h = require("env").new(); local handle = assert(h.boot()); h.settle(1)
+	completeStartup(h, handle)
 	handle.app.show("chat"); local session = handle.sessions.current()
 	history(session, 14); session.busy = true
 	session.emit("request:start", { provider = "Fixture", model = "fixture" })
@@ -401,6 +409,7 @@ end)
 
 case("returning to the chat panel reuses rendered rows instead of replaying them", function()
 	local h = require("env").new(); local handle = assert(h.boot()); h.settle(1)
+	completeStartup(h, handle)
 	handle.app.show("chat")
 	local session = handle.sessions.current(); history(session, 8)
 	local panel = handle.app.chatPanel

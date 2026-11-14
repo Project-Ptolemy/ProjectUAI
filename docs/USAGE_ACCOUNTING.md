@@ -20,3 +20,11 @@ Older history has no per-request cost-coverage record. UAI does not invent
 coverage for that history. Catalog prices can change and may omit request,
 image/audio, service-tier or account-specific charges. The totals are estimates,
 not billing statements.
+
+Completed native and Cowork messages show `tk/s request avg` when the provider
+reports a valid output-token count and UAI records the successful request's wall
+time. It includes connection, waiting and transport time; it is not a measurement
+of just the model's generation phase. Missing/invalid measurements stay hidden.
+The native caption sits below the reply and wraps at narrow widths. Very large
+finite averages use a compact scientific value to keep the units readable.
+Buffered stream previews never infer speed from the pace at which text is replayed.

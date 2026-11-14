@@ -783,11 +783,11 @@ return function(env)
 				return
 			end
 			local summary = preview.summary
-			status.Text = string.format("Ready to import\n%s · %s\nActive provider: %s\nPermission mode: %s · %s\n%s · Bridge %s",
+			status.Text = string.format("Ready to import\n%s · %s\nActive provider: %s\nPermission mode: %s · %s\n%s · Desktop discovery %s",
 				util.pluralise(summary.providers, "provider"), util.pluralise(summary.keys, "API key"),
 				util.ellipsis(summary.active, 64), permissions.MODE_LABELS[summary.permissionMode] or summary.permissionMode,
 				util.pluralise(summary.rules, "rule"), util.pluralise(summary.memory, "memory entry"),
-				summary.bridgeEnabled and "enabled" or "disabled")
+				summary.bridgeAutoDiscover and "enabled" or "disabled")
 			status.Text = status.Text .. (summary.credentialsIncluded == false
 				and "\nCredentials excluded: enter your credentials again after import."
 				or "\nThis copy can include private credentials.")
@@ -942,12 +942,7 @@ return function(env)
 		if #actions > 0 then R.actions(out, actions) end
 
 		local inbound = build.section("Import",
-			"Reads a file from the client's folder and applies the settings in it. Providers, "
-			-- Being explicit about this: an import that silently replaced a working key
-			-- with "...abcd" from an export would break the client in a way that looks
-			-- like the provider rejecting you.
-			.. "keys and the bridge token are never imported, because an export does not "
-			.. "contain them.")
+			"Reads a preferences file from the client's folder and applies its settings. Provider settings and keys are excluded from this export.")
 		local importResult = P.text(inbound, {
 			name = "ImportResult",
 			text = "",
@@ -1007,6 +1002,7 @@ return function(env)
 			options = {
 				{ value = "chat", label = "Chat" },
 				{ value = "cowork", label = "Cowork" },
+				{ value = "vault", label = "Master Vault" },
 				{ value = "providers", label = "Providers" },
 				{ value = "tools", label = "Tools" },
 				{ value = "logs", label = "Logs" },

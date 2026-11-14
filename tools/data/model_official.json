@@ -1,0 +1,404 @@
+{
+	"schema": 1,
+	"reviewed": "2026-11-14",
+	"sources": {
+		"openai-pricing-md": {
+			"url": "https://developers.openai.com/api/docs/pricing.md",
+			"sha256": "a1d8bbfbb336a18083d576e6df763a31648c08043f5d43b3e0e8dd3704c9a8be",
+			"retrievedAt": "2026-11-14T15:41:38.738Z",
+			"lastModified": "Sat, 14 Nov 2026 03:14:22 GMT"
+		},
+		"openai-terra": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-6.1-terra.md",
+			"sha256": "6a73b3e2e941fbe3813636d5bd2d653ff190e49cc3692eaf8daa3bb125c877f8",
+			"retrievedAt": "2026-11-14T15:41:38.978Z"
+		},
+		"openai-terra-announcement": {
+			"url": "https://openai.com/index/introducing-gpt-6-1-terra/",
+			"sha256": "ad709844541efde2b0a765982abd50406fb6aa95c0a339180494740623c63263",
+			"retrievedAt": "2026-11-14T15:49:40.909Z"
+		},
+		"openai-sol": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol.md",
+			"sha256": "02dff9ef937bbc97fb24ba7c936269a549563cfb8a49b91a6ba1c1575d2b77c0",
+			"retrievedAt": "2026-11-14T15:59:44.018Z"
+		},
+		"openai-astra": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
+			"sha256": "a9b79d0f5988c879aea6f4f7adb19743c469ee538d8e19744bdaee13d0c50ae2",
+			"retrievedAt": "2026-11-14T15:59:44.021Z"
+		},
+		"openai-luna": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-6-luna.md",
+			"sha256": "44dcc0a50961150ee700aa701df8d46c59488f003979f3c755c3230bd8a0dfb2",
+			"retrievedAt": "2026-11-14T15:59:44.013Z"
+		},
+		"openai-sol-6": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-6-sol.md",
+			"sha256": "8e3cd3378f0686313dd489ed37347d481d24d4b791e7bd28b1538c4df7762fc4",
+			"retrievedAt": "2026-11-14T15:59:43.987Z"
+		},
+		"openai-sol-5-6": {
+			"url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol.md",
+			"sha256": "c0c7f9a635a572335cfe0ba4ea9b920d9b3d2b40aa1ba9f31f3adff203834637",
+			"retrievedAt": "2026-11-14T15:59:44.015Z"
+		},
+		"openai-latest": {
+			"url": "https://developers.openai.com/api/docs/guides/latest-model.md",
+			"sha256": "b12f5dde985df0ac1e03ea5eaa40dfcdb0e4620a1bf1ae4d78cdd81f8c7f4c3a",
+			"retrievedAt": "2026-11-14T16:04:42.738Z",
+			"lastModified": "Sat, 14 Nov 2026 03:23:21 GMT"
+		},
+		"openai-reasoning": {
+			"url": "https://developers.openai.com/api/docs/guides/reasoning.md",
+			"sha256": "e99ca179fcf18cc452d3d2cf03deeb36db3b542f40d925668debba124dbb5fae",
+			"retrievedAt": "2026-11-14T16:04:42.744Z",
+			"lastModified": "Sat, 14 Nov 2026 03:22:38 GMT"
+		},
+		"anthropic-fable": {
+			"url": "https://platform.claude.com/docs/en/models/fable-5-2/overview.md",
+			"sha256": "da0d5c0705d0cc7ea46f828fb6ba236fd92d0f9ee26c4d223743df6f6d65ac65",
+			"retrievedAt": "2026-11-14T15:41:38.984Z"
+		},
+		"anthropic-mythos": {
+			"url": "https://platform.claude.com/docs/en/models/mythos-5-2/overview.md",
+			"sha256": "ccafb6a4256b2810441d5224dd44a333b308abdce944a60524966e5412221832",
+			"retrievedAt": "2026-11-14T15:41:39.001Z"
+		},
+		"anthropic-effort": {
+			"url": "https://platform.claude.com/docs/en/build-with-claude/effort.md",
+			"sha256": "ed97da9bd61afde31998c4f3e5885c620c6992b8e39fd10d01f1d81baf7efd9b",
+			"retrievedAt": "2026-11-14T15:49:40.798Z"
+		},
+		"google-pricing": {
+			"url": "https://ai.google.dev/gemini-api/docs/pricing",
+			"sha256": "b6388a59c1fbef9e5d5cee321b3e11490f42e9ef9fdbff8e53f6588c9e6c7dcf",
+			"retrievedAt": "2026-11-14T15:36:30.937Z"
+		},
+		"google-thinking": {
+			"url": "https://aistudio.google.com/docs/thinking",
+			"sha256": "950064fdcaf6d2c5d1567b432edd73a5c0ed78395980d06d39f5b2e09db663c3",
+			"retrievedAt": "2026-11-14T15:49:41.883Z"
+		},
+		"google-carbon": {
+			"url": "https://aistudio.google.com/docs/models/gemini-4-carbon",
+			"sha256": "5a09c441bfeea8f3f94c8e09cd0350327e2b191c6e3129d432860d908d4d852c",
+			"retrievedAt": "2026-11-14T15:41:39.920Z"
+		},
+		"google-argon": {
+			"url": "https://aistudio.google.com/docs/models/gemini-4-argon",
+			"sha256": "fa4e4972f9024b30001e72139ced7c10cfc7cd600dd00051e0888fe75db20902",
+			"retrievedAt": "2026-11-14T15:41:40.328Z"
+		},
+		"google-hydrogen": {
+			"url": "https://aistudio.google.com/docs/models/gemini-4-hydrogen",
+			"sha256": "cae30a72b6e9d70cf83545720c8be5fb22c8ce6f8ac76710b53ead324346d504",
+			"retrievedAt": "2026-11-14T15:41:39.900Z"
+		},
+		"google-carbon-new": {
+			"url": "https://aistudio.google.com/docs/whats-new-gemini-4-carbon",
+			"sha256": "c9ccd8a626c07a5db4069d07c722f734762b2720c8c9557b01820635580d1db3",
+			"retrievedAt": "2026-11-14T15:59:44.868Z"
+		},
+		"google-argon-new": {
+			"url": "https://aistudio.google.com/docs/whats-new-gemini-4-argon",
+			"sha256": "d1e02ae88554677df3e699caa78f1e859f55d1a33606de4d06182de9ea8027fa",
+			"retrievedAt": "2026-11-14T15:59:45.086Z"
+		},
+		"google-hydrogen-new": {
+			"url": "https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen",
+			"sha256": "04080be897270f73ffd5b17024538b16d14f064d7194285fa4c80d21fe2a80bc",
+			"retrievedAt": "2026-11-14T15:59:44.812Z"
+		},
+		"deepseek-pricing": {
+			"url": "https://api-docs.deepseek.com/quick_start/pricing",
+			"sha256": "5126b5f69e78f6dacb0a8bfc91e0cf0b705416b0b918b12e1f45f66b122e7741",
+			"retrievedAt": "2026-11-14T15:36:29.596Z",
+			"lastModified": "Fri, 13 Nov 2026 15:02:12 GMT"
+		}
+	},
+	"providers": {
+		"openai": {
+			"gpt-6.1-terra": {
+				"source": "openai-terra",
+				"price": {
+					"input": 1,
+					"output": 5,
+					"cacheRead": 0.05,
+					"cacheWrite": 1.25,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 2,
+							"output": 7.5,
+							"cacheRead": 0.1,
+							"cacheWrite": 2.5
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true,
+				"released": "2026-10-26",
+				"pricingNote": "Standard text-token rates; 30-minute cache writes. Prompts above 272000 input tokens use the long-context rate for the full request."
+			},
+			"gpt-6.1-sol": {
+				"source": "openai-sol",
+				"price": {
+					"input": 2,
+					"output": 10,
+					"cacheRead": 0.1,
+					"cacheWrite": 2.5,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 4,
+							"output": 15,
+							"cacheRead": 0.2,
+							"cacheWrite": 5
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true
+			},
+			"gpt-6-astra": {
+				"source": "openai-astra",
+				"price": {
+					"input": 10,
+					"output": 50,
+					"cacheRead": 1,
+					"cacheWrite": 12.5,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 20,
+							"output": 75,
+							"cacheRead": 2,
+							"cacheWrite": 25
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true
+			},
+			"gpt-6-sol": {
+				"source": "openai-sol-6",
+				"price": {
+					"input": 2,
+					"output": 10,
+					"cacheRead": 0.2,
+					"cacheWrite": 2.5,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 4,
+							"output": 15,
+							"cacheRead": 0.4,
+							"cacheWrite": 5
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true
+			},
+			"gpt-6-luna": {
+				"source": "openai-luna",
+				"price": {
+					"input": 0.1,
+					"output": 0.5,
+					"cacheRead": 0.01,
+					"cacheWrite": 0.125,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 0.2,
+							"output": 0.75,
+							"cacheRead": 0.02,
+							"cacheWrite": 0.25
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true
+			},
+			"gpt-5.6-sol": {
+				"source": "openai-pricing-md",
+				"price": {
+					"input": 4,
+					"output": 20,
+					"cacheRead": 0.4,
+					"cacheWrite": 5,
+					"expiresAt": 1796083200000,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 8,
+							"output": 30,
+							"cacheRead": 0.8,
+							"cacheWrite": 10
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Promotional Standard text-token rates through November 30, 2026; estimates become unknown on December 1 until reviewed again."
+			},
+			"gpt-5.6": {
+				"source": "openai-sol-5-6",
+				"price": {
+					"input": 4,
+					"output": 20,
+					"cacheRead": 0.4,
+					"cacheWrite": 5,
+					"expiresAt": 1796083200000,
+					"tiers": [
+						{
+							"above": 272000,
+							"input": 8,
+							"output": 30,
+							"cacheRead": 0.8,
+							"cacheWrite": 10
+						}
+					]
+				},
+				"context": 1050000,
+				"input": 922000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "The officially documented gpt-5.6 alias routes to GPT-5.6 Sol. Promotional rates end November 30, 2026."
+			}
+		},
+		"anthropic": {
+			"claude-fable-5-2": {
+				"source": "anthropic-fable",
+				"price": {
+					"input": 8,
+					"output": 40,
+					"cacheRead": 0.2,
+					"cacheWrite": 10
+				},
+				"context": 1000000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true,
+				"released": "2026-11-09",
+				"pricingNote": "Standard text-token rates and five-minute cache writes; one-hour writes cost 16 USD per million and are outside this estimate."
+			},
+			"claude-mythos-5-2": {
+				"source": "anthropic-mythos",
+				"price": {
+					"input": 8,
+					"output": 40,
+					"cacheRead": 0.2,
+					"cacheWrite": 10
+				},
+				"context": 1000000,
+				"output": 128000,
+				"tools": true,
+				"reasoning": true,
+				"released": "2026-11-09",
+				"pricingNote": "Verified organizations only. Standard text-token rates and five-minute cache writes; one-hour writes are outside this estimate."
+			}
+		},
+		"google": {
+			"gemini-4-carbon": {
+				"source": "google-pricing",
+				"price": {
+					"input": 2,
+					"output": 10,
+					"cacheRead": 0.1,
+					"expiresAt": 1796083200000
+				},
+				"context": 1048576,
+				"output": 65536,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Introductory Standard rates through November 30, 2026; implicit cache reads only. December 1 list rates are 4 input, 20 output, 0.2 cache-read USD per million; estimates expire on that date pending review."
+			},
+			"gemini-4-argon": {
+				"source": "google-pricing",
+				"price": {
+					"input": 2,
+					"output": 10,
+					"cacheRead": 0.1,
+					"expiresAt": 1796083200000
+				},
+				"context": 1048576,
+				"output": 65536,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Introductory Standard rates through November 30, 2026; implicit cache reads only. December 1 list rates are 4 input, 20 output, 0.2 cache-read USD per million; estimates expire on that date pending review."
+			},
+			"gemini-4-hydrogen": {
+				"source": "google-pricing",
+				"price": {
+					"input": 1.5,
+					"output": 7.5,
+					"cacheRead": 0.075
+				},
+				"context": 1048576,
+				"output": 65536,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Paid-tier Standard text-token rates and implicit cache reads. Published free-account allowances do not establish that every keyed request is free."
+			}
+		},
+		"deepseek": {
+			"deepseek-flash": {
+				"source": "deepseek-pricing",
+				"price": null,
+				"context": 1048576,
+				"output": 393216,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Rates depend on UTC peak hours and Chinese public holidays. Peak hours are 01:00-04:00 and 06:00-10:00 Monday-Friday excluding those holidays; fixed text-token estimates are unavailable."
+			},
+			"deepseek-v4-flash": {
+				"source": "deepseek-pricing",
+				"price": null,
+				"context": 1048576,
+				"output": 393216,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Rates depend on UTC peak hours and Chinese public holidays. Peak hours are 01:00-04:00 and 06:00-10:00 Monday-Friday excluding those holidays; fixed text-token estimates are unavailable."
+			},
+			"deepseek-v4-flash-vision-exp": {
+				"source": "deepseek-pricing",
+				"price": null,
+				"context": 1048576,
+				"output": 393216,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Rates depend on UTC peak hours and Chinese public holidays. Peak hours are 01:00-04:00 and 06:00-10:00 Monday-Friday excluding those holidays; fixed text-token estimates are unavailable."
+			},
+			"deepseek-v4-pro": {
+				"source": "deepseek-pricing",
+				"price": null,
+				"context": 1048576,
+				"output": 393216,
+				"tools": true,
+				"reasoning": true,
+				"pricingNote": "Rates depend on UTC peak hours and Chinese public holidays. Peak hours are 01:00-04:00 and 06:00-10:00 Monday-Friday excluding those holidays; fixed text-token estimates are unavailable."
+			}
+		}
+	}
+}

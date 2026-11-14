@@ -56,6 +56,9 @@ case("every adapter refuses another native request after a challenged refusal", 
 		f.record.authStyle, f.record.apiKey = "bearer", "synthetic-first-key"
 		f.record.apiKeys = { "synthetic-first-key", "synthetic-second-key" }
 		f.record.api = adapter == "anthropic" and "anthropic" or adapter == "gemini" and "gemini" or "openai"
+		if adapter == "responses" then
+			f.record.baseUrl, f.record.model, f.record.models = "https://api.openai.com/v1", "gpt-6.1-sol", { "gpt-6.1-sol" }
+		end
 		f.h.http.handler = function()
 			f.denied = true
 			return { StatusCode = 429, Body = '{"error":{"message":"rate limited"}}' }

@@ -1,6 +1,7 @@
 -- Per-key usage/pause controls and conversation counts use the live accounting store.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("coding_fixture")
+local authenticate = require("password_fixture")
 local suite = F.suite("Request usage UI")
 local case, check = suite.case, suite.check
 local FIRST, SECOND = "fixture-first-1111", "fixture-second-2222"
@@ -153,7 +154,7 @@ for _, size in ipairs({ { 1280, 840 }, { 390, 844 }, { 844, 220 } }) do
 		local h = require("env").new()
 		h.services.UserInputService.TouchEnabled, h.services.UserInputService.MouseEnabled = size[1] ~= 1280, size[1] == 1280
 		h.setViewport(size[1], size[2])
-		local handle = assert(h.boot()); h.settle(0.5)
+		local handle = assert(h.boot()); authenticate(h, handle); h.settle(0.5)
 		local env, app = handle.env, handle.app
 		local function find(name) return h.byName(name, app.screen) end
 		local sessions = env.require("agent/session")

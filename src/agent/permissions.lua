@@ -38,7 +38,7 @@ return function(env)
 		readonly = "Reads are allowed; writes and execution are denied unless a tool rule overrides this.",
 		ask = "Reads run freely; writes and execution request approval unless a tool rule overrides this.",
 		auto = "Reads and writes run freely; execution and deletion ask unless a tool rule overrides this.",
-		full = "Reads, writes and execution run without approval unless a tool rule says otherwise.",
+		full = "Reads, writes and execution run without approval unless a tool rule says otherwise. Required user questions still use ask_user.",
 	}
 
 	function M.mode()

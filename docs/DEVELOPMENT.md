@@ -18,6 +18,8 @@ The established client UI uses `src/ui`; new script interfaces use
 | `src/tools/` | Model-facing tools |
 | `src/ui/` | Existing Roblox application |
 | `ui-lib/` | Standalone script UI library and examples |
+| `vault/` | Reviewed Markdown starters for the native Master Vault |
+| `mods/` | Portable visual and full-access script mod examples |
 | `bridge/`, `desktop/` | Browser/local bridge and Windows launcher |
 | `test/` | Offline behavior and native syntax harnesses |
 | `tools/` | Deterministic generators and verification commands |
@@ -48,6 +50,16 @@ For client changes, build after review:
 luajit tools/bundle.lua --native
 ```
 
+For model metadata changes, first review the captured feeds and official corrections,
+refresh and review `tools/data/model_metadata.json`, then run
+`node tools/sync_pricing.js`. Inspect `src/provider/model_data.lua` before bundling.
+The client build does not refresh model catalogs or generate their Lua snapshot.
+
+The bundle build also invokes `tools/build_master_vault.lua` to generate the
+read-only starter module from `vault/`. Review every changed starter and metadata
+input first. User notes live under the executor's `UAI/vault/notes/` and are never
+build inputs or update targets.
+
 Inspect `dist/uai.lua`, its manifest and any generated guide reference. Then run:
 
 ```text
@@ -57,8 +69,11 @@ luajit test/run.lua --native
 ```
 
 Add the relevant focused suites from `test/`. Use the official `luau-compile --null`
-for actual Luau syntax where available. `LUAJIT` and `LUAU_COMPILE` override tool paths
-in the native runner. The full `--verify-only` workflow is available for deliberate
+for actual Luau syntax where available. `LUAJIT`, `LUAU_COMPILE` and `PYTHON` override
+tool paths in the native runner. Its independent crypto interoperability stage needs
+Python's `cryptography` package with AESSIV support and supplies the JSON oracle's
+fixture input; the CPU benchmark is reported as a separate stage.
+The full `node tools/test_native.js --verify-only` workflow is available for deliberate
 whole-client verification after output review; it need not run after every small fix.
 
 The root website sources are `index.html`, `style.css` and `script.js`.

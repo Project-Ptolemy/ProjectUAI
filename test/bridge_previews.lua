@@ -140,7 +140,9 @@ case("every bridge provider adapter forwards live fragments without replaying it
 			f.record.api = "anthropic"
 			f.finalBody = f.h.json.encode({ type = "message", model = "fixture-model", content = { { type = "text", text = "Final answer" } }, stop_reason = "end_turn" })
 		elseif adapter == "responses" then
-			f.finalBody = f.h.json.encode({ id = "resp_fixture", status = "completed", output = { { type = "message", role = "assistant", content = { { type = "output_text", text = "Final answer" } } } } })
+			f.record.model, f.record.baseUrl = "gpt-6.1-sol", "https://api.openai.com/v1"
+			f.finalBody = f.h.json.encode({ object = "response", id = "resp_fixture", model = f.record.model,
+				status = "completed", output = { { type = "message", role = "assistant", content = { { type = "output_text", text = "Final answer" } } } } })
 		elseif adapter == "gemini" then
 			f.record.api, f.record.model = "gemini", "gemini-2.5-flash"
 			f.finalBody = 'data: ' .. f.h.json.encode({ candidates = { { content = { parts = { { text = "Final answer", thoughtSignature = "private-final-signature" } } }, finishReason = "STOP" } } }) .. '\n\n'

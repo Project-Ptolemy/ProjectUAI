@@ -1,12 +1,12 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock, json = require("env"), require("json")
+local desktop = require("automatic_bridge_fixture")
 local passed = 0
 local function check(label, value) assert(value, label); passed = passed + 1; print("ok " .. label) end
 local function setup()
 	local h = envMock.new()
-	local app = assert(h.boot()); h.settle(1)
-	app.config.set("bridge.token", "test-bridge-token")
-	app.config.set("bridge.enabled", true, { quiet = true })
+	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(1)
+	desktop.inject(app.env, { instance = "server-one" })
 	-- This transport-only fixture supplies the effective route directly. Live
 	-- connection-driven runtime transitions are exercised in bridge_lifecycle.lua.
 	app.config.set("bridge.runtime", "web", { quiet = true })
@@ -24,7 +24,8 @@ do
 		if req.url:match("/api/inference$") then
 			local input = json.decode(req.body); submissions = submissions + 1
 			if not jobs[input.id] then jobs[input.id] = input; starts = starts + 1 end
-			check("provider headers are forwarded only inside authenticated body", input.headers.Authorization == "Bearer provider-test" and req.headers.Authorization == "Bearer test-bridge-token")
+			check("provider headers are forwarded only inside authenticated body", input.headers.Authorization == "Bearer provider-test"
+				and req.headers.Authorization == "Bearer " .. ("a"):rep(64))
 			if submissions == 1 then error("submission response lost") end
 			return { StatusCode = 202, Body = json.encode({ id = input.id, state = "running" }) }
 		end
@@ -84,7 +85,7 @@ do
 end
 
 do
-	local h = envMock.new(); local app = assert(h.boot()); h.settle(1)
+	local h = envMock.new(); local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(1)
 	local seen, acks, state, receivedText = 0, 0, nil, nil
 	local original = app.sessions.current().send
 	app.sessions.current().send = function() seen = seen + 1; return true end
@@ -98,7 +99,7 @@ do
 		end
 		return { StatusCode = 200, Body = '{}' }
 	end
-	app.config.set("bridge.token", "token"); app.config.set("bridge.enabled", true); h.settle(3)
+	desktop.connect(h, app); h.settle(3)
 	check("duplicate browser commands execute once", seen == 1 and acks > 0)
 	check("web state includes real controls and theme", state and state.protocol == 2 and state.theme.canvas and state.settings.agent and state.tools[1].parameters)
 	check("provider credentials are not exposed in state", not json.encode(state):find('apiKey', 1, true))
@@ -109,7 +110,7 @@ do
 	app.destroy(); h.settle(1); check("bridge callbacks stay clean", #h.errors() == 0)
 end
 do
-	local h = envMock.new(); local app = assert(h.boot()); h.settle(1)
+	local h = envMock.new(); local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(1)
 	local commands = app.env.require("net/bridge_commands")
 	local session = app.sessions.current()
 	check("runtime cannot select Web without a connection", not pcall(commands.run, { type = "runtime", value = "web" }))

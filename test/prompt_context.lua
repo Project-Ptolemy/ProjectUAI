@@ -113,7 +113,10 @@ case("the loop scopes prompt guidance to the same catalogue sent to the provider
 	local session = assert(f.env.require("agent/session").create({ ephemeral = true, toolFilter = { memory_read = true } }))
 	assert(f.env.require("agent/state").remember("boat", "Private historical detail"))
 	f.run(function() return f.env.require("agent/loop").run(session, "What is remembered?") end)
-	check("the wire catalogue honors the session filter", #captured.tools == 1 and captured.tools[1]["function"].name == "memory_read")
+	local declaration = captured.tools[1] and captured.tools[1]["function"]
+	local names = declaration and declaration.parameters.properties.name.enum
+	check("the focused wire catalogue exposes only the scoped memory action", #captured.tools == 1
+		and declaration.name == "uai_context" and #names == 1 and names[1] == "memory_read")
 	local system = captured.messages[1].content
 	check("the same filter controls specialized prompt text", has(system, "Saved memory keys") and not has(system, "Private historical detail")
 		and not has(system, "Skills:") and not has(system, "Files and source") and not has(system, "Modular projects:"))

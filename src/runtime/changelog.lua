@@ -19,6 +19,60 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "4.0.0",
+			revision = "2026-11-14-workspaces-and-mods",
+			date = "November 14, 2026",
+			title = "a major release",
+			highlights = "Master Vault, persistent micro-goals and shareable full-access UI mods start a new focus: an agent workspace you can keep, customize and build on.",
+			sections = {
+				{ category = "added", label = "Master Vault", items = {
+					"Browse a native technical knowledge library without a bridge, Obsidian installation or provider request.",
+					"Save Markdown recipes, bug fixes, remote contracts, instance configurations, project notes and references with tags, sources and verification evidence.",
+					"Scope notes to all games, an exact PlaceId or a named project. Search relevant notes and read only the material needed for the current task.",
+					"Bundled starter notes supply reusable technical guidance. Copy a starter into your own vault to adapt it; updates preserve user notes.",
+					"Create, edit, import and export notes from the native workspace. Revision and full-content checks protect externally changed files; unconfirmed saves retain drafts for review.",
+				} },
+				{ category = "added", label = "Persistent micro-goals", items = {
+					"Break a conversation objective into small tasks with stable IDs, dependencies, completion criteria, evidence and blockers.",
+					"Manage goals through the native Micro-goals board or agent tools. Pause, resume and reorder work without starting inference automatically.",
+					"Dependencies and evidence govern completion. Reopening prerequisites invalidates dependent results, and stale edits cannot replace newer progress.",
+					"Boards survive conversation reload and context compaction, independently of existing task lists and script validation workflows.",
+				} },
+				{ category = "added", label = "Shareable UI mods", items = {
+					"Create appearance presets and workspace panels, or write unrestricted native Lua mods with the full client, Roblox and executor APIs.",
+					"Save and import disabled proposals. Apply directly activates the exact saved revision under normal tool permissions, including for authorized Full access workers.",
+					"Edit and restore retained versions, export complete portable JSON/source, and share packages for others to import and review.",
+					"Registered cleanup and remount callbacks belong to one lifetime. Outstanding native startup, helper callbacks and cleanup stay tracked until completion; arbitrary effects cannot be rolled back automatically.",
+					"Fresh clients never automatically run script selections. Use safeMode=true or UAI.recoverUi() to disable mods and recover the ordinary appearance.",
+				} },
+				{ category = "improved", label = "Delegation and response rate", items = {
+					"The main agent can delegate Read only or Full access workers. Parent conversation scope, tool availability and explicit denials remain authoritative.",
+					"Completed native and Cowork replies show a quiet tk/s request average using provider output counts and successful request wall time. Missing measurements stay hidden; buffered previews never estimate speed.",
+				} },
+				{ category = "improved", label = "Automatic desktop connection", items = {
+					"Removed manual native bridge ports, tokens, Enabled controls and executor downloads. Start Cowork in the Windows app and let the client discover it automatically.",
+					"Legacy manual settings are discarded on load, save and transfer. Disconnect and Reconnect control discovery; mobile relay retains its separate pairing flow.",
+				} },
+				{ category = "improved", label = "Questions and continuity", items = {
+					"The shared system instructions require ask_user for genuine questions and required user choices, including under Allow everything.",
+					"Unanswered or dismissed questions explicitly provide no answer or consent. Agents can continue independent work and report decisions still required.",
+					"Master Vault and micro-goal actions use the existing tool families, permissions, scopes, cancellation and result pagination.",
+					"Saved notes remain historical evidence. Current instructions and observations take precedence; reading a note never executes its examples.",
+				} },
+				{ category = "improved", label = "Models and pricing", items = {
+					"Refresh 1,855 exact model/provider entries across 15 providers from November 14 feeds and reviewed official sources, including current OpenAI, Claude and Gemini releases.",
+					"Retain documented context tiers, cache rates and reasoning settings. Scheduled prices stay unknown, and introductory estimates expire at their published end.",
+					"Documented direct OpenAI GPT-6 tool routes use Responses with ordered signed history; provider request and tool limits remain effective.",
+				} },
+				{ category = "fixed", label = "Storage and release verification", items = {
+					"Workspace migration preserves Vault notes and UI mod storage. Changed builds wait for pending native work and retained knowledge, goal and mod drafts.",
+					"Browser tools with an id argument now submit to the correct form instead of losing the Run action.",
+					"Master Vault, Micro-goals and UI mods have sidebar icons. Workspace forms fit their content and usable viewport, with scrolling for long editors, metadata and history.",
+					"Starter content and client artifacts are generated deterministically from reviewed source. Verification covers offline behavior and official Luau syntax; native Roblox rendering and host behavior remain untested.",
+				} },
+			},
+		},
+		{
 			version = "3.8.0",
 			revision = "2026-10-31-conversation-layout",
 			date = "October 31, 2026",

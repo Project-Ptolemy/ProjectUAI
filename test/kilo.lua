@@ -1,6 +1,7 @@
 -- Offline quota signaling and optional capability lifecycle.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local desktop = require("automatic_bridge_fixture")
 local suite = F.suite("Kilo recovery")
 local case, check = suite.case, suite.check
 
@@ -42,7 +43,7 @@ case("bridge refreshes and clears its Kilo capability", function()
 		return { StatusCode = 204, Body = "" }
 	end
 	local bridge, config = f.env.require("net/bridge"), f.env.require("runtime/config")
-	config.set("bridge.token", "fixture-token"); config.set("bridge.enabled", true); f.h.settle(0.5)
+	desktop.connect(f.h, { config = config, bridge = bridge })
 	check("hello exposes standby", bridge.status().kilo and bridge.status().kilo.state == "standby")
 	state = "ready"; f.h.settle(5)
 	check("later hello exposes readiness", bridge.status().kilo and bridge.status().kilo.available)

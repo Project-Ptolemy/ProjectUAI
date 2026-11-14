@@ -8,6 +8,13 @@ local function scenario(name, fn)
 	local ok, err = pcall(fn)
 	if ok then print("  ok   " .. name) else failed = failed + 1; print("  FAIL " .. name .. ": " .. tostring(err)) end
 end
+local function configureProvider(env)
+	local providers = env.require("provider/registry")
+	local record = providers.blank("custom")
+	record.label, record.baseUrl, record.apiKey = "Attachment fixture", "https://attachments.fixture/v1", "fixture-key"
+	record.model, record.models = "attachment-fixture-model", { "attachment-fixture-model" }
+	assert(providers.save(record)); assert(providers.setActive(record.id))
+end
 local function fixture()
 	local h = envMock.new()
 	local env = { services = h.services, hs = h.services.HttpService, plr = h.localPlayer, players = h.services.Players,
@@ -24,6 +31,7 @@ local function fixture()
 	local registry = env.require("agent/registry"); registry.loaded = true
 	for _, tool in ipairs(env.require("tools/fs")) do tool.group = "fs"; registry.register(tool) end
 	env.require("runtime/config").set("permissions.mode", "full")
+	configureProvider(env)
 	local sessions = env.require("agent/session")
 	local session = sessions.create({ id = "attachment-test" }); sessions.threads[session.id] = session; sessions.activeId = session.id
 	return h, env, session, sent, registry
@@ -159,6 +167,11 @@ end)
 
 scenario("the native composer sends attachment-only input and retains rejected drafts", function()
 	local h = envMock.new(); local app = assert(h.boot()); h.settle(1)
+	local allowed
+	h.sched.spawn(function() allowed = app.config.continueWithoutEncryption() end)
+	h.settle(1)
+	assert(allowed and app.config.vaultStatus().ready, "Attachment fixture must complete credential setup")
+	configureProvider(app.env); h.settle(0.2)
 	local composer, session = app.app.chatPanel.composer, app.sessions.current()
 	composer.field.set(body)
 	check("long paste becomes a real attachment", #composer.attachments == 1 and composer.field.get() == "")

@@ -10,6 +10,9 @@ return function(env)
 		"run_luau", "check_luau", "script_list", "script_source",
 		"instance_query", "instance_get", "instance_get_many", "instance_set", "instance_create", "instance_destroy", "instance_clone", "instance_parent", "instance_tagged", "instance_tree",
 		"todo_read", "todo_write", "memory_read", "memory_write",
+		"micro_goals_read", "micro_goals_update",
+		"vault_list", "vault_read", "vault_export",
+		"ui_mod_list", "ui_mod_read", "ui_mod_export", "ui_mod_disable",
 		"skills_list", "skills_read",
 		"dispatch_agent", "agent_status", "agent_followup",
 		"conversation_search", "conversation_read", "context_archive",
@@ -32,11 +35,11 @@ return function(env)
 		},
 		build = {
 			label = "Build", hint = "Core plus the code workspace, interface and project tools.",
-			groups = { coding = true, gui = true, templates = true, skills = true },
+			groups = { coding = true, gui = true, templates = true, skills = true, master_vault = true, ui_mods = true },
 		},
 		ui = {
 			label = "Script UI", hint = "Core plus the code workspace and interface tools.",
-			groups = { coding = true, gui = true, skills = true },
+			groups = { coding = true, gui = true, skills = true, master_vault = true, ui_mods = true },
 		},
 		integrate = {
 			label = "Integrations", hint = "Core plus Obsidian vaults, Gravity, Infinite Yield, players, character and world tools.",

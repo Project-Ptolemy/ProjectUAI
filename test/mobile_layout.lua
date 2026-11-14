@@ -16,6 +16,7 @@ local uis = h.services.UserInputService
 uis.TouchEnabled, uis.MouseEnabled, uis.KeyboardEnabled = true, false, false
 h.setViewport(390, 844)
 local app = assert(h.boot(arg[1] or "dist/uai.lua"))
+require("password_fixture")(h, app)
 h.settle(1)
 app.app.show("chat")
 local window, composer = app.app.window, app.app.chatPanel.composer

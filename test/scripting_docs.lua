@@ -13,6 +13,23 @@ for _, candidate in ipairs(client.env.require("tools/script")) do
 end
 check("scripting reference is read-only without host capability requirements", tool and tool.risk == "read" and tool.needs == nil)
 local docs = client.env.require("runtime/script_development_docs")
+local modGuide = assert(docs.sections.native_ui_mods):gsub("%s+", " ")
+check("embedded mod guide teaches direct revision-bound application",
+	modGuide:find("call `ui_mod_apply` directly with its exact `id` and `expected_revision`", 1, true)
+	and modGuide:find("Apply follows normal tool permissions", 1, true)
+	and modGuide:find("Clear Apply requests need no extra question", 1, true))
+check("embedded mod guide keeps genuine questions in Ask under full access",
+	modGuide:find("Genuine questions, clarifications and missing user decisions still use `ask_user`, including under Allow everything", 1, true))
+check("embedded mod guide retains execution preflight and disabled fresh scripts",
+	modGuide:find("rechecks the exact source/revision", 1, true)
+	and modGuide:find("persists the selection", 1, true)
+	and modGuide:find("fresh client keeps saved script selections disabled", 1, true))
+check("embedded mod guide distinguishes authorized worker scopes",
+	modGuide:find("Full access workers can apply within their authorized parent scope", 1, true)
+	and modGuide:find("Read only workers inspect and report", 1, true))
+check("embedded mod guide retires dedicated source-consent instructions",
+	not modGuide:find("always presents the exact current source/spec through `ask_user`", 1, true)
+	and not modGuide:find("Headless workers stage proposals", 1, true))
 local allowed = {}
 for _, section in ipairs(tool.parameters.properties.section.enum) do allowed[section] = true end
 local index = tool.run({})
@@ -23,7 +40,7 @@ end
 allowed.index = nil
 check("schema has no stale section names", next(allowed) == nil)
 local requests, roots = #h.http.log, #h.coreGui:GetChildren()
-for _, name in ipairs({ "quickstart", "environment_model", "native_workflows", "executor_apis", "paths_and_tool_calls", "ui_scripts" }) do
+for _, name in ipairs({ "quickstart", "environment_model", "project_knowledge_and_micro_goals", "native_workflows", "executor_apis", "paths_and_tool_calls", "ui_scripts", "native_ui_mods" }) do
 	local offset, count, parts = 1, 0, {}
 	repeat
 		local result = tool.run({ section = name, offset = offset, limit = 257 })

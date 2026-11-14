@@ -53,6 +53,8 @@ end)
 
 case("request hook edits cannot change saved messages or registered tool schemas", function()
 	local f, requests = fixture(), {}
+	-- This case edits a direct tool schema rather than a focused family envelope.
+	f.session.toolProfile = "all"
 	local definition = { name = "fixture_read", risk = "read", group = "fixture", description = "Inspect fixture",
 		parameters = { type = "object", properties = { target = { type = "string", description = "Original target" } } },
 		run = function() return "Read" end }

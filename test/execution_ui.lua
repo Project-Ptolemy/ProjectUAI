@@ -2,6 +2,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local h = require("env").new()
 local handle = assert(h.boot())
+require("password_fixture")(h, handle)
 h.settle(1)
 local view = handle.app.chatPanel.view
 local checks = 0

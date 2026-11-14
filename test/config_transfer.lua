@@ -95,7 +95,9 @@ config.changed:connect(function(path, value) events[#events + 1] = { path = path
 local body, summary = transfer.export({ includeCredentials = true })
 check("full configuration exports to JSON", type(body) == "string")
 local decoded = assert(util.decode(body))
-local exportedFull = util.deepCopy(full)
+local retainedFull = util.deepCopy(full)
+retainedFull.bridge.enabled, retainedFull.bridge.port, retainedFull.bridge.token = nil, nil, nil
+local exportedFull = util.deepCopy(retainedFull)
 exportedFull.providers.list[1].keyRotation = nil
 local decodedFull = assert(transfer.preview(body)).config
 check("export has a versioned format envelope", decoded.format == transfer.FORMAT and decoded.version == 1 and decoded.exportedAt == 123456 and decoded.appVersion == "test")
@@ -109,7 +111,9 @@ check("export reconstructs names and selected-key policy", same(decodedFull.prov
 check("export reconstructs each paused and active key", same(decodedFull.providers.list[1].keyPaused, { true, false, true }))
 check("export reconstructs opaque usage identities", same(decodedFull.providers.list[1].keyIds, full.providers.list[1].keyIds))
 check("summary counts unique keys across multiline/comma pools", summary.keys == 4 and summary.providers == 2 and summary.active == "Secondary")
-check("summary includes preferences without credentials", summary.permissionMode == "auto" and summary.rules == 3 and summary.memory == 1 and summary.bridgeEnabled == true and not util.encode(summary):find("secret", 1, true))
+check("summary includes preferences without credentials", summary.permissionMode == "auto" and summary.rules == 3 and summary.memory == 1 and summary.bridgeAutoDiscover == false and not util.encode(summary):find("secret", 1, true))
+check("private transfer strips retired manual connection values", decoded.config.bridge.enabled == nil
+	and decoded.config.bridge.port == nil and decoded.config.bridge.token == nil and not body:find("bridge-secret", 1, true))
 check("summary excludes private key names", not util.encode(summary):find("Private account label", 1, true) and summary.keyNames == nil)
 check("export has no persistence or observer side effects", #writes == 0 and #events == 0)
 local preview = assert(transfer.preview(body))
@@ -137,8 +141,9 @@ local legacy = util.deepCopy(full)
 legacy.ui.reduceMotion = "on"
 legacy.bridge.requestTimeout = 35
 local migrated = assert(transfer.preview(util.encode(envelope(legacy))))
-check("older exports retire motion preferences without changing other values", same(migrated.config, full) and legacy.ui.reduceMotion == "on")
-local legacyKeys = util.deepCopy(full)
+check("older exports retire motion and manual connection fields", same(migrated.config, retainedFull)
+	and legacy.ui.reduceMotion == "on" and legacy.bridge.token == "bridge-secret")
+local legacyKeys = util.deepCopy(retainedFull)
 local legacyProvider = legacyKeys.providers.list[1]
 legacyProvider.keyNames, legacyProvider.keyMode, legacyProvider.selectedKey = nil, nil, nil
 legacyProvider.keyPaused = nil
@@ -149,7 +154,7 @@ check("legacy key pools import intact and default to rotation", same(legacyPrevi
 check("legacy imports do not invent pause or usage metadata", legacyPreview.config.providers.list[1].keyPaused == nil
 	and legacyPreview.config.providers.list[1].keyIds == nil
 	and #keyPolicy.requestKeys(legacyPreview.config.providers.list[1]) == 3)
-local rotating = util.deepCopy(full)
+local rotating = util.deepCopy(retainedFull)
 rotating.providers.list[1].keyMode = "rotate"
 check("explicit rotation retains its names and preferred single-key selection", same(assert(transfer.preview(util.encode(envelope(rotating)))).config, rotating))
 local emptyKeys = util.deepCopy(rotating)
@@ -162,12 +167,12 @@ allPaused.providers.list[1].keyPaused = { true, true, true }
 local pausedPreview = assert(transfer.preview(util.encode(envelope(allPaused))))
 check("all-paused pools transfer without silently resuming a key", same(pausedPreview.config, allPaused)
 	and #keyPolicy.requestKeys(pausedPreview.config.providers.list[1]) == 0)
-local selectedPaused = util.deepCopy(full)
+local selectedPaused = util.deepCopy(retainedFull)
 selectedPaused.providers.list[1].keyPaused[2] = true
 local selectedPausedPreview = assert(transfer.preview(util.encode(envelope(selectedPaused))))
 check("a paused selected key remains selected and paused after transfer", same(selectedPausedPreview.config, selectedPaused)
 	and #keyPolicy.requestKeys(selectedPausedPreview.config.providers.list[1]) == 0)
-local maximumName = util.deepCopy(full)
+local maximumName = util.deepCopy(retainedFull)
 maximumName.providers.list[1].keyNames[1] = string.rep("界", 40)
 check("a valid 120-byte UTF-8 key name transfers intact", same(assert(transfer.preview(util.encode(envelope(maximumName)))).config, maximumName))
 local motionEvents, motionWrites = #events, #writes

@@ -75,8 +75,8 @@ case("the live-tested byte format migrates without losing connection or key-pool
 	check("saved credentials use one encrypted envelope and omit reversible envelopes", saved.credentialVault.cipher == "aes-256-siv"
 		and saved.credentialVault.iterations == 100000 and saved.providers.list[1].storedCredentials == nil and saved.identity.storedCredentials == nil)
 	check("saved data omits passwords and every private sentinel", excludes(f.disk()))
-	check("ordinary settings and existing pairing survive", saved.memory.entries[1].value == "Keep this setting"
-		and saved.bridge.token == "bridge-pairing" and saved.relay.token == "relay-pairing")
+	check("ordinary settings and phone pairing survive without desktop credentials", saved.memory.entries[1].value == "Keep this setting"
+		and saved.bridge.token == nil and saved.relay.token == "relay-pairing")
 	f.finish()
 end)
 
@@ -347,7 +347,7 @@ case("private exports preserve encryption and import requires the source passwor
 	local public = assert(transfer.export())
 	local publicData = f.util.decode(public)
 	check("ordinary exports omit vault and connection credentials", publicData.config.credentialVault == nil and excludes(public)
-		and publicData.credentialsIncluded == false and publicData.config.bridge.token == "")
+		and publicData.credentialsIncluded == false and publicData.config.bridge.token == nil and publicData.config.relay.token == "")
 	local private = assert(transfer.export({ includeCredentials = true }))
 	local privateData = f.util.decode(private)
 	check("private exports carry an encrypted vault without plaintext keys", type(privateData.config.credentialVault) == "table" and excludes(private))

@@ -47,6 +47,7 @@ cache["ui/responsive"] = responsive
 cache["ui/icons"] = {}
 local controls = env.require("ui/controls")
 local dispose = env.require("runtime/dispose")
+local disposalBaseline = dispose.count()
 local root = harness.Instance.new("Frame")
 local passed = 0
 local function check(label, condition)
@@ -91,7 +92,7 @@ for _, diameter in ipairs({ 14, 16, 20 }) do
 	check("spinner " .. diameter .. " cancels on destruction", running.tween.PlaybackState == "Cancelled")
 end
 check("destroying spinners releases preference subscriptions", responsive.changed:count() == 0)
-check("destroying spinners releases registered cleanup", dispose.count() == 0)
+check("destroying spinners releases registered cleanup", dispose.count() == disposalBaseline)
 
 responsive.reduceMotion = true
 local before = #captured
@@ -112,14 +113,14 @@ responsive.changed:fire()
 local resumed = captured[#captured]
 check("motion can resume without reviving cancelled tween", resumed ~= first and resumed.target == rotor)
 spinner:Destroy()
-check("resumed motion also cleans up", resumed.tween.PlaybackState == "Cancelled" and dispose.count() == 0 and responsive.changed:count() == 0)
+check("resumed motion also cleans up", resumed.tween.PlaybackState == "Cancelled" and dispose.count() == disposalBaseline and responsive.changed:count() == 0)
 responsive.changed:fire()
 check("destroyed spinner cannot start again", captured[#captured] == resumed)
 
 local unloadSpinner = controls.spinner(root)
 local unloadTween = captured[#captured].tween
 dispose.drain()
-check("unload stops rotation and removes subscriptions", unloadTween.PlaybackState == "Cancelled" and responsive.changed:count() == 0)
+check("unload stops rotation and removes subscriptions", unloadTween.PlaybackState == "Cancelled" and responsive.changed:count() == 0 and dispose.count() == 0)
 unloadSpinner:Destroy()
 harness.settle(1)
 check("no asynchronous cleanup errors", #harness.errors() == 0)

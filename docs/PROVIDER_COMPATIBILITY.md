@@ -1,9 +1,10 @@
 # Provider compatibility and WebSockets
 
-Applies to **3.7.2**, October 29, 2026.
+Applies to **4.0.0**, November 14, 2026.
 
 UAI implements **Chat Completions**, **Anthropic Messages** and **Google Gemini**,
-plus a dedicated **Responses** path for supported OpenCode and AgentRouter models. Custom
+plus a dedicated **Responses** path for five verified direct OpenAI IDs and
+supported OpenCode and AgentRouter models. Custom
 providers can select their matching protocol. This is protocol compatibility, not a guarantee that
 every model, server version, account or proprietary API works.
 
@@ -112,22 +113,30 @@ socket/HTTP dispatch or execute a partially delivered tool call.
 
 ## Model prices and limits
 
-The October 25, 2026 catalog contains 1,760 model entries across 15 providers,
+The reviewed November 14, 2026 catalog contains 1,855 model entries across 15 providers,
 including provider-specific text-token prices and context/reply limits.
+Its source cutoff is **2026-11-14T16:04:42.744Z**. The committed snapshot retains
+27 provenance records: five catalog feeds and 22 reviewed primary references.
 [Models.dev](https://models.dev/api.json) supplies the main catalog, including
 OpenCode's current free-model limits; [LiteLLM](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json)
 fills exact provider gaps. [OpenRouter](https://openrouter.ai/api/v1/models) and
 [Kilo](https://api.kilo.ai/api/gateway/models) supply their own route prices.
 [Cline's promotion feed](https://api.cline.bot/api/v1/ai/cline/recommended-models)
-establishes zero token rates for five exact free IDs; it does not publish their
+establishes zero token rates for three exact free IDs; it does not publish their
 context or reply limits. Metadata enriches discovered or manually entered models;
 it does not offer models the endpoint has not listed.
 
-Kilo's 401 catalog entries apply only to its supported HTTPS gateway routes.
+OpenRouter retains 471 entries, including 460 with published text-token estimates.
+Kilo's 473 catalog entries apply only to its supported HTTPS gateway routes.
 Zero price placeholders without an explicit free flag remain unknown. Cline
 prices apply only to its reserved desktop bridge route, and the bridge still
 checks current free availability before every request. Promotions and account
 allowances can change after this dated snapshot.
+
+The current Cline promotions are `cline-free/nemotron-3.5-super-vl`,
+`cline-free/solar-mini4` and `nvidia/nemotron-3.5-lightning-free`.
+The retired `reflection/beam-free` and `poolside/laguna-s-2.1-free` promotions
+no longer establish free access.
 
 Prices are estimates in USD per million text tokens. Documented cache rates and
 long-context tiers apply to usage estimates. Special service tiers, request fees,
@@ -136,18 +145,126 @@ Unknown endpoint prices remain unknown, and a free route never sets the price of
 its paid counterpart. Included Project UAI Free access is zero cost; a personal
 HCNSEC key does not establish a known price.
 
-Maintainers refresh with `node tools/sync_pricing.js --refresh`, review
-`tools/data/model_metadata.json`, then generate with `node tools/sync_pricing.js`.
+Reviewed primary corrections live in `tools/data/model_official.json` and win
+only for their exact provider/model IDs. They do not infer snapshot names or
+reuse direct-provider prices on resellers.
+
+| Direct model | Input / output USD per million | Documented limits and rate conditions |
+| --- | --- | --- |
+| `gpt-6.1-terra` | 1 / 5 | 1,050,000-token window, 922,000 input, 128,000 output; above 272,000 input tokens, 2 / 7.5 applies to the full request. |
+| `claude-fable-5-2`, `claude-mythos-5-2` | 8 / 40 | 1,000,000-token window, 128,000 output; cache reads 0.2 and five-minute writes 10. Mythos requires eligible verified organizations. |
+| `gemini-4-carbon`, `gemini-4-argon` | 2 / 10 introductory | Rates expire December 1, 2026 UTC; native nonstreaming requests have a separate 32,768 output limit. |
+| `gemini-4-hydrogen` | 1.5 / 7.5 paid tier | Published account free allowances do not establish that every keyed request is free. |
+| `deepseek-flash`, `deepseek-v4-flash`, `deepseek-v4-flash-vision-exp`, `deepseek-v4-pro` | Unknown fixed estimate | 1,048,576-token window, 393,216 output; rates depend on UTC peak hours and Chinese public holidays. |
+
+Terra's documented cache-read/write rates are 0.05 / 1.25 at base and 0.1 / 2.5
+above its input threshold, with 30-minute cache writes. Claude's one-hour cache
+writes and other special billing categories are outside the five-minute estimate.
+The exact `gpt-5.6-sol` and officially documented `gpt-5.6` alias also have
+promotional rates through November 30. At **2026-12-01T00:00:00.000Z**, those rates
+and direct Carbon/Argon introductory rates become unknown pending another review;
+their model limits and controls remain available. Reseller estimates retain
+their own published scope.
+
+OpenRouter's `min_prompt_tokens` boundary is inclusive. Its 272,000-token Terra
+tier therefore starts at 272,000, while the direct vendor's documented
+"above 272,000" tier starts at 272,001. Missing tier cache categories inherit
+the published base category. Duplicate or incomplete thresholds and unsupported
+conditions become unknown. OpenRouter's `minimax/minimax-m3.1-flash`,
+`tencent/hy4-preview` and `tencent/hy3` use UTC schedules and have unknown fixed
+estimates while their catalog limits remain available.
+
+Maintainers first capture and manually review the catalog feeds, primary model
+references and `tools/data/model_official.json`, including each receipt's HTTPS
+URL, SHA-256 and retrieval timestamp. The primary review day must match those
+captured UTC timestamps. Reuse reviewed captures without refetching them:
+
+```powershell
+node tools/sync_pricing.js --refresh --sources-dir refer/model-refresh-4.0.0
+```
+
+That command verifies feed and primary-document bytes against their receipts and
+authored primary provenance, then writes only `tools/data/model_metadata.json`.
+For a new review, capture the new evidence and update the primary input first;
+plain `--refresh` fetches current catalog feeds and requires a matching primary
+review day. Review the resulting snapshot before generating Lua with
+`node tools/sync_pricing.js`.
 The refresh may include a sanitized CLI catalog using `--opencode-catalog <file>`
 and `--opencode-version <version>`. Inspect `src/provider/model_data.lua` before
 verification; `node tools/sync_pricing.js --check` checks freshness offline.
 Rebuild the client after any catalog change.
 
+Primary model and request references reviewed November 14:
+
+- [GPT-6.1 Terra model](https://developers.openai.com/api/docs/models/gpt-6.1-terra.md),
+  [release announcement](https://openai.com/index/introducing-gpt-6-1-terra/),
+  [OpenAI pricing](https://developers.openai.com/api/docs/pricing.md)
+- [Claude Fable 5.2](https://platform.claude.com/docs/en/models/fable-5-2/overview.md),
+  [Claude Mythos 5.2](https://platform.claude.com/docs/en/models/mythos-5-2/overview.md)
+- [Google pricing](https://ai.google.dev/gemini-api/docs/pricing),
+  [DeepSeek pricing and scheduled rates](https://api-docs.deepseek.com/quick_start/pricing)
+
+## Direct OpenAI Responses
+
+On the exact HTTPS `api.openai.com/v1` route, UAI proactively uses `/responses`
+for `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-sol` and `gpt-6-luna`.
+The saved API remains Chat Completions or its legacy default; standard port 443
+and full official `/chat/completions` or `/responses` URLs are supported.
+Endpoint replacement retains configured query parameters. Namespaced aliases,
+invented snapshots, alternate ports, custom paths/hosts and other API kinds do
+not inherit this routing. Existing GPT-5.6 and custom Chat routes keep their protocol.
+Direct raw `model` overrides must match the selected model; a mismatch fails
+before dispatch so returned opaque state cannot be saved under another model's scope.
+
+OpenAI documents tool calling through Responses for Astra, Sol 6.1 and Terra.
+Sol 6 and Luna also need Responses for reasoning with tools. Direct requests
+default to `store=false`, follow the resolved streaming preference and request
+`reasoning.encrypted_content` in `include`, even when Show reasoning is off.
+Compatible raw include entries are retained. Human-readable reasoning summaries
+use `auto` only when enabled. The legacy UAI gateway socket is unavailable for
+these requests; they use HTTP or the selected bridge/companion transport.
+
+Effort uses `reasoning.effort`. Astra and Sol 6.1 accept low, medium, high, xhigh
+and max; Terra, Sol 6 and Luna also accept none. With reasoning enabled, unsupported
+sampling and logprob fields are omitted, including `message.output_text.logprobs`
+from include. An explicit manual sampling override remains effective.
+Tool definitions and named choices use the flat Responses shape. Function
+schemas default to `strict=false` so optional arguments remain optional;
+explicit strict settings survive. Documented and temporary output limits apply
+after raw provider/request overrides and after declaration-limit repair.
+
+The complete provider output array is copied and replayed in its original order,
+including encrypted reasoning and matching function calls, through normal context
+saves and reloads. Replay requires the same endpoint, query, protocol and model.
+Its persisted scope is a domain-separated SHA-256 comparison token; URL query
+credentials are never copied into that scope. A changed scope translates the
+ordinary conversation without replaying foreign opaque items.
+
+Each retained output array is limited to 256 items, 2 MiB encoded data, 16,384
+structure nodes, depth 16 and 256 fields per table. Malformed, cyclic or oversized
+saved state fails before dispatch. Invalid final output fails before returned
+tools can reach the agent. Incomplete streams, provider errors and uncertain
+transport outcomes retain the existing terminal no-replay behavior.
+
+- [Current GPT request compatibility](https://developers.openai.com/api/docs/guides/latest-model.md)
+- [Stateless encrypted reasoning and tool continuations](https://developers.openai.com/api/docs/guides/reasoning.md)
+
+## Current Anthropic thinking controls
+
+Direct `claude-fable-5-2` and `claude-mythos-5-2` Messages requests use adaptive
+thinking, omit unsupported sampling and offer five effort levels with high as
+the provider default. Provider default omits the effort override and keeps
+thinking enabled. On the exact official Anthropic route, disabled/budget thinking,
+`budget_tokens` and forced any/named tool choices are rejected during preparation
+before HTTP dispatch. Auto and None remain supported. Raw `params` and `extra`
+retain precedence and receive the same validation. Reseller IDs and custom routes
+retain their own request behavior.
+
 ## Image input
 
 PNG, JPEG and WebP attachments from the web bridge are delivered as actual image
 content: Chat Completions receives `image_url` data URLs, Messages receives
-base64 `image` blocks, Gemini receives native `inlineData`, and the OpenCode
+base64 `image` blocks, Gemini receives native `inlineData`, and the supported
 Responses path receives `input_image` blocks. Select a model and endpoint that support vision. Text-only
 models remain usable for conversations without image attachments.
 
@@ -187,7 +304,7 @@ An ordinary text reply does not prove tool support. Agent use also needs a model
 and context window large enough for the selected tools and conversation.
 
 Ollama's native `/api/chat` and `/api/generate`, OpenAI
-Realtime, generic Responses endpoints, legacy Completions, Bedrock's native API and other proprietary
+Realtime, unsupported Responses endpoints, legacy Completions, Bedrock's native API and other proprietary
 formats are not adapters in this client. Use a compatible surface or an external
 adapter. Known mismatched native paths produce an actionable diagnostic.
 
@@ -213,22 +330,39 @@ does not contain base64 picture data. Gemini's signed model parts persist with
 their exact signed boundaries and endpoint/model scope so a restored tool exchange
 can continue. Signatures from another model or endpoint are never reused.
 
-Documented Gemini 3 and Gemini 4 Argon effort controls map to native `thinkingLevel`; Gemini 2.5 uses
+Documented Gemini 3 and Gemini 4 Carbon/Argon/Hydrogen effort controls map to native `thinkingLevel`; Gemini 2.5 uses
 `thinkingBudget`. **Provider default** omits the effort override. Gemini 3 native
 requests leave temperature at Google's recommended default unless explicitly set;
-the documented Gemini 3.6/3.7/3.8 Flash and Gemini 4 Argon models omit unsupported sampling parameters.
+the documented Gemini 3.6/3.7/3.8 Flash and all three current Gemini 4 models omit unsupported sampling parameters.
 The model's Temperature handling control can explicitly select Auto, Send or Omit.
 Provider `params` and request `extra` accept native fields such as
 `generationConfig.thinkingConfig`; the final output ceiling still applies.
 
-Protocol references reviewed on 2026-10-17:
+The November 14 primary references distinguish the Gemini 4 native request limits:
+
+| Model | Shared token window | Streaming output | Native nonstreaming output | Effort / provider default |
+| --- | --- | --- | --- | --- |
+| `gemini-4-carbon` | 1,048,576 | 65,536 | 32,768 | low, medium, high / medium |
+| `gemini-4-argon` | 1,048,576 | 65,536 | 32,768 | low, medium, high / medium |
+| `gemini-4-hydrogen` | 1,048,576 | 65,536 | 65,536 | low, medium, high, xhigh / high |
+
+The Carbon/Argon nonstreaming clamp applies only to the exact native Google route.
+The adapter resolves global, record, request and forced transport streaming
+preferences before applying that limit. Both raw override layers remain bounded
+by the relevant model limit and any lower temporary output ceiling.
+
+Native protocol references were reviewed October 17, with the current Gemini 4
+model, thinking and pricing references reviewed November 14:
 
 - [GenerateContent REST API](https://ai.google.dev/api/generate-content)
 - [Native API discovery schema](https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta)
 - [Gemini 3 thinking and temperature guidance](https://ai.google.dev/gemini-api/docs/gemini-3)
 - [Gemini 3.8 thinking levels and parameter changes](https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.8)
-- [Gemini 4 Argon thinking and parameter guidance](https://ai.google.dev/gemini-api/docs/latest-model)
 - [Thinking and signed response parts](https://ai.google.dev/gemini-api/docs/thinking)
+- [Gemini 4 Carbon model and native limits](https://aistudio.google.com/docs/models/gemini-4-carbon)
+- [Gemini 4 Argon model and native limits](https://aistudio.google.com/docs/models/gemini-4-argon)
+- [Gemini 4 Hydrogen model and native limits](https://aistudio.google.com/docs/models/gemini-4-hydrogen)
+- [Current Gemini thinking levels](https://aistudio.google.com/docs/thinking)
 
 ## Preset routing matrix
 
@@ -244,6 +378,7 @@ service does not expose it or the key cannot list models, manual ids remain usab
 | --- | --- | --- | --- |
 | Project UAI Free | `api.hcnsec.cn/v1` | Chat Completions | Distributed community Bearer credential |
 | HCNSEC | `api.hcnsec.cn/v1` | Chat Completions | Personal Bearer key |
+| OpenAI | `api.openai.com/v1` | Responses for the five documented direct GPT-6 IDs; other models retain Chat | Bearer |
 | AgentRouter | `agentrouter.org/v1` | GPT: Responses; others: selected protocol | x-api-key |
 | Anthropic Messages | `api.anthropic.com/v1` | Messages | x-api-key |
 | Google Gemini | `generativelanguage.googleapis.com/v1beta` | Native generateContent / streamGenerateContent | x-goog-api-key |
@@ -252,7 +387,7 @@ service does not expose it or the key cannot list models, manual ids remain usab
 | OpenCode Zen | `opencode.ai/zen/v1` | Chat Completions; dedicated Responses lane when required | Bearer |
 | OpenCode Go | `opencode.ai/inference/go/v1` | Model-specific Chat, Responses, Messages or Gemini | Bearer |
 
-The remaining presets cover OpenAI, OpenRouter, DeepSeek, Groq, Cerebras, Mistral,
+The remaining presets cover OpenRouter, DeepSeek, Groq, Cerebras, Mistral,
 Together, Fireworks, DeepInfra, Hyperbolic, Nebius, Novita, SambaNova, Moonshot,
 DashScope, SiliconFlow, Volcano Ark, Hunyuan, Qianfan, StepFun, Yi, Baichuan,
 Spark, Upstage, Reka, AI21, Cohere's compatibility layer, the Hugging Face
@@ -560,7 +695,9 @@ can receive the UAI envelope above without an adapter.
 
 ## Offline verification
 
-Implementation and regression fixtures are written before running the tests.
+Manually audit source, snapshot, documentation and fixture inputs before building.
+Generate model data, rebuild the client and inspect generated outputs before
+running the tests. Implementation and regression fixtures are written before verification.
 The focused suites cover every catalog preset's routes/auth, JSON and SSE,
 tool-call/result replay, local compatibility failures, discovery races in both the
 model service and provider editor, scoped repairs, socket framing, cleanup and
@@ -571,13 +708,22 @@ luajit test/provider_compatibility.lua
 luajit test/provider_proxy.lua
 luajit test/provider_transport.lua
 luajit test/provider_editor.lua
-node tools/test_native.js
+node test/model_pricing.js
+luajit test/model_pricing.lua
+luajit test/direct_responses.lua
+luajit test/anthropic_current_models.lua
+luajit test/gemini_provider.lua
+node tools/sync_pricing.js --check
+node tools/test_native.js --verify-only
 ```
 
-The full native command rebuilds the bundle, checks generated artifacts, runs the
-main/focused suites and performance contracts, then compiles with official Luau.
+After reviewing build inputs, use `node tools/test_native.js --build-only` for
+the native build phase. Inspect the generated bundle, model data and guide
+references before running `--verify-only`. That verification phase checks generated
+artifacts, runs the main/focused suites and performance contracts, then compiles
+with official Luau.
 Results and any remaining limitations are recorded in
-[the native release report](NATIVE_COMPLETION.md).
+[the 4.0.0 external testing report](TESTING_4.0.0.md).
 
 Published protocol references consulted September 25, 2026:
 

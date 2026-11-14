@@ -32,7 +32,7 @@ end
 do
 	local h, app, state = setup(info())
 	check("desktop is discovered at boot", app.bridge.running and app.bridge.status().source == "desktop")
-	check("manual settings remain disabled and unchanged", app.config.get("bridge.enabled") == false and app.config.get("bridge.port") == 8790 and app.config.get("bridge.token") == "")
+	check("connection configuration contains no manual fields", app.config.get("bridge.enabled") == nil and app.config.get("bridge.port") == nil and app.config.get("bridge.token") == nil)
 	check("bridge uses discovered token and dedicated port", #state.auth > 0 and state.auth[1].token == "Bearer " .. ("a"):rep(64) and state.auth[1].url:find(":28791/", 1, true))
 	app.env.require("agent/usage").record({ prompt_tokens = 20, completion_tokens = 5 }, "unpriced-fixture", nil, { baseUrl = "https://unpriced.fixture/v1" })
 	h.settle(2)
@@ -59,6 +59,27 @@ do
 	check("explicit reconnect resumes discovery", app.bridge.running)
 	app.destroy(); probes = state.probes; h.settle(8)
 	check("unload ends discovery", state.probes == probes)
+	local legacy = assert(json.decode(h.files["UAI/config.json"]))
+	legacy.bridge.enabled, legacy.bridge.port, legacy.bridge.token = true, 8792, "retired-manual-token"
+	legacy.bridge.autoDiscover = true
+	h.files["UAI/config.json"] = json.encode(legacy)
+	local restored = assert(h.boot()); require("password_fixture")(h, restored); h.settle(1)
+	check("legacy manual values are stripped during a cold load", restored.config.get("bridge.enabled") == nil
+		and restored.config.get("bridge.port") == nil and restored.config.get("bridge.token") == nil)
+	check("legacy manual enable cannot suppress desktop discovery", restored.bridge.running and restored.bridge.status().source == "desktop"
+		and restored.env.require("net/bridge_connection").get().token == ("b"):rep(64))
+	restored.app.show("cowork"); h.settle(0.3)
+	check("Cowork exposes automatic discovery and connection actions", h.byName("AutoDiscoverDesktop")
+		and h.byName("Reconnect") and h.byName("DisconnectCowork"))
+	check("Cowork has no manual setup or credential controls", not h.byName("BridgePort") and not h.byName("BridgeToken")
+		and not h.byName("DownloadBridge") and not h.byName("CopyBridgeStart") and not h.byName("CopyBridgeUrl"))
+	h.click(assert(h.byName("DisconnectCowork"))); probes = state.probes; h.settle(5)
+	check("native Disconnect suspends discovery without changing opt-in", not restored.bridge.running and state.probes == probes
+		and restored.config.get("bridge.autoDiscover") == true)
+	h.click(assert(h.byName("Reconnect"))); h.settle(1)
+	check("native Reconnect obtains desktop credentials again", restored.bridge.running and state.probes > probes)
+	restored.destroy(); h.settle(1)
+	check("automatic-only native controls release cleanly", #h.errors() == 0)
 end
 
 do
@@ -73,13 +94,14 @@ do
 	end
 	state.discovery = info(); h.settle(5)
 	check("late desktop start connects", app.bridge.running)
-	app.config.set("bridge.token", "manual-token")
-	app.config.set("bridge.port", 8792)
-	app.config.set("bridge.enabled", true)
+	check("manual token configuration is retired", app.config.set("bridge.token", "manual-token") == nil)
+	check("manual port configuration is retired", app.config.set("bridge.port", 8792) == nil)
+	check("manual enabled configuration is retired", app.config.set("bridge.enabled", true) == nil)
 	h.settle(1)
 	local probes = state.probes; h.settle(5)
-	check("enabled manual bridge takes precedence", app.bridge.status().source == "manual" and state.probes == probes)
-	check("manual bridge keeps its own endpoint", state.auth[#state.auth].url:find(":8792/", 1, true) and state.auth[#state.auth].token == "Bearer manual-token")
+	check("retired manual configuration cannot interrupt discovery", app.bridge.status().source == "desktop" and state.probes > probes)
+	check("only discovered credentials reach the dedicated endpoint", state.auth[#state.auth].url:find(":28791/", 1, true)
+		and state.auth[#state.auth].token == "Bearer " .. ("a"):rep(64))
 	app.destroy()
 end
 

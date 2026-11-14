@@ -17,6 +17,10 @@ return function(env)
 
 	local COOLDOWN_AFTER = 3
 	local COOLDOWN_SECONDS = 45
+	local DIRECT_OPENAI_RESPONSES = {
+		["gpt-6-astra"] = true, ["gpt-6.1-sol"] = true, ["gpt-6.1-terra"] = true,
+		["gpt-6-sol"] = true, ["gpt-6-luna"] = true,
+	}
 
 	local M = {
 		changed = signal.new("providers"),
@@ -180,6 +184,14 @@ return function(env)
 		return urls.isLocalHost(urls.host(M.normaliseBaseUrl(record.baseUrl)))
 	end
 
+	-- Official GPT-6 references require Responses for tools or reasoning with
+	-- tools. Namespaced aliases, custom routes and other API kinds stay separate.
+	function M.isDirectOpenaiResponses(record)
+		return type(record) == "table" and DIRECT_OPENAI_RESPONSES[record.model] == true
+			and (record.api == nil or record.api == "openai") and util.trim(record.baseUrl) ~= ""
+			and env.require("provider/model_info").provider(record) == "openai"
+	end
+
 	function M.protocolProblem(record, opts)
 		if not (opts and opts.configuration) then
 			local access = config.accessProblem()
@@ -233,7 +245,7 @@ return function(env)
 		if path:match("/api/chat$") or path:match("/api/generate$") then
 			return "Ollama's native /api routes use a different protocol; use its OpenAI-compatible base URL, usually http://127.0.0.1:11434/v1"
 		end
-		if (path:match("/responses$") and not M.isOpencodeGo(record) and not M.isAgentRouter(record))
+		if (path:match("/responses$") and not M.isOpencodeGo(record) and not M.isAgentRouter(record) and not M.isDirectOpenaiResponses(record))
 			or (path:match(":generateContent$") or path:match(":streamGenerateContent$") or path:match("/generateContent$"))
 				and record.api ~= "gemini" and M.opencodeGoProtocol(record) ~= "gemini" then
 			return "this route uses a different API; select the matching Chat completions, Anthropic messages or Google Gemini protocol"

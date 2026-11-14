@@ -3,6 +3,5 @@ return {
 	["net/bridge"] = true,
 	["net/bridge_commands"] = true,
 	["net/relay"] = true,
-	["runtime/bridge_install"] = true,
 	["ui/panels/cowork"] = true,
 }

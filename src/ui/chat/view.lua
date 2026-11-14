@@ -541,8 +541,12 @@ return function(env)
 					view.model = event.model or view.model
 					local preview = view.preview
 					if preview and preview.id == event.streamId and preview.textHandle then
-						preview.textHandle.finish(event.text, view.model); view.agentHandle = track(preview.textHandle, event); preview.textHandle = nil
-					else view.agentHandle = message.agent(scroll.instance, event.text, nextOrder(), view.model, props) end
+						preview.textHandle.finish(event.text, view.model, event.outputTokens, event.requestMs)
+						view.agentHandle = track(preview.textHandle, event); preview.textHandle = nil
+					else
+						view.agentHandle = message.agent(scroll.instance, event.text, nextOrder(), view.model, props)
+						view.agentHandle.setRequestMetrics(event.outputTokens, event.requestMs)
+					end
 					if not view.replaying and not view.pinned then unread = unread + 1 end
 					follow()
 				end

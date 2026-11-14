@@ -3,6 +3,7 @@
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 io.stdout:setvbuf("no")
 local envMock = require("env")
+local authenticate = require("password_fixture")
 local newSignal = require("instance").newSignal
 local bundle = arg[1] or "dist/uai.lua"
 local passed, failed = 0, 0
@@ -29,6 +30,12 @@ local function boot(touch, width, height, topbar, path)
 	end
 	h.setViewport(width, height)
 	local app = assert(h.boot(path or bundle))
+	if app.config.vaultStatus and app.config.vaultStatus().required then authenticate(h, app) end
+	local providers = app.env.require("provider/registry")
+	local provider = providers.blank("custom")
+	provider.id, provider.label, provider.model = "mobile-fixture", "Mobile fixture", "fixture-model"
+	provider.baseUrl, provider.apiKey = "https://mobile.fixture/v1", "fixture-key"
+	assert(providers.save(provider, { force = true }))
 	h.settle(1)
 	app.app.show("chat")
 	return h, app

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "visual",
+  "id": "project-workbench",
+  "name": "Project workbench",
+  "description": "Compact project work with visible progress, usage and native navigation.",
+  "author": "Project UAI",
+  "sources": [{"label":"Project UAI UI mods guide","url":"https://github.com/Project-Ptolemy/ProjectUAI/blob/main/docs/UI_MODS.md"}],
+  "appearance": {
+    "accent": "indigo",
+    "density": "compact",
+    "fontScale": 1.05,
+    "interfaceFont": "builder",
+    "codeFont": "code",
+    "codeTheme": "dark",
+    "transcriptWidth": "wide"
+  },
+  "panels": [
+    {
+      "id": "project",
+      "title": "Project work",
+      "description": "Useful aggregates and workspaces for the active client.",
+      "widgets": [
+        {"id":"workflow","type":"text","body":"Review source, inspect generated output, then run the relevant external checks."},
+        {"id":"goals","type":"metric","label":"Micro goals","selector":"goals"},
+        {"id":"tokens","type":"metric","label":"Token usage","selector":"tokens"},
+        {"id":"tools","type":"metric","label":"Available tools","selector":"tools"},
+        {"id":"vault","type":"action","label":"Open Master Vault","action":"vault"},
+        {"id":"code","type":"action","label":"Open Code","action":"code"},
+        {"id":"logs","type":"action","label":"Open Logs","action":"logs"}
+      ]
+    }
+  ]
+}

@@ -12,46 +12,46 @@
 -- minutes of a turn spent for nothing.
 return function(env)
 	local util = env.require("runtime/util")
-	local caps = env.require("runtime/caps")
 	local theme = env.require("ui/theme")
 	local responsive = env.require("ui/responsive")
 	local P = env.require("ui/primitives")
 	local overlay = env.require("ui/overlay")
 
 	local M = { queue = {}, showing = false }
+	local transitions, draining = 0, false
+	local present, drain
 
-	local function present(request)
-		M.showing = true
-		M.current = request
+	local function settle(request, text, resolve)
+		if not request or request.settled then return false end
+		transitions = transitions + 1
+		request.settled = true
+		local presentation, unsubscribe, handler = request.presentation, request.unsubscribeSettled, request.resolve
+		request.presentation, request.unsubscribeSettled, request.resolve = nil, nil, nil
+		if M.current == request then M.current, M.showing = nil, false end
+		for index = #M.queue, 1, -1 do if M.queue[index] == request then table.remove(M.queue, index) end end
+		-- The producer can settle synchronously and emit a new question in resolve.
+		-- Release this request before either callback can reenter the presentation.
+		if type(unsubscribe) == "function" then pcall(unsubscribe) end
+		if resolve and type(handler) == "function" then pcall(handler, text) end
+		if presentation and presentation.modal then pcall(presentation.modal.close) end
+		transitions = transitions - 1
+		if drain then drain() end
+		return true
+	end
 
-		local answered = false
+	local function buildPresentation(request, presentation)
 		local function reply(text)
-			if answered then return end
-			answered = true
-			pcall(request.resolve, text)
-			M.showing = false
-			M.current = nil
-			-- Drain the next question on the same frame, so a batch of asks does not
-			-- make the user wait between answers.
-			local next_request = table.remove(M.queue, 1)
-			if next_request then present(next_request) end
+			return settle(request, text, true)
 		end
-		request.answer = function(text)
-			reply(text)
-			if request.close then request.close() end
-		end
-
-		-- The modal handle, so a sweep can take the card off screen as well as
-		-- answering the call behind it.
-		local modal = nil
+		request.answer = reply
+		request.close = function() return reply("") end
 
 		local options = {}
 		for _, value in ipairs(type(request.options) == "table" and request.options or {}) do
 			local clean = util.trim(tostring(value))
 			if clean ~= "" and #options < 4 then options[#options + 1] = clean end
 		end
-
-		modal = overlay.modal({
+		local modal = overlay.modal({
 			title = "The agent is asking",
 			description = tostring(request.question or ""),
 			width = theme.size.modalWide,
@@ -62,22 +62,8 @@ return function(env)
 			-- next turn can work with.
 			onClose = function() reply("") end,
 		})
-		if not modal then
-			reply("")
-			return
-		end
-		-- A sweep answers the call; closing the modal is what takes the card away,
-		-- and modal.close is what calls onClose -- which is already answered by then,
-		-- so the double-resolve is a no-op.
-		request.close = function()
-			if not answered then
-				answered = true
-				pcall(request.resolve, "")
-				M.showing = false
-				M.current = nil
-			end
-			pcall(function() modal.close() end)
-		end
+		presentation.modal = modal
+		if not modal or request.settled then return end
 
 		-- Which conversation is asking, for the same reason the permission prompt
 		-- states it: with one queue serving every open conversation, a question on its
@@ -93,7 +79,6 @@ return function(env)
 				layoutOrder = 1,
 			}).Size = UDim2.new(1, 0, 0, 0)
 		end
-
 		-- The concrete options, each a full-width row rather than a menu item: a menu
 		-- hides every answer but the one on top, and a choice the reader has to scroll
 		-- to discover is a choice they did not know they had.
@@ -108,10 +93,7 @@ return function(env)
 				radius = theme.radius.md,
 				padding = { x = theme.space.md, y = theme.space.sm },
 				layoutOrder = index + 1,
-				onClick = function()
-					reply(option)
-					modal.close()
-				end,
+				onClick = function() reply(option) end,
 			})
 			P.text(choice.row, { name = "Label", text = option, role = "small",
 				size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 1 })
@@ -124,10 +106,7 @@ return function(env)
 			name = "AskField",
 			placeholder = #options > 0 and "Or type your own answer" or "Type your answer",
 			layoutOrder = #options + 2,
-			onSubmit = function(text)
-				reply(util.trim(text))
-				modal.close()
-			end,
+			onSubmit = function(text) reply(util.trim(text)) end,
 		})
 		P.button(modal.footer, {
 			name = "AskDismiss",
@@ -135,7 +114,7 @@ return function(env)
 			variant = "ghost",
 			size = "sm",
 			layoutOrder = 1,
-			onClick = function() modal.close() end,
+			onClick = function() reply("") end,
 		})
 		P.button(modal.footer, {
 			name = "AskSend",
@@ -143,11 +122,34 @@ return function(env)
 			variant = "primary",
 			size = "sm",
 			layoutOrder = 2,
-			onClick = function()
-				reply(util.trim(field.get()))
-				modal.close()
-			end,
+			onClick = function() reply(util.trim(field.get())) end,
 		})
+	end
+
+	present = function(request)
+		if request.settled then return end
+		transitions = transitions + 1
+		local presentation = {}
+		request.presentation = presentation
+		M.current, M.showing = request, true
+		local ok = pcall(buildPresentation, request, presentation)
+		transitions = transitions - 1
+		if request.settled then
+			if presentation.modal then pcall(presentation.modal.close) end
+		elseif not ok or not presentation.modal then
+			settle(request, "", true)
+		end
+	end
+	drain = function()
+		if transitions > 0 or draining or M.showing then return end
+		draining = true
+		-- Settled queued requests never get a modal. A failed presentation can also
+		-- dismiss and move on without recursing through the rest of the queue.
+		while not M.showing and #M.queue > 0 do
+			local request = table.remove(M.queue, 1)
+			if not request.settled then present(request) end
+		end
+		draining = false
 	end
 
 	local function onEvent(session, event)
@@ -163,17 +165,24 @@ return function(env)
 			sessionTitle = session and session.title or nil,
 			session = session,
 		}
-		if M.showing then
-			M.queue[#M.queue + 1] = request
-		else
-			present(request)
+		transitions = transitions + 1
+		M.queue[#M.queue + 1] = request
+		if type(event.subscribeSettled) == "function" then
+			local ok, unsubscribe = pcall(event.subscribeSettled, function() settle(request, nil, false) end)
+			if ok and type(unsubscribe) == "function" then
+				if request.settled then pcall(unsubscribe) else request.unsubscribeSettled = unsubscribe end
+			elseif not ok then
+				settle(request, "", true)
+			end
 		end
+		transitions = transitions - 1
+		drain()
 	end
 
 	function M.answer(id, text)
-		if M.current and M.current.id == id and M.current.answer then M.current.answer(text); return true end
-		for index, request in ipairs(M.queue) do
-			if request.id == id then table.remove(M.queue, index); request.resolve(text); return true end
+		if M.current and M.current.id == id then return settle(M.current, text, true) end
+		for _, request in ipairs(M.queue) do
+			if request.id == id then return settle(request, text, true) end
 		end
 		return false
 	end
@@ -184,39 +193,36 @@ return function(env)
 	-- able to answer a dead turn. Scoped to one conversation, like the permission
 	-- layer's own sweep: stopping this turn must not dismiss another's question.
 	function M.sweep(session)
-		local closed = 0
-		local function take(request)
-			if request.close then
-				request.close()
-			else
-				pcall(request.resolve, "")
-			end
-			closed = closed + 1
-		end
+		transitions = transitions + 1
+		local taken, kept = {}, {}
 		if M.current and (session == nil or M.current.session == session) then
-			take(M.current)
-			M.current = nil
+			taken[#taken + 1] = M.current
 		end
-		local kept = {}
 		for _, request in ipairs(M.queue) do
 			if session == nil or request.session == session then
-				take(request)
+				taken[#taken + 1] = request
 			else
 				kept[#kept + 1] = request
 			end
 		end
 		M.queue = kept
+		for _, request in ipairs(taken) do settle(request, "", true) end
+		transitions = transitions - 1
 		-- Closing one conversation's active question must not strand questions
 		-- retained for other conversations behind an empty current slot.
-		if not M.showing and #M.queue > 0 then present(table.remove(M.queue, 1)) end
-		return closed
+		drain()
+		return #taken
 	end
 
 	function M.watch()
 		if M.watching then return M end
+		local dispose = env.require("runtime/dispose")
+		if dispose.draining then return M end
 		local sessions = env.require("agent/session")
-		M.watching = env.require("runtime/dispose").add(
-			sessions.anyEvent:connect(onEvent), "ask.watch")
+		local unwatch = sessions.anyEvent:connect(onEvent)
+		M.watching = dispose.add(function()
+			unwatch(); M.watching = nil; M.sweep()
+		end, "ask.watch")
 		return M
 	end
 

@@ -1,6 +1,7 @@
 -- Native composer and bridge integration around real delayed inference.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock = require("env")
+local desktop = require("automatic_bridge_fixture")
 local passed = 0
 local function check(label, value) assert(value, label); passed = passed + 1; print("ok " .. label) end
 local h = envMock.new()
@@ -100,8 +101,7 @@ h.click(h.byName("Stop", composer.shell)); h.settle(20.5)
 -- A bridge send retries its command receipt instead of adding another follow-up.
 responseDelay = 20
 send("Parent request for bridge steering")
-app.config.set("bridge.port", 8795); app.config.set("bridge.token", "queue-fixture")
-app.config.set("bridge.enabled", true); h.settle(0.3)
+desktop.connect(h, app)
 commands = { { type = "send", commandId = "queued-browser", sessionId = session.id, text = "Browser follow-up" } }
 h.settle(1.4)
 check("bridge returns a queued receipt", receipts["queued-browser"] and receipts["queued-browser"].ok and receipts["queued-browser"].data.queued)

@@ -58,7 +58,8 @@ const { navigation } = require('./helpers/browser-ui');
     };
 
     await page.goto(bridge.base); await page.locator('#gate').waitFor({ state: 'visible' });
-    assert.match(await page.locator('.gate-help').textContent(), /node UAI\/bridge\/start.txt/);
+    assert.match(await page.locator('.gate-help').textContent(), /Project UAI Desktop.*Start Cowork.*automatically/s);
+    assert.doesNotMatch(await page.locator('.gate-help').textContent(), /start\.txt|Paste the same token|Download bridge files/);
     await screenshot('bridge-gate-light');
     await page.goto(bridge.base + '/#t=' + bridge.token); await page.locator('#app').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelector('#modelLabel').textContent === 'local-coder');
@@ -77,10 +78,9 @@ const { navigation } = require('./helpers/browser-ui');
     await navigate('cowork');
     await page.locator('#connectionGuide summary').click();
     assert.equal(await page.locator('.setup-step').count(), 3);
-    assert.match(await page.locator('.setup-step').first().textContent(), /node UAI\/bridge\/start.txt/);
-    await page.getByLabel('Your installation').selectOption('repo');
-    assert.match(await page.locator('.setup-step').first().textContent(), /node bridge\/server.js/);
-    await page.getByLabel('Your installation').selectOption('executor');
+    assert.match(await page.locator('.setup-step').first().textContent(), /Project UAI Desktop.*Start Cowork/s);
+    assert.equal(await page.getByLabel('Your installation').count(), 0, 'native setup has no manual bridge installation selector');
+    assert.doesNotMatch(await page.locator('#connectionGuide').textContent(), /start\.txt|Paste the bridge token|turn Enabled on/);
     await screenshot('bridge-setup-light');
     await setTheme('dark'); await screenshot('bridge-setup-dark');
     await setTheme('light'); await navigate('chat');
@@ -146,7 +146,7 @@ const { navigation } = require('./helpers/browser-ui');
     assert.equal(await page.evaluate(async () => (await UAI.drafts.load('s1')).uploads[0].text), source);
 
     const longDraft = 'A longer draft with 世界 and a full ending.\n'.repeat(700);
-    await page.locator('#input').fill(longDraft);
+    await page.locator('#input').fill(longDraft, { timeout: 30000 });
     await page.waitForFunction(async text => (await UAI.drafts.load('s1'))?.text === text, longDraft);
     await page.reload();
     await page.waitForFunction(text => document.querySelector('#input').value === text, longDraft);
@@ -264,6 +264,16 @@ const { navigation } = require('./helpers/browser-ui');
     if (page && process.env.UAI_SCREENSHOTS) {
       await page.screenshot({ path: path.join(process.env.UAI_SCREENSHOTS, 'bridge-failure.png'), animations: 'disabled', fullPage: true }).catch(() => {});
       fs.writeFileSync(path.join(process.env.UAI_SCREENSHOTS, 'bridge-failure.html'), await page.content());
+      const draftState = await page.evaluate(async () => {
+        const describe = value => value && { textLength: value.text?.length, declaredLength: value.textLength,
+          updatedAt: value.updatedAt, version: value.version, uploads: value.uploads?.length,
+          fileIds: value.fileIds?.length, prefix: value.text?.slice(0, 80), suffix: value.text?.slice(-80) };
+        let recovery; try { recovery = JSON.parse(sessionStorage.getItem('uai.drafts') || '{}').s1; } catch {}
+        const saved = await Promise.race([UAI.drafts.load('s1'), new Promise(resolve => setTimeout(() => resolve(null), 1500))]);
+        return { inputLength: document.querySelector('#input').value.length, recovery: describe(recovery), saved: describe(saved),
+          current: typeof drafts === 'undefined' ? null : describe(drafts.s1), loading: typeof draftLoads !== 'undefined' && draftLoads.has('s1') };
+      }).catch(() => null);
+      fs.writeFileSync(path.join(process.env.UAI_SCREENSHOTS, 'bridge-failure-draft.json'), JSON.stringify(draftState, null, 2));
     }
     throw error;
   } finally {

@@ -183,6 +183,20 @@ return function(env)
 			layoutOrder = 4,
 		})
 
+		local vaultButton = P.rowButton(actions, { name = "MasterVault", padding = { x = ROW_INSET },
+			selected = host.panel == "vault", layoutOrder = 1, onClick = function() host.show("vault") end })
+		vaultButton.icon("book", 1, theme.color.textSecondary, ROW_ICON)
+		local vaultLabel = vaultButton.label("Master Vault", 2,
+			host.panel == "vault" and theme.color.text or theme.color.textSecondary, ROW_ROLE)
+		local goalsButton = P.rowButton(actions, { name = "MicroGoals", padding = { x = ROW_INSET },
+			layoutOrder = 2, onClick = function() host.showGoals() end })
+		goalsButton.icon("check", 1, theme.color.textSecondary, ROW_ICON)
+		goalsButton.label("Micro-goals", 2, theme.color.textSecondary, ROW_ROLE)
+		local modsButton = P.rowButton(actions, { name = "UiMods", padding = { x = ROW_INSET },
+			selected = host.panel == "mods", layoutOrder = 3, onClick = function() host.show("mods") end })
+		modsButton.icon("sliders", 1, theme.color.textSecondary, ROW_ICON)
+		local modsLabel = modsButton.label("UI mods", 2,
+			host.panel == "mods" and theme.color.text or theme.color.textSecondary, ROW_ROLE)
 		-- Settings is the modal, not the stacked panel: the panel is a page you have to
 		-- navigate back from, and the same categories are already arranged for a dialog
 		-- with a category list. The old label here was "Customize", which named one
@@ -191,7 +205,7 @@ return function(env)
 			name = "Settings",
 			bg = nil,
 			padding = { x = ROW_INSET },
-			layoutOrder = 1,
+			layoutOrder = 4,
 			onClick = function()
 				host.showSettingsDialog("general")
 			end,
@@ -203,7 +217,7 @@ return function(env)
 		local more = P.rowButton(actions, {
 			name = "More",
 			padding = { x = ROW_INSET },
-			layoutOrder = 2,
+			layoutOrder = 5,
 			onClick = function()
 				expanded = not expanded
 				config.set("ui.sidebarExpanded", expanded, { quiet = true })
@@ -218,10 +232,10 @@ return function(env)
 			size = UDim2.new(1, 0, 0, 0),
 			auto = "Y",
 			gap = theme.space.hair,
-			layoutOrder = 3,
+			layoutOrder = 6,
 		})
 		local foldersButton = P.rowButton(actions, { name = "ConversationFolders", padding = { x = ROW_INSET },
-			layoutOrder = 4, onClick = function() host.manageFolders() end })
+			layoutOrder = 7, onClick = function() host.manageFolders() end })
 		foldersButton.icon("folder", 1, theme.color.textSecondary, ROW_ICON)
 		foldersButton.label("Conversation folders", 2, theme.color.textSecondary, ROW_ROLE)
 
@@ -690,6 +704,10 @@ return function(env)
 				entry.button.setSelected(selected)
 				entry.label.TextColor3 = selected and theme.color.text or theme.color.textTertiary
 			end
+			vaultButton.setSelected(host.panel == "vault")
+			vaultLabel.TextColor3 = host.panel == "vault" and theme.color.text or theme.color.textSecondary
+			modsButton.setSelected(host.panel == "mods")
+			modsLabel.TextColor3 = host.panel == "mods" and theme.color.text or theme.color.textSecondary
 			handle.back.setEnabled(host.canBack())
 			handle.forward.setEnabled(host.canForward())
 			handle.syncMore()

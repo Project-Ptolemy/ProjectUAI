@@ -2,11 +2,11 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.1.0** in the **Project UAI 3.8.0 release candidate**,
-alongside **UI LIB 1.6.0** in the October 31 working tree. SDK metadata is exposed through `uai.sdk`; UI LIB
-remains a separate bundle with its own version and lifetime.
+documents **embedding SDK 1.1.0** in **Project UAI 4.0.0**, alongside
+**UI LIB 1.6.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a
+separate bundle with its own version and lifetime.
 
-The 3.7.2 client initially requires password setup or the explicit **Continue
+The client initially requires password setup or the explicit **Continue
 without encryption** choice. A vault requires unlock on every execution, including
 reuse and `{ ui = false }` embedding. A saved unprotected-storage choice skips
 future prompts and saves keys using reversible byte encoding.
@@ -14,7 +14,7 @@ future prompts and saves keys using reversible byte encoding.
 stay hidden, but the loader can construct entry UI. Host integrations still own
 their scopes and cleanup; inspect returned admission status before sending work.
 See the [release notes](../CHANGELOG.md)
-and [focused verification record](TESTING_3.7.2.md).
+and [4.0.0 verification record](TESTING_4.0.0.md).
 
 Start with [the complete workbench example](../examples/embedding/README.md) for
 working code. Use [the UI library reference](UI_LIBRARY.md) for every control,
@@ -177,11 +177,13 @@ sending requests; rejected requests return an admission reason and are not autom
 | Same live build | Returns the existing handle and follows the saved protection choice; requires an enabled vault's password again; requests showing the app afterward unless `reuse = true`; does not adopt a new context table |
 | Different build, safe replacement | Preserves state, unloads the old client and boots the new one; encrypted vaults require the password again |
 | Different build, active or unsaved work | Keeps the old handle and reports what blocks replacement |
+| Cleanup is still running | Returns the unloading owner until cleanup finishes; another loader cannot mount a replacement during that work |
 | Previous cleanup did not finish | Keeps the blocked handle and reports that a rejoin is needed |
 | Bootstrap failure | Reports the startup error and returns nil |
 
-Replacement checks include active sessions/workspace work, drafts and
-attachments, isolated conversations, and successful persistence. Treat the
+Replacement checks include active sessions/workspace work, Vault writes,
+mod reviews/startup/callbacks, unfinished editor forms, drafts and attachments,
+isolated conversations, and successful persistence. Treat the
 returned `alive`, `version`, and `build` as authoritative. Downloading new source
 does not prove that a new build replaced the running one.
 
@@ -238,6 +240,7 @@ Recognized integration fields are:
 | `hooks` | `agent/hooks` at boot | Map of hook kind to function; adopted once during startup |
 | `ui = false` | Bootstrap | Follow the storage choice or vault unlock, then keep the normal app hidden until explicit navigation |
 | `reuse = true` | Bootstrap | Return a live same-build client without requesting normal-app display; does not override credential protection |
+| `safeMode = true` | Bootstrap and mod runtime | Recover ordinary appearance on the same build or boot with mods disabled; retain definitions and require a fresh normal execution before Apply |
 | `gravity` | Runtime Gravity adapter | Optional host fallback for the existing Gravity integration |
 | Your own namespaced fields | Your code | Shared host objects or configuration; no automatic interpretation |
 
@@ -270,6 +273,8 @@ self argument. Signals use `signal:connect(...)`, with a lowercase `connect`.
 | `openSession(id)` | Selects a registered conversation and opens it in the standard application |
 | `hide()`, `toggle()` | Controls standard application visibility |
 | `destroy()`, `unload()` | Full client shutdown; unload is an alias |
+| `disableUiMods()` | Disable the active mod and release its owned resources; returns a result with any persistence or cleanup warning |
+| `recoverUi()`, `safeMode` | Recover ordinary appearance and disable mods for this client lifetime; reports success/reason and current recovery mode |
 | `sessions` | Session manager described below |
 | `tools` | Agent tool registry and dispatcher |
 | `hooks`, `permissions` | Public hook registration and client-wide permission services |

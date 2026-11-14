@@ -4,6 +4,7 @@ return function(env)
 	local info = env.require("provider/model_info")
 	local community = env.require("provider/community_key")
 	local urls = env.require("net/url")
+	local clock = env.require("runtime/clock")
 	local M = { updated = info.updated }
 	local ZERO = { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 }
 	local LOCAL = { ollama = true, lmstudio = true, vllm = true, llamacpp = true, sglang = true }
@@ -24,6 +25,9 @@ return function(env)
 		local row = info.lookup(model, record)
 		local base = row and row.price
 		if not base then return nil end
+		-- A reviewed introductory rate cannot remain an estimate after its end
+		-- date. Limits stay available while the next price awaits another review.
+		if base.expiresAt and clock.ms() >= base.expiresAt then return nil end
 		local rate = base
 		for _, tier in ipairs(base.tiers or {}) do
 			if (tonumber(promptTokens) or 0) > tier.above then rate = tier end

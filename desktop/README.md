@@ -4,16 +4,15 @@ A Windows 10/11 x64 app that starts the local bridge and opens the Cowork browse
 workspace. The Roblox client discovers the running desktop bridge automatically.
 The desktop project uses the existing server in `--desktop` mode on
 **127.0.0.1:28791**.
-Manual terminal startup keeps port 8790 and its existing token workflow.
 
-Download [UAI Bridge 3.8.0 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v3.8.0/UAI-Bridge-3.8.0-win-x64.exe).
-Checksums and release notes are on the [3.8.0 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v3.8.0).
+Download [UAI Bridge 4.0.0 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v4.0.0/UAI-Bridge-4.0.0-win-x64.exe).
+Checksums and release notes are on the [4.0.0 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v4.0.0).
 Open the executable, then click
 **Start Cowork** on **Workspace**. It detects Node.js 18+ on your computer. If
 none is available, choose **Get Node.js** or **Manual setup** in the Workspace
 runtime card, then **Check again**.
 
-Desktop 3.8.0 uses native WPF with a responsive interface, its own
+Desktop 4.0.0 uses native WPF with a responsive interface, its own
 title bar with custom window controls, keyboard navigation, and accessible controls. The sidebar
 becomes horizontal navigation on smaller windows, and page content scrolls so
 actions remain reachable. Five pages organize the app:
@@ -161,11 +160,12 @@ an isolated ephemeral conversation per MCP connection. See [MCP setup](../bridge
 
 `bridge.autoDiscover` defaults to true. Desktop clients probe the dedicated port
 every four seconds, with a two-second request deadline. Touch-only mobile clients
-skip this Windows discovery route. An enabled manual bridge takes
-priority. Turn off **Manual bridge enabled** in Cowork to use the desktop app.
-Disable **Find desktop app automatically** to opt out. `bridge.stop()` suspends
-discovery until `bridge.sync()` or a connection-setting change. Unloading releases
-the discovery worker and ignores pending results.
+skip this Windows discovery route. Disable **Find desktop app automatically** to
+opt out. **Disconnect** suspends discovery without changing that preference;
+**Reconnect** resumes it and probes again. `bridge.stop()` and `bridge.sync()`
+provide the same lifecycle behavior. Unloading releases the discovery worker
+and ignores pending results. Older saved manual token, port and enable values
+are discarded during configuration load and import.
 
 Authenticated bridge contact selects Web runtime automatically;
 disconnecting restores Game for subsequent requests. Stopping or restarting the
@@ -178,8 +178,10 @@ active work and retained receipts/pictures are idle. An automatic worker restart
 keeps the same pairing token. The browser reconnects to the updated bridge.
 Refresh an open browser page to load changed web assets. **Copy client script**
 on **Workspace** copies the client embedded in the desktop executable. Desktop
-3.8.0 includes the reviewed client and bridge, including local Obsidian vault
-support. The Android companion remains on its separate existing release.
+4.0.0 includes the reviewed client and bridge, including native Master Vault,
+micro-goals and local Obsidian support. Master Vault notes live in the executor
+workspace; connected Obsidian folders remain on the bridge computer. The Android
+companion remains on its separate existing release.
 
 **Tunnels > Kilo tunnel** enables anonymous Kilo quota recovery by default.
 After an explicit quota refusal, the bridge starts a private Tor helper and
@@ -228,7 +230,7 @@ All ordinary bridge routes still require the bearer token.
 
 Discovery returns a fixed product marker, schema, port, instance and token. The
 client validates these before attaching and uses one shared effective connection
-for commands, web inference and pictures. Credentials never replace saved manual
+for commands, web inference and pictures. Desktop credentials never enter saved
 settings. A changed connection terminates an outstanding relay request rather
 than resending it to a new process.
 

@@ -49,7 +49,7 @@ case("the bundle contains diagnostics but no credentials or conversation text", 
 	check("provider summary contains health but no key", bundle.providers[1].label == "Fixture provider"
 		and bundle.providers[1].apiKey == nil and bundle.providers[1].health ~= nil)
 	check("capabilities and tools are present", type(bundle.capabilities.summary) == "string"
-		and bundle.tools.stats.total > 0 and bundle.tools.profile == "all")
+		and bundle.tools.stats.total > 0 and bundle.tools.profile == "focused")
 	check("sessions report metadata only", bundle.sessions.available == true and bundle.sessions.items ~= nil)
 	check("conversation text is not collected", raw:find("A local preference", 1, true) == nil)
 	check("logs are retained in redacted form", #bundle.logs > 0 and raw:find("sk-...", 1, true) ~= nil)
@@ -73,7 +73,8 @@ case("unrecognized credential names and URL authentication never enter diagnosti
 	record.storedCredentials = { version = 999, data = "opaque-encoded-provider-value" }
 	config.set("identity.extraHeaders", { ["X-Private-Identity"] = "opaque-identity-value" })
 	config.data.identity.storedCredentials = { version = 999, data = "opaque-encoded-identity-value" }
-	config.set("bridge.token", "opaque-bridge-value")
+	check("retired desktop credentials cannot enter live settings", not config.set("bridge.token", "opaque-bridge-value")
+		and config.get("bridge.token") == nil)
 	config.set("relay.token", "opaque-relay-value")
 	local http = f.env.require("net/http")
 	http.history = { { url = "https://history-user:history-password@fixture.test/v1?custom=opaque-history-value#history-fragment", method = "POST", status = 200 } }
@@ -97,7 +98,7 @@ case("unrecognized credential names and URL authentication never enter diagnosti
 		and bundle.config.identity.storedCredentials == nil)
 	check("diagnostics leave live authentication untouched", record.headers["X-Custom-Access"] == "opaque-header-value"
 		and record.keyRotation.cooldowns["opaque-cooldown-value"] == 123
-		and config.get("bridge.token") == "opaque-bridge-value" and config.get("relay.token") == "opaque-relay-value")
+		and config.get("bridge.token") == nil and config.get("relay.token") == "opaque-relay-value")
 	f.healthy(); f.close()
 end)
 

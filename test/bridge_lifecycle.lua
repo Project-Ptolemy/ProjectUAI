@@ -1,6 +1,7 @@
 -- Focused connection, mobile discovery and relay deadline regressions.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local envMock, json = require("env"), require("json")
+local desktop = require("automatic_bridge_fixture")
 local passed = 0
 local function check(label, value) assert(value, label); passed = passed + 1; print("ok " .. label) end
 local function count(entries, predicate)
@@ -13,11 +14,6 @@ local function hello(instance)
 end
 local function pair()
 	return { StatusCode = 200, Body = json.encode({ ok = true, token = ("a"):rep(64), protocol = 2, instance = "phone-one" }) }
-end
-local function manual(app)
-	app.config.set("bridge.port", 8795)
-	app.config.set("bridge.token", "lifecycle-token")
-	app.config.set("bridge.enabled", true)
 end
 local function finish(h, app)
 	app.destroy(); h.settle(1)
@@ -38,7 +34,7 @@ do
 	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.2)
 	app.config.set("bridge.runtime", "web")
 	check("offline saved/runtime writes cannot force Web", app.config.get("bridge.runtime") == "game")
-	manual(app); h.settle(0.3)
+	desktop.connect(h, app)
 	check("first authenticated upload selects Web before the long poll returns", uploads > 0 and app.bridge.online and app.config.get("bridge.runtime") == "web")
 	app.config.set("bridge.runtime", "game")
 	check("connected runtime stays automatic", app.config.get("bridge.runtime") == "web")
@@ -46,7 +42,7 @@ do
 	check("explicit disconnect selects Game synchronously", not app.bridge.online and app.config.get("bridge.runtime") == "game")
 	available = false
 	app.bridge.sync(); h.settle(1)
-	check("a configured but unreachable bridge keeps Game", app.bridge.running and not app.bridge.online and app.config.get("bridge.runtime") == "game")
+	check("a detected but unreachable bridge keeps Game", app.bridge.running and not app.bridge.online and app.config.get("bridge.runtime") == "game")
 	available = true; h.settle(3)
 	check("recovery selects Web automatically", app.bridge.online and app.config.get("bridge.runtime") == "web")
 	finish(h, app)
@@ -76,7 +72,9 @@ do
 		end
 		return { StatusCode = 204, Body = "" }
 	end
-	manual(app); h.settle(8)
+	-- Keep bounded phone polling covered at the protocol layer. Native phone
+	-- controls use the independent companion relay and never discover desktops.
+	desktop.inject(app.env, { instance = "mobile-bridge" }); app.bridge.sync(); h.settle(8)
 	check("mobile polling stays connected without busy polling", app.bridge.online and inbox >= 6 and inbox <= 9)
 	check("healthy mobile inbox stays out of requests and warnings", #app.env.require("net/http").history == 0
 		and count(app.env.require("runtime/log").entries, function(entry) return entry.source == "bridge" and entry.level == "warn" end) == 0)
@@ -110,8 +108,8 @@ do
 	check("concurrent scans share one request and result", scans == before + 1 and one and two)
 	check("successful health checks do not repeat connected logs", count(app.env.require("runtime/log").entries, function(entry) return entry.source == "relay" and entry.level == "info" end) == 1)
 	h.http.handler = function() return { StatusCode = 503, Body = "{}" } end
-	manual(app); h.settle(0.2)
-	check("an unavailable manual bridge cannot steal a healthy companion route", app.env.require("net/transport").target() == "companion"
+	desktop.connect(h, app)
+	check("an unavailable desktop worker cannot steal a healthy companion route", app.env.require("net/transport").target() == "companion"
 		and app.env.require("net/transport").endpoint().target == "companion")
 	marker, delay = false, 0
 	h.sandbox.task.spawn(function() link.scan() end); h.settle(0.2)
@@ -139,7 +137,7 @@ for _, pause in ipairs({ 0, 2.5 }) do
 		end
 		return { StatusCode = 204, Body = "" }
 	end
-	manual(app); h.settle(0.3)
+	desktop.connect(h, app)
 	check("server collected the pending receipt before reconnect", pendingAck)
 	app.bridge.stop(); h.settle(pause); app.bridge.sync(); h.settle(3)
 	check("a yielded command reconnects with its original receipt and runs once", sends == 1 and completed)
@@ -247,7 +245,7 @@ do
 		return { StatusCode = 200, Body = json.encode({ id = req.url:match("/inference/(.+)$"), state = ready and "completed" or "running", status = 200, body = "long answer" }),
 			delay = polls == 1 and 34.5 or 0 }
 	end
-	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.2); manual(app); h.settle(0.3)
+	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(0.2); desktop.connect(h, app)
 	local response, err, aborted
 	local clock = app.env.require("runtime/clock")
 	local function request()

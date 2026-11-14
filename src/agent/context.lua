@@ -169,9 +169,13 @@ return function(env)
 				raw = result.raw,
 				geminiParts = result.geminiParts and util.deepCopy(result.geminiParts),
 				geminiScope = result.geminiScope,
+				responsesItems = result.responsesItems and util.deepCopy(result.responsesItems),
+				responsesScope = result.responsesScope,
 				model = result.model,
 				provider = result.provider,
 				ms = result.ms,
+				outputTokens = result.outputTokens,
+				requestMs = result.requestMs,
 			})
 		end
 
@@ -561,7 +565,14 @@ return function(env)
 					-- their original boundaries and route scope across client reloads.
 					geminiParts = message.geminiParts,
 					geminiScope = message.geminiScope,
+					-- Responses reasoning items are opaque signed state, kept in order
+					-- with their matching tool calls and opaque route-scope fingerprint.
+					responsesItems = message.responsesItems,
+					responsesScope = message.responsesScope,
 					at = message.at,
+					model = message.model,
+					outputTokens = message.outputTokens,
+					requestMs = message.requestMs,
 				}
 			end
 			out.archive = {}

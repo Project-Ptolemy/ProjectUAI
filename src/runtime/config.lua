@@ -210,13 +210,10 @@ return function(env)
 			enabled = true,
 			entries = {},
 		},
-		-- Manual bridges remain opt-in. The desktop app is discovered only on its
-		-- dedicated loopback port; its rotating token stays in memory, not config.
+		-- The desktop app is discovered on its dedicated loopback port. Rotating
+		-- credentials stay in memory; connection settings never contain a token.
 		bridge = {
-			enabled = false,
 			autoDiscover = true,
-			port = 8790,
-			token = "",
 			runtime = "game",
 		},
 		-- The local inference relay (mobile companion). It owns the upstream
@@ -277,7 +274,9 @@ return function(env)
 	end
 	local function retirePreferences(data)
 		if type(data.ui) == "table" then data.ui.reduceMotion = nil end
-		if type(data.bridge) == "table" then data.bridge.requestTimeout = nil end
+		if type(data.bridge) == "table" then
+			data.bridge.requestTimeout, data.bridge.enabled, data.bridge.port, data.bridge.token = nil, nil, nil, nil
+		end
 		if type(data.security) == "table" and (data.credentialVault ~= nil or data.security.credentialProtection ~= "unprotected") then
 			data.security.credentialProtection = "password"
 		end
@@ -486,13 +485,18 @@ return function(env)
 		if path == "bridge.requestTimeout" or tostring(path):sub(1, 22) == "bridge.requestTimeout." then
 			return nil, "Bridged requests wait until completion or Stop"
 		end
+		for _, retired in ipairs({ "bridge.enabled", "bridge.port", "bridge.token" }) do
+			if path == retired or path:sub(1, #retired + 1) == retired .. "." then
+				return nil, "Cowork connects through automatic desktop discovery"
+			end
+		end
 		if path == "ui" and type(value) == "table" then
 			value = util.deepCopy(value)
 			value.reduceMotion = nil
 		end
 		if path == "bridge" and type(value) == "table" then
 			value = util.deepCopy(value)
-			value.requestTimeout = nil
+			value.requestTimeout, value.enabled, value.port, value.token = nil, nil, nil, nil
 		end
 		opts = opts or {}
 		util.set(M.data, path, value)

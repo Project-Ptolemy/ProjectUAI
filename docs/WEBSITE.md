@@ -39,9 +39,11 @@ Public onboarding should match the actual client: provider setup is opt-in,
 Project UAI Free and HCNSEC are separate library entries, and a hidden SDK window
 still requires the device's credential-storage setup or unlock.
 
-The public 3.8.0 release link uses `releases/tag/v3.8.0`. Its Windows download is
-`releases/download/v3.8.0/UAI-Bridge-3.8.0-win-x64.exe`; Android retains the
-published 3.7.1 companion asset. Update the release link, download URL, visible
-version and browser expectation together as part of publication. Keep published
-downloads independent of future source-tree candidates. UI LIB is independently
-versioned at 1.6.0.
+The 4.0.0 website source uses `releases/tag/v4.0.0`. Its Windows download is
+`releases/download/v4.0.0/UAI-Bridge-4.0.0-win-x64.exe`; Android retains the
+independently versioned 3.7.2 companion asset at
+`releases/download/relay-v3.7.2/UAI-Relay-3.7.2.apk`. Update the release link,
+download URL, visible version and browser expectation together. Before publishing the
+site, publish the matching release assets; local browser checks establish URL
+and layout consistency without confirming remote downloads. UI LIB remains
+independently versioned at 1.6.0.

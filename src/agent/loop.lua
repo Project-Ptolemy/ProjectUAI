@@ -13,6 +13,7 @@ return function(env)
 	local prompt = env.require("agent/prompt")
 	local registry = env.require("agent/registry")
 	local usage = env.require("agent/usage")
+	local responseRate = env.require("runtime/response_rate")
 	local hooks = env.require("agent/hooks")
 	local providers = env.require("provider/registry")
 	local chat = env.require("provider/chat")
@@ -213,8 +214,10 @@ return function(env)
 						if payload.request.onFrame then payload.request.onFrame(frame) end
 					end,
 				})
+				local requestMs = clock.since(started)
+				local outputTokens = responseRate.outputTokens(result and result.usage)
 				preview.close()
-				env.require("provider/free_route").observe(record, result, clock.since(started))
+				env.require("provider/free_route").observe(record, result, requestMs)
 
 				if aborted() then return nil, "aborted" end
 				if result then
@@ -222,7 +225,7 @@ return function(env)
 						streamId = preview.id,
 						provider = record.label,
 						model = result.model or record.model,
-						ms = clock.since(started),
+						ms = requestMs,
 						streamed = result.streamed,
 						via = result.via,
 					})
@@ -230,6 +233,7 @@ return function(env)
 					hooks.run("postResponse", after)
 					if util.trim(after.result.model) == "" then after.result.model = record.model end
 					after.result.streamId = preview.id
+					after.result.outputTokens, after.result.requestMs = outputTokens, requestMs
 					return after.result, nil, record, accounting
 				end
 
@@ -237,7 +241,7 @@ return function(env)
 					streamId = preview.id,
 					provider = record.label,
 					model = record.model,
-					ms = clock.since(started),
+					ms = requestMs,
 					error = err,
 				})
 				if err == "aborted" or session.aborted() then return nil, "aborted" end
@@ -463,7 +467,8 @@ return function(env)
 			end
 			if util.trim(displayed) ~= "" then
 				session.emit("assistant:text", { text = displayed, final = #result.toolCalls == 0 and coordination == nil
-					and not (session.hasQueued and session.hasQueued()), requestId = result.requestId, streamId = result.streamId, model = result.model })
+					and not (session.hasQueued and session.hasQueued()), requestId = result.requestId, streamId = result.streamId,
+					model = result.model, outputTokens = result.outputTokens, requestMs = result.requestMs })
 			end
 			session.emit("assistant:complete", { streamId = result.streamId })
 
