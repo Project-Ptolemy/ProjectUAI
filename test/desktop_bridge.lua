@@ -29,6 +29,49 @@ local function setup(value)
 	return h, app, state
 end
 
+local function pinInference(label)
+	local owner
+	return function(spec)
+		local authorization = spec.headers and spec.headers.Authorization
+		if spec.method == "POST" then
+			local input = json.decode(spec.body)
+			assert(type(input) == "table" and type(input.id) == "string" and input.id ~= "", label .. ": submission needs an exact request ID")
+			owner = owner or { id = input.id, url = spec.url, authorization = authorization }
+			assert(owner.url == "http://127.0.0.1:28791/api/inference" and owner.authorization == "Bearer " .. ("a"):rep(64), label .. ": submission must use the verified desktop")
+			assert(input.id == owner.id and spec.url == owner.url and authorization == owner.authorization, label .. ": submission changed request ownership")
+			return owner.id
+		end
+		assert(owner and (spec.method == "GET" or spec.method == "DELETE"), label .. ": receipt needs an accepted request")
+		assert(spec.url == owner.url .. "/" .. owner.id and authorization == owner.authorization, label .. ": receipt or cancellation changed request ID, endpoint or token")
+		return owner.id
+	end
+end
+
+for _, profile in ipairs({
+	{ name = "touch with synthetic mouse", touch = true, mouse = true, keyboard = false, platform = "Windows", handheld = true },
+	{ name = "Android with attached keyboard", touch = true, mouse = true, keyboard = true, platform = "Android", handheld = true },
+	{ name = "touchscreen desktop", touch = true, mouse = true, keyboard = true, platform = "Windows", handheld = false },
+	{ name = "pointer desktop", touch = false, mouse = true, keyboard = true, platform = "Windows", handheld = false },
+}) do
+	local h, probes = envMock.new(), 0
+	local input = h.services.UserInputService
+	input.TouchEnabled, input.MouseEnabled, input.KeyboardEnabled = profile.touch, profile.mouse, profile.keyboard
+	input.GetPlatform = function() return { Name = profile.platform } end
+	h.http.desktop = function()
+		probes = probes + 1
+		return { StatusCode = 200, Body = json.encode(info()) }
+	end
+	h.http.handler = function(req)
+		return { StatusCode = 200, Body = req.url:find("inbox", 1, true) and '{"commands":[]}' or '{}' }
+	end
+	local app = assert(h.boot()); require("password_fixture")(h, app); h.settle(6)
+	check(profile.name .. " uses runtime device identity", app.env.require("runtime/device").isHandheld() == profile.handheld)
+	check(profile.name .. " applies correct desktop discovery policy", profile.handheld and probes == 0 and not app.bridge.running
+		or not profile.handheld and probes > 0 and app.bridge.running)
+	app.destroy(); h.settle(1)
+	check(profile.name .. " discovery cleanup is clean", #h.errors() == 0)
+end
+
 do
 	local h, app, state = setup(info())
 	check("desktop is discovered at boot", app.bridge.running and app.bridge.status().source == "desktop")
@@ -135,5 +178,95 @@ do
 	h.settle(3)
 	check("web inference works without saved manual enable/token", result and result.body == "answer" and calls == 1)
 	app.destroy()
+end
+
+for _, failure in ipairs({ "refused", "timeout", "malformed" }) do
+	local h, app, state = setup(info())
+	local result, problem, submissions, deletes, ready = nil, nil, 0, 0, false
+	local pinned = pinInference(failure)
+	local connection, transport = app.env.require("net/bridge_connection"), app.env.require("net/transport")
+	h.sandbox.task.spawn(function()
+		result, problem = app.env.require("net/relay").request({ url = "https://provider.invalid/v1", body = "{}" }, {}, function(spec)
+			if spec.url:find("/api/hello", 1, true) then return { ok = true, body = '{"protocol":2,"instance":"desktop-one"}' } end
+			local id = pinned(spec)
+			if spec.method == "DELETE" then deletes = deletes + 1; return { ok = true, body = "{}" } end
+			if spec.method == "POST" then submissions = submissions + 1 end
+			return { ok = true, body = json.encode({ id = id, state = ready and "completed" or "running", status = 200, body = ready and "kept answer" or nil }) }
+		end)
+	end)
+	h.settle(0.2)
+	check(failure .. " fixture owns one accepted inference", submissions == 1)
+	state.discovery = failure == "malformed" and { product = "other", protocol = 1 } or failure == "timeout" and info() or nil
+	state.delay = failure == "timeout" and 3 or 0
+	h.settle(9)
+	check(failure .. " discovery pauses new bridge admission", not connection.enabled() and transport.endpoint() == nil)
+	check(failure .. " discovery retains only the accepted endpoint", connection.get(true).token == ("a"):rep(64)
+		and transport.endpoint("cowork").instance == "desktop-one")
+	check(failure .. " discovery cannot pretend the user pressed Stop", result == nil and problem == nil and deletes == 0 and submissions == 1)
+	ready = true; h.settle(2)
+	check(failure .. " discovery preserves the original answer without replay", result and result.body == "kept answer" and problem == nil and submissions == 1 and deletes == 0)
+	state.discovery, state.delay = info(), 0; h.settle(7)
+	check(failure .. " discovery recovers new admission automatically", connection.enabled() and app.bridge.online and transport.endpoint().target == "cowork")
+	app.destroy(); h.settle(1)
+	check(failure .. " discovery cleanup releases callbacks", #h.errors() == 0)
+end
+
+for _, profile in ipairs({
+	{ name = "keyboard loss", mouse = true, keyboard = false },
+	{ name = "pointer loss", mouse = false, keyboard = true },
+}) do
+	local h, app = setup(info())
+	local input = h.services.UserInputService
+	input.TouchEnabled = true
+	local result, problem, submissions, deletes, ready = nil, nil, 0, 0, false
+	local pinned = pinInference(profile.name)
+	local connection, transport = app.env.require("net/bridge_connection"), app.env.require("net/transport")
+	h.sandbox.task.spawn(function()
+		result, problem = app.env.require("net/relay").request({ url = "https://provider.invalid/v1", body = "{}" }, {}, function(spec)
+			if spec.url:find("/api/hello", 1, true) then return { ok = true, body = '{"protocol":2,"instance":"desktop-one"}' } end
+			local id = pinned(spec)
+			if spec.method == "DELETE" then deletes = deletes + 1; return { ok = true, body = "{}" } end
+			if spec.method == "POST" then submissions = submissions + 1 end
+			return { ok = true, body = json.encode({ id = id, state = ready and "completed" or "running", status = 200, body = ready and "pinned answer" or nil }) }
+		end)
+	end)
+	h.settle(0.2)
+	check(profile.name .. " fixture owns one accepted desktop inference", submissions == 1 and connection.enabled())
+	input.MouseEnabled, input.KeyboardEnabled = profile.mouse, profile.keyboard
+	h.settle(5)
+	check(profile.name .. " gates new handheld discovery and admission", app.env.require("runtime/device").isHandheld()
+		and not connection.enabled() and transport.endpoint() == nil)
+	check(profile.name .. " preserves accepted desktop identity", connection.get(true).token == ("a"):rep(64)
+		and transport.endpoint("cowork").instance == "desktop-one")
+	check(profile.name .. " cannot cancel the accepted job", result == nil and problem == nil and submissions == 1 and deletes == 0)
+	ready = true; h.settle(2)
+	check(profile.name .. " returns the original answer without replay", result and result.body == "pinned answer" and problem == nil and submissions == 1 and deletes == 0)
+	app.destroy(); h.settle(1)
+	check(profile.name .. " cleanup is clean", #h.errors() == 0)
+end
+
+for _, change in ipairs({ "token", "instance", "opt-out", "stop" }) do
+	local h, app, state = setup(info())
+	local result, problem, submissions, deletes = nil, nil, 0, 0
+	local pinned = pinInference(change)
+	h.sandbox.task.spawn(function()
+		result, problem = app.env.require("net/relay").request({ url = "https://provider.invalid/v1", body = "{}" }, {}, function(spec)
+			if spec.url:find("/api/hello", 1, true) then return { ok = true, body = '{"protocol":2,"instance":"desktop-one"}' } end
+			local id = pinned(spec)
+			if spec.method == "DELETE" then deletes = deletes + 1; return { ok = true, body = "{}" } end
+			if spec.method == "POST" then submissions = submissions + 1 end
+			return { ok = true, body = json.encode({ id = id, state = "running" }) }
+		end)
+	end)
+	h.settle(0.2); state.discovery = nil; h.settle(5)
+	check(change .. " fixture remains accepted through failed discovery", submissions == 1 and deletes == 0 and problem == nil)
+	if change == "token" then state.discovery = info(("b"):rep(64))
+	elseif change == "instance" then state.discovery = info(nil, "desktop-two")
+	elseif change == "opt-out" then app.config.set("bridge.autoDiscover", false)
+	else app.bridge.stop() end
+	h.settle(7)
+	check(change .. " still invalidates accepted ownership exactly once", result == nil and problem == "aborted" and submissions == 1 and deletes == 1)
+	app.destroy(); h.settle(1)
+	check(change .. " cancellation cleanup is clean", #h.errors() == 0)
 end
 print(string.format("%d desktop bridge checks passed", passed))

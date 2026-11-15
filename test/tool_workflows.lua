@@ -60,8 +60,8 @@ scenario("main and child prompts select relevant skills and retain a readable in
 		local normalized = text:gsub("%s+", " "):lower()
 		check("skill guidance precedes the environment", text:find("Skills:", 1, true) < text:find("Environment:", 1, true))
 		check("explicit and relevant skills are selected", contains(normalized, "read requested/relevant skills") and contains(normalized, "skip disabled/unrelated"))
-		check("unchanged bodies survive resume without forced reads", contains(normalized, "reuse bodies in context") and not contains(text, "read EVERY"))
-		check("continuations and lost skill context must be reread", contains(normalized, "follow all pages") and contains(normalized, "reread after changes or compaction loss"))
+		check("unchanged bodies survive resume without forced reads", contains(normalized, "reuse retained bodies") and not contains(text, "read EVERY"))
+		check("continuations and lost skill context must be reread", contains(normalized, "including all pages") and contains(normalized, "reread after changes/loss"))
 		check("the inventory identifies enabled filenames without disabled bodies", contains(text, "First.md") and not contains(text, "Disabled.md") and not contains(text, "A complete skill body."))
 		check("unavailable skills do not create retry loops", contains(normalized, "report denied/unavailable reads once"))
 	end

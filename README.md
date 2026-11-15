@@ -1,6 +1,6 @@
 # Project UAI
 
-**4.0.0 — a major release** · [Release notes](docs/RELEASE_4_0_0.md)
+**4.0.5 — steadier agents, faster conversations** · [Release notes](docs/RELEASE_4_0_5.md)
 
 An open-source AI workspace inside Roblox: chat with your chosen model, inspect
 the game, build scripts, and run tools. Use it on its own or embed it in a host script.

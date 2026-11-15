@@ -54,6 +54,26 @@ return function(env)
 	--
 	-- U+FFFD written as its three bytes so this file stays ASCII.
 	local REPLACEMENT = "\239\191\189"
+	-- Requests and checkpoints repeatedly encode the same immutable history.
+	-- Retain bounded repair outcomes so long Unicode strings are not rescanned
+	-- for each wrapper, state pulse, retry and save. Small identity/key strings
+	-- never enter this cache; both original and changed bytes count toward it.
+	local TEXT_CACHE_BYTES, TEXT_CACHE_ITEMS, TEXT_CACHE_MIN = 4 * 1024 * 1024, 256, 256
+	local textCache, textCacheOrder, textCacheBytes = {}, {}, 0
+	local function cacheText(source, text, changed)
+		local bytes = #source + (changed and #text or 0)
+		if #source < TEXT_CACHE_MIN or bytes > TEXT_CACHE_BYTES / 2 then return text, changed end
+		while #textCacheOrder >= TEXT_CACHE_ITEMS or textCacheBytes + bytes > TEXT_CACHE_BYTES do
+			local key = table.remove(textCacheOrder, 1)
+			local entry = textCache[key]
+			textCache[key] = nil
+			textCacheBytes = textCacheBytes - entry.bytes
+		end
+		textCache[source] = { text = text, changed = changed, bytes = bytes }
+		textCacheOrder[#textCacheOrder + 1] = source
+		textCacheBytes = textCacheBytes + bytes
+		return text, changed
+	end
 
 	-- Valid lead bytes and their sequence lengths, per RFC 3629. 0xC0, 0xC1 and
 	-- anything above 0xF4 are never legal leads, and a bare 0x80..0xBF is a
@@ -110,6 +130,8 @@ return function(env)
 	-- which is nearly every string -- allocates nothing and returns the original.
 	function M.sanitise(text)
 		text = tostring(text or "")
+		local cached = textCache[text]
+		if cached then return cached.text, cached.changed end
 		local size = #text
 		local index = text:find("[\128-\255]")
 		local start = 1
@@ -124,9 +146,12 @@ return function(env)
 			end
 			index = text:find("[\128-\255]", index + width)
 		end
-		if not out then return text, false end
+		if not out then return cacheText(text, text, false) end
 		if start <= size then out[#out + 1] = text:sub(start) end
-		return table.concat(out), true
+		return cacheText(text, table.concat(out), true)
+	end
+	function M.clearTextCache()
+		textCache, textCacheOrder, textCacheBytes = {}, {}, 0
 	end
 
 	-- The largest cut point at or below `index` that does not land inside a character.

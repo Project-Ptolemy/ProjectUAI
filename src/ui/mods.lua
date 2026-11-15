@@ -64,8 +64,11 @@ return function(env)
 		local spec = { version = 1, kind = kind, id = "my-ui-mod", name = "My UI mod", description = "", sources = {} }
 		if kind == "script" then
 			spec.source = "-- Return a startup factory; UAI calls it when this mod is applied.\nreturn function(context)\n"
-				.. "\t-- Create native changes here. Register owned resources with context:Give().\n"
-				.. "\treturn function()\n\t\t-- UAI calls this cleanup when the mod stops.\n\tend\nend"
+				.. "\tlocal panel = assert(context:CreatePanel({ id = \"workspace\", title = \"My workspace\" }))\n"
+				.. "\tlocal section = assert(panel:Section({ id = \"actions\", title = \"Actions\" }))\n"
+				.. "\tsection:Text({ id = \"welcome\", text = \"Your native Project UAI panel.\" })\n"
+				.. "\tsection:Button({ id = \"chat\", text = \"Open Chat\", callback = function() context.app.show(\"chat\") end })\n"
+				.. "\tpanel:Show()\nend"
 		else
 			spec.appearance = { density = "compact" }
 			spec.panels = { { id = "overview", title = "My workspace", description = "", widgets = {

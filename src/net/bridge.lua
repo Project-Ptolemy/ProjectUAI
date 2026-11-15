@@ -554,6 +554,7 @@ return function(env)
 			sessionId = current.id,
 			player = env.plr and env.plr.DisplayName or "you",
 			settings = settings, theme = themeColors, loops = loops, todos = current.todos,
+			personaOptions = env.require("runtime/personas").options(),
 			questions = questions, pendingPermissions = pendingPermissions,
 			logs = util.slice(log.entries, math.max(1, #log.entries - 59), #log.entries),
 			requests = http.history,

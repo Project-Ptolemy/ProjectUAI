@@ -253,6 +253,43 @@ case("cache refresh does not cancel accepted requests; changed credentials do", 
 	f.healthy(); f.close()
 end)
 
+case("a newly available relay does not cancel an accepted native Free route", function()
+	local f = fixture(); f.warm()
+	local selected = f.route.select(f.record, request)
+	local endpoint = { target = "cowork", base = "http://127.0.0.1:28791", token = "fixture", instance = "desktop-one", enabled = true }
+	f.env.require("net/transport").endpoint = function() return endpoint end
+	check("new relay availability invalidates latency measurements", not f.route.status(f.record).ready)
+	check("accepted native inference keeps its original model and owner", selected.model == FAST and f.route.current(selected))
+	f.env.require("provider/openai").rememberMaxTokens(selected, 512); f.route.observe(selected, { content = "Done" }, 1000)
+	check("accepted native settlement can preserve a scoped lesson", f.record.maxTokensCap and f.record.maxTokensCap.tokens == 512)
+	f.healthy(); f.close()
+end)
+
+case("accepted Free relay routes survive health loss but reject changed identity", function()
+	for _, target in ipairs({ "cowork", "companion" }) do
+		local f = fixture()
+		local endpoint = { target = target, base = "http://127.0.0.1:28791", token = "fixture", instance = "relay-one", enabled = true }
+		local healthy = true
+		local transport = f.env.require("net/transport")
+		transport.endpoint = function(retainTarget) if healthy or retainTarget == target then return endpoint end end
+		f.loaded["net/relay"] = { request = function(spec, headers, call)
+			return call({ url = spec.url, method = spec.method, headers = headers, body = spec.body,
+				aborted = spec.aborted, timeout = spec.timeout, silent = true })
+		end }
+		f.warm()
+		local selected = f.route.select(f.record, request)
+		check(target .. " fixture selects a measured relay route", selected ~= f.record and selected.model == FAST)
+		healthy = false
+		check(target .. " health loss invalidates future measurements", not f.route.status(f.record).ready)
+		check(target .. " health loss preserves accepted ownership", f.route.current(selected))
+		f.env.require("provider/openai").rememberMaxTokens(selected, 512); f.route.observe(selected, { content = "Done" }, 1000)
+		check(target .. " accepted settlement preserves its scoped lesson", f.record.maxTokensCap and f.record.maxTokensCap.tokens == 512)
+		endpoint.instance = "relay-two"
+		check(target .. " changed identity remains terminal", not f.route.current(selected))
+		f.healthy(); f.close()
+	end
+end)
+
 case("the agent prepares its prompt and hooks for the chosen model and sends user input once", function()
 	local f = fixture(); f.warm(); f.tools({})
 	local actual, hooked = {}, nil

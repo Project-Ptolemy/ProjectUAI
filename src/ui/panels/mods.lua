@@ -3,6 +3,8 @@
 return function(env)
 	local mods = env.require("runtime/ui_mods")
 	local runner = env.require("runtime/ui_mod_runner")
+	local nativePanels = env.require("runtime/ui_mod_panels")
+	local nativeView = env.require("ui/mod_panel")
 	local clock = env.require("runtime/clock")
 	local dispose = env.require("runtime/dispose")
 	local sessions = env.require("agent/session")
@@ -15,7 +17,8 @@ return function(env)
 		local panel, alive, visible, dirty = {}, true, true, true
 		local metricsDirty, painting, disabling = true, false, false
 		local queueRefresh, cancelRefresh
-		local currentView, selectedPanel, liveRecord, metrics, tabs = nil, nil, nil, {}, {}
+		local currentView, selectedPanel, liveRecord, metrics, tabs = nil, app.modPanelSelection, nil, {}, {}
+		local scriptPanels = {}
 		local scroll = P.scroll(parent, { name = "UiModsWorkspace", size = UDim2.fromScale(1, 1),
 			padding = theme.space.lg, gap = theme.space.sm })
 		P.text(scroll.instance, { name = "UiModsTitle", text = "Mod workspace", role = "heading", layoutOrder = 1 })
@@ -62,7 +65,7 @@ return function(env)
 			else app.show(action) end
 		end
 		local function refreshMetrics()
-			if not alive or not visible or not currentView then return end
+			if not alive or not visible or not currentView or liveRecord and liveRecord.spec.kind == "script" then return end
 			local session = sessions.current()
 			local snapshot = session.modMetrics()
 			if not alive or not visible or session.id ~= sessions.activeId then metricsDirty = true; return end
@@ -74,8 +77,11 @@ return function(env)
 			local position = scroll.instance.CanvasPosition
 			selectedPanel = id
 			if currentView then currentView.destroy() end
-			currentView = preview.renderVisual(content, liveRecord.spec, { panelId = id,
-				metric = function(selector) return metrics[selector] end, navigate = navigate })
+			if liveRecord.spec.kind == "script" then
+				app.modPanelSelection = id
+				currentView = nativeView.new(content, id)
+			else currentView = preview.renderVisual(content, liveRecord.spec, { panelId = id,
+				metric = function(selector) return metrics[selector] end, navigate = navigate }) end
 			for key, button in pairs(tabs) do button.setVariant(key == id and "primary" or "secondary") end
 			scroll.instance.CanvasPosition = position
 			metricsDirty = true; requestRefresh()
@@ -96,8 +102,18 @@ return function(env)
 			elseif liveRecord.spec.kind == "script" then
 				local run = runner.state()
 				status.Text = liveRecord.spec.name .. " / version " .. tostring(liveRecord.version) .. " / " .. tostring(run.status)
-				P.text(content, { name = "UiModScriptWorkspace", text = "This scripted mod controls its own changes to UAI. Use Manage UI mods to inspect its complete source, edit, export, or disable it.",
-					role = "body", wrap = true, auto = "Y", size = UDim2.new(1, 0, 0, 0) })
+				scriptPanels = nativePanels.list(liveRecord.spec.id)
+				local found
+				for _, item in ipairs(scriptPanels) do if item.key == selectedPanel then found = true end end
+				selectedPanel = found and selectedPanel or (scriptPanels[1] and scriptPanels[1].key)
+				for _, item in ipairs(scriptPanels) do
+					local key = item.key
+					tabs[key] = P.button(navigation, { name = "UiModNativeTab_" .. item.id, text = item.title, size = "sm",
+						variant = selectedPanel == key and "primary" or "secondary", onClick = function() showPanel(key) end })
+				end
+				if selectedPanel then showPanel(selectedPanel)
+				else P.text(content, { name = "UiModScriptWorkspace", text = "This scripted mod has no native workspace panels. Ask your agent to add a panel, or open Manage UI mods to inspect and edit its source.",
+					role = "body", wrap = true, auto = "Y", size = UDim2.new(1, 0, 0, 0) }) end
 			else
 				status.Text = liveRecord.spec.name .. " / version " .. tostring(liveRecord.version)
 				local found
@@ -134,6 +150,7 @@ return function(env)
 		local function invalidate() if alive then dirty = true; requestRefresh() end end
 		local function invalidateMetrics() if alive then metricsDirty = true; requestRefresh() end end
 		local releaseMods, releaseRun = mods.changed:connect(invalidate), runner.changed:connect(invalidate)
+		local releasePanels = nativePanels.changed:connect(function(_, kind) if kind == "structure" then invalidate() end end)
 		local releaseSession = sessions.listChanged:connect(invalidateMetrics)
 		local releaseEvent = sessions.anyEvent:connect(function(session, event)
 			if session.id == sessions.activeId and event.kind == "goals:changed" then invalidateMetrics() end
@@ -142,12 +159,17 @@ return function(env)
 		function panel.setVisible(value)
 			if not alive then return end
 			visible = value == true
+			if currentView and currentView.setVisible then currentView.setVisible(visible) end
 			if visible then metricsDirty = true; requestRefresh() end
+		end
+		function panel.select(key)
+			if not alive or not nativePanels.snapshot(key) then return nil, "This native mod panel is unavailable" end
+			selectedPanel, app.modPanelSelection = key, key; dirty = true; requestRefresh(); return true
 		end
 		local destroyedConnection
 		local cleanup = dispose.add(function()
 			if not alive then return end
-			alive = false; cancelRefresh(); releaseMods(); releaseRun(); releaseSession(); releaseEvent(); releaseUsage()
+			alive = false; cancelRefresh(); releaseMods(); releaseRun(); releasePanels(); releaseSession(); releaseEvent(); releaseUsage()
 			if destroyedConnection then destroyedConnection:Disconnect() end
 			if currentView then currentView.destroy() end
 			scroll.instance:Destroy()

@@ -139,6 +139,7 @@ for _, density in ipairs({ "comfortable", "compact" }) do
 end
 for _, mobile in ipairs({ false, true }) do
 	responsive.touch, responsive.pointer, responsive.console = mobile, not mobile, false
+	responsive.deviceMobile = mobile
 	for _, density in ipairs({ "comfortable", "compact" }) do
 		for _, scale in ipairs({ 0.85, 1, 1.4 }) do
 			settings["ui.density"], settings["ui.fontScale"] = density, scale
@@ -167,6 +168,7 @@ for _, mobile in ipairs({ false, true }) do
 end
 settings["ui.density"], settings["ui.fontScale"] = nil, nil
 responsive.touch, responsive.pointer, responsive.console = false, true, false
+responsive.deviceMobile = false
 local function luminance(color)
 	local function channel(value) return value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4 end
 	return 0.2126 * channel(color.R) + 0.7152 * channel(color.G) + 0.0722 * channel(color.B)
@@ -398,7 +400,8 @@ window.root:Destroy()
 check("external window destruction releases responsive subscription", responsive.changed:count() == count - 1 and not window.visible)
 
 viewport(844, 390)
-responsive.touch, responsive.mode, responsive.bottomInset = true, "panel", 24
+responsive.touch, responsive.deviceMobile, responsive.mode, responsive.bottomInset = true, true, "panel", 24
+theme.rebuild()
 local mobile = windowModule.new(root, { minHeight = 300 })
 mobile.show()
 bounds = responsive.usableRect(root, theme.space.sm, false)
@@ -416,7 +419,8 @@ h.drag(mobile.header, headerPosition.X + 100, headerPosition.Y + 10, headerPosit
 check("resized mobile panel moves vertically and stays inside the safe rectangle", mobile.root.Position.Y.Offset > startY
 	and mobile.root.Position.Y.Offset + mobile.root.Size.Y.Offset <= bounds.y + bounds.height)
 mobile.destroy()
-responsive.touch = false
+responsive.touch, responsive.deviceMobile = false, false
+theme.rebuild()
 
 viewport(1000, 700)
 local quick = env.require("ui/quickchat")

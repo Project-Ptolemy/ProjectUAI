@@ -57,7 +57,7 @@ return function(checkOnly)
 		return "[" .. equals .. "[\n" .. source .. "]" .. equals .. "]"
 	end
 	local lines = { "-- Generated from vault/catalog.json and its Markdown by tools/build_master_vault.lua; edit the sources.",
-		"return function(env)", "\treturn {", "\t\tversion = 1,", '\t\trelease = "4.0.0",', "\t\tentries = {" }
+		"return function(env)", "\treturn {", "\t\tversion = 1,", '\t\trelease = "4.0.5",', "\t\tentries = {" }
 	local seen = {}
 	for _, name in ipairs(index.entries) do
 		assert(type(name) == "string" and name:match("^[a-z0-9_-]+%.md$") and not seen[name], "invalid or repeated starter filename")

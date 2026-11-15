@@ -78,7 +78,11 @@ return function(env)
 					codeColour, theme.codeFontEnumName or "Code", M.escape(inner)))
 				index = run.close.after
 			else
-				local after = run and run.after or (index + 1)
+				-- Escape an ordinary span in one pass. Escaping every byte separately
+				-- creates five replacement strings per byte in a long paragraph, even
+				-- though only backslashes and code delimiters change this scan.
+				local after = run and run.after or (text:find("[\\`]", index + 1))
+				after = after or (#text + 1)
 				parts[#parts + 1] = M.escape(text:sub(index, after - 1))
 				index = after
 			end

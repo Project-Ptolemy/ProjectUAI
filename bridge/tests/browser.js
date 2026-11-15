@@ -59,7 +59,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     await page.locator('#transcript').evaluate(node => { node.scrollTop = 0; });
     assert.ok(await page.locator('#transcript').evaluate(node => node.scrollHeight > node.clientHeight), 'long history is scrollable');
     await post('/api/agent/events', { batchId: 'long-refresh-browser', sessionId: 's1', snapshot: history, state });
-    await sleep(180);
+    await page.waitForFunction(() => document.querySelector('#transcript').getAttribute('aria-busy') !== 'true' &&
+      document.querySelectorAll('#transcript .message').length === 320);
     assert.ok(await page.locator('#transcript').evaluate(node => node.scrollTop < 5), 'snapshot refresh preserves reading at the start');
     assert.equal(await page.locator('#transcript .message').count(), 320, 'snapshot refresh preserves retained messages');
     await page.locator('#latest').click();

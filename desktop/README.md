@@ -5,14 +5,14 @@ workspace. The Roblox client discovers the running desktop bridge automatically.
 The desktop project uses the existing server in `--desktop` mode on
 **127.0.0.1:28791**.
 
-Download [UAI Bridge 4.0.0 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v4.0.0/UAI-Bridge-4.0.0-win-x64.exe).
-Checksums and release notes are on the [4.0.0 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v4.0.0).
+Download [UAI Bridge 4.0.5 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v4.0.5/UAI-Bridge-4.0.5-win-x64.exe).
+Checksums and release notes are on the [4.0.5 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v4.0.5).
 Open the executable, then click
 **Start Cowork** on **Workspace**. It detects Node.js 18+ on your computer. If
 none is available, choose **Get Node.js** or **Manual setup** in the Workspace
 runtime card, then **Check again**.
 
-Desktop 4.0.0 uses native WPF with a responsive interface, its own
+Desktop 4.0.5 uses native WPF with a responsive interface, its own
 title bar with custom window controls, keyboard navigation, and accessible controls. The sidebar
 becomes horizontal navigation on smaller windows, and page content scrolls so
 actions remain reachable. Five pages organize the app:
@@ -178,7 +178,7 @@ active work and retained receipts/pictures are idle. An automatic worker restart
 keeps the same pairing token. The browser reconnects to the updated bridge.
 Refresh an open browser page to load changed web assets. **Copy client script**
 on **Workspace** copies the client embedded in the desktop executable. Desktop
-4.0.0 includes the reviewed client and bridge, including native Master Vault,
+4.0.5 includes the reviewed client and bridge, including native Master Vault,
 micro-goals and local Obsidian support. Master Vault notes live in the executor
 workspace; connected Obsidian folders remain on the bridge computer. The Android
 companion remains on its separate existing release.

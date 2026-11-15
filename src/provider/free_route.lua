@@ -41,10 +41,17 @@ return function(env)
 		return { headers = record.headers or {}, claudeUa = record.claudeUa, relay = transport.endpoint() }
 	end
 
-	local function matches(record, state)
+	local function matches(record, state, accepted)
 		-- Preference changes apply to future selection, never accepted requests.
+		local activeScope = scope(record)
+		if accepted then
+			-- Health and a newly available route invalidate measurements, not an
+			-- accepted request. Verify only its original relay identity; a native
+			-- request remains native when a bridge appears while it is running.
+			activeScope.relay = state.scope.relay and transport.endpoint(state.scope.relay.target) or nil
+		end
 		return eligibleRecord(record) and registry.get(record.id) == record
-			and same(state.scope, scope(record))
+			and same(state.scope, activeScope)
 	end
 
 	local function current(record, state)
@@ -183,7 +190,7 @@ return function(env)
 	-- It never causes the current prompt to be resent to another measured model.
 	function M.observe(record, result, ms)
 		local owner = owners[record]
-		if owner and matches(owner.record, owner.state) then
+		if owner and matches(owner.record, owner.state, true) then
 			local changed = false
 			for _, key in ipairs(LESSONS) do
 				if not same(owner.baseline[key], record[key]) then
@@ -216,7 +223,7 @@ return function(env)
 		-- Lock clears the saved provider's live fields; the accepted snapshot may
 		-- still finish its request while new work remains gated by M.eligible.
 		if owner and (config.accessProblem() or config.vaultStatus().locked) then return alive and registry.get(owner.record.id) == owner.record end
-		return alive and (not owner or matches(owner.record, owner.state))
+		return alive and (not owner or matches(owner.record, owner.state, true))
 	end
 
 	function M.isRouted(record) return owners[record] ~= nil end

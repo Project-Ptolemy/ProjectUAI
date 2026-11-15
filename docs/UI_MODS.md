@@ -65,9 +65,9 @@ history, credentials, conversations, previews and internal storage paths. UAI
 does not append those values to a shared package. Source and authored references
 are copied verbatim, including any literals the author chose to place there.
 
-The [reviewed examples](../mods/README.md) include a visual project workbench and
-a native lifecycle marker. They are examples to review and import, with no
-claimed in-game verification.
+The [reviewed examples](../mods/README.md) include a visual project workbench,
+a native workbench with editable controls, and a native lifecycle marker.
+They are examples to review and import, with no claimed in-game verification.
 
 ## Portable schema
 
@@ -165,27 +165,72 @@ use their normal dot calls. Context ownership methods use colon calls:
 | `context:OnDestroy(callback)` | Register owned cleanup, equivalent to `Give`. |
 | `context:Connect(signal, callback)` | Register a scope-owned connection. |
 | `context:Delay(seconds, callback, ...)` | Schedule scope-owned delayed work. |
+| `context:CreatePanel(options)` | Register an owned native panel in Mod workspace; retain its domain values across window rebuilds. |
 | `context:OnMount(callback)` | Call with the current/new root and app; release prior mount cleanup before remounting. Early release closes further mounts and releases current cleanup. |
 | `context:IsAlive()` | Check whether this mod/client lifetime remains active. |
 | `context:GetRoot()` | Obtain the current mounted root after an app rebuild. |
 
-For example, a mod can mark the actual native root and restore that owned
-attribute when the app remounts or the mod is disabled:
+For an interface inside UAI, use `CreatePanel` and declare sections, values and
+domain callbacks. UAI supplies its existing settings sections, buttons, switches,
+inputs, sliders and anchored menus, with the current appearance and mobile metrics.
+New script templates create an actual workspace panel within this native composition:
 
 ```lua
 return function(context)
-	context:OnMount(function(root)
-		if not root or not context:IsAlive() then return end
-		local before = root:GetAttribute("ProjectUaiModExample")
-		root:SetAttribute("ProjectUaiModExample", "active")
-		return function()
-			if root:GetAttribute("ProjectUaiModExample") == "active" then
-				root:SetAttribute("ProjectUaiModExample", before)
-			end
-		end
-	end)
+	local panel = assert(context:CreatePanel({
+		id = "workbench", title = "Project workbench",
+		description = "Keep working notes and project actions together.",
+	}))
+	local section = assert(panel:Section({ id = "project", title = "Current project" }))
+	section:Input({ id = "notes", text = "Working notes", multiline = true,
+		value = "", placeholder = "Keep notes for this run" })
+	section:Button({ id = "vault", text = "Open Master Vault",
+		callback = function() context.app.show("vault") end })
+	panel:Show()
 end
 ```
+
+`panel:Show()` opens Mod workspace and selects that panel. Creation alone does not
+change the selected page. Panels automatically release when their mod stops;
+`panel:Destroy()` releases one early and removes its owned scope resource.
+Do not recreate the panel in `OnMount`:
+the existing declaration and values survive appearance rebuilds. This state is
+local to the loaded mod and is not implicitly saved to disk.
+
+| Native panel method | Options or behavior |
+| --- | --- |
+| `panel:Section(options)` | `id`, `title`, optional `description`; returns a section. |
+| `section:Text(options)` | `id`, literal `text`; optional initial `value`. |
+| `section:Button(options)` | `id`, `text`, optional `callback(value, control)`. |
+| `section:Toggle(options)` | `id`, `text`, optional boolean `value`, `hint`, `callback`. |
+| `section:Input(options)` | `id`, `text`, optional string `value`, `placeholder`, `multiline`, `hint`, `callback`. |
+| `section:Select(options)` | `id`, `text`, `options = {{value="code",label="Code"}}`, optional `value`, `hint`, `callback`. |
+| `section:Slider(options)` | `id`, `text`, finite increasing `min`/`max`, optional usable positive `step`, `value`, `hint`, `callback`; callback commits on gesture release. |
+| `panel:Get(id)` | Return the original control handle for that stable ID. |
+| `control:Get()` | Read the retained value. |
+| `control:Set(value, notify?)` | Validate and update the existing control; invoke its domain callback only with `notify = true`. |
+| `control:SetEnabled(boolean)` | Set whether the user can interact with the control. |
+| `control:Activate()` | Invoke the control's callback once when available. |
+| `panel:IsAlive()` | Return whether its mod and panel lifetimes are active. |
+
+Native panels accept four panels per active mod, eight sections and 32 controls
+per panel, and 1–32 distinct select options. IDs use the portable mod ID format;
+section/control IDs are unique across a panel. Panel/section titles, control labels
+and select labels are plain text within 100 UTF-8 bytes; they do not accept icons,
+markup, colors or sizing options. Descriptions/hints hold 500 bytes, text readouts
+4,000 bytes and editable inputs 8,000 bytes. Slider bounds have magnitude at most
+one billion and a supplied step must resolve at most one billion increments.
+Builders return the handle or `nil, reason` on invalid admission;
+value setters return `true` or `nil, reason`.
+
+Callback execution participates in the mod runner's native ownership. A running
+callback disables its own control and rejects overlapping requests. Disabled or
+released panels reject new callbacks; existing native calls remain cooperative.
+Keep input/toggle callbacks brief, and check `context:IsAlive()` after yielding.
+Value changes refresh existing widgets and preserve field focus/drafts. Unrelated
+readout updates preserve pending slider gestures; explicit value changes reconcile
+them. Hidden panels suspend drawing and reconcile values when shown again. Use `context:Give`,
+`Connect`, `Delay` and `OnDestroy` for application connections and resources.
 
 Use current root references after remounts and check `IsAlive` after yielding.
 Register resources that should end with the mod. Existing native UAI primitives
@@ -289,7 +334,7 @@ history. **Restore as draft** copies a prior historical spec into an editable
 draft; **Save disabled** creates a new version using the current revision.
 The same workflow is available through a revision-guarded `ui_mod_save`.
 
-`runtime/ui_mod_document` exposes `validate`, `parse`, `format`, the preference
+`runtime/ui_mod_document` exposes `validate`, `parse`, `format`, `validId`, `validLabel`, the preference
 enums, action/metric lists and limits. `runtime/ui_mods` exposes `list`, `read`,
 `save`, `import`, `export`, `delete`, `activate`, `disable`, `getActive`,
 `appearance`, `reload`, `state`, `isBusy`, `checkScript` and `changed`.
@@ -298,11 +343,16 @@ enums, action/metric lists and limits. `runtime/ui_mods` exposes `list`, `read`,
 an exact saved revision; execution belongs to the root activation/runner
 layer. The runner exposes `start`, `stop`, `state`, `isBusy`, `notifyMount`,
 `mounted` and `changed`.
+`runtime/ui_mod_panels` retains the native declarations and supplies detached
+`list`/`snapshot` data to `ui/mod_panel`; callbacks execute through the owning
+runner context, not through serialized portable data.
 
 Review every changed document, source, example and test before building. Rebuild
 with `luajit tools/bundle.lua --native`, inspect generated output, then run
 `luajit test/ui_mods_runtime.lua` and `luajit test/ui_mods_tools.lua` with the
-applicable runner/UI tests. `luajit test/ui_mod_activation.lua` covers direct
+applicable runner/UI tests. `luajit test/ui_mod_panels.lua` covers bounded native
+declarations, shared controls, detached state and cooperative callbacks.
+`luajit test/ui_mod_activation.lua` covers direct
 Apply, normal permissions, exact-source preflight and owned execution.
 `luajit test/ui_mod_bridge_apply.lua` covers native/Cowork question separation;
 `node bridge/tests/browser-mod-apply.js` covers normal tool/permission receipts,

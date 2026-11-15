@@ -6770,10 +6770,11 @@ scenario("a subagent has no ask tool and knows what it is", function()
 
 	-- The brief states the identity and the no-asking rule in words.
 	local brief = handle.env.require("agent/prompt").subagent("a task", {})
+	local normalizedBrief = brief:gsub("%s+", " ")
 	contains("it says what it is", brief, "subagent of UAI")
 	contains("and that nobody can answer it", brief, "You cannot ask the user questions")
 	contains("with what to do instead", brief, "Report exact targets, findings, changes, checks")
-	contains("and where dumped files belong", brief, "dump/ for inspected source")
+	contains("and where dumped files belong", normalizedBrief, "dump/ for inspected source")
 	local workspace = handle.env.require("runtime/workspace").describe()
 	contains("with the exact current game directory", brief, "Current game files: " .. workspace.path .. "/")
 	contains("and its exact dump directory", brief, "Current game dumps: " .. workspace.path .. "/dump/")
@@ -6801,16 +6802,17 @@ scenario("the system prompt teaches denials, dates and tool questions", function
 
 	local promptText = tostring(sent[1].messages[1].content)
 	local normalizedPrompt = promptText:gsub("%s+", " ")
-	contains("permission decisions and scopes are respected", normalizedPrompt, "Respect denials and scopes")
+	contains("permission decisions and scopes are respected", normalizedPrompt, "Respect denials/scopes")
 	contains("denials cannot be bypassed with another route", normalizedPrompt,
-		"never bypass them through another tool or script")
+		"never bypass them")
 	contains("later explicit authorization can change a decision", normalizedPrompt,
-		"A later explicit authorization can change a decision")
+		"Later explicit authorization can change decisions")
 	contains("questions use ask_user even under Allow everything", normalizedPrompt,
-		"Always use ask_user for every question, clarification, meaningful user choice or consent request, even under Allow everything (full)")
+		"Always use ask_user for every question, choice or consent request, even under Allow everything (full)")
 	contains("questions belong in native calls", normalizedPrompt, "Questions belong in native calls, not prose")
+	contains("the permission layer owns tool approval", normalizedPrompt, "the permission layer owns approval")
 	contains("tool approval requires no duplicate question", normalizedPrompt,
-		"The permission layer handles tool approval; add no duplicate approval question")
+		"no ritual question or repeated approval")
 	contains("the requested full mode reaches the model", promptText, "Permission mode: full")
 	-- The date comes from the real clock rather than the mock's virtual one, so the
 	-- assertion is on the shape of the line rather than a fixed date.
@@ -6824,7 +6826,7 @@ scenario("the system prompt teaches denials, dates and tool questions", function
 	contains("the exact dump directory is supplied", promptText, "Current game dumps: " .. workspace.path .. "/dump/")
 	contains("scripts use the current game directory", normalizedPrompt, "Use Current game files for scripts")
 	contains("dumps are kept apart from authored code", normalizedPrompt, "dump/ for inspected source")
-	contains("explicit user paths override the default", normalizedPrompt, "honor explicit paths")
+	contains("explicit user paths override the default", normalizedPrompt, "Preserve explicit/Unicode paths")
 
 	check("no thread errors", #harness.errors(), 0,
 		harness.errors()[1] and harness.errors()[1].traceback or nil)
@@ -7464,7 +7466,7 @@ scenario("the what's new modal renders every release on wide and narrow viewport
 	contains("and the improved ones", text, "Improved")
 	contains("and the fixed ones", text, "Fixed")
 	local latest = changelog.latest()
-	check("the release candidate is the latest entry", latest.version, "4.0.0")
+	check("the release candidate is the latest entry", latest.version, "4.0.5")
 	local latestCard = harness.byName("Release_" .. latest.version, modal.content)
 	truthy("the latest release has its own card", latestCard ~= nil)
 	local latestText = harness.textOf(latestCard)

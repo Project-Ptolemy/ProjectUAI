@@ -1176,19 +1176,47 @@ A script can be a plain chunk, or return a factory receiving the full context:
 
 ```lua
 return function(context)
-	local app = context.app
-	local env = context.env
-	local client = context.uai
-	local caps = context.require("runtime/caps")
-	context:OnMount(function(root, mountedApp)
-		-- Modify the existing application through its own presentation modules.
-		-- Register resources before any yielding operation where possible.
-		return function() end -- releases this mount before the next one
-	end)
-	context:OnDestroy(function() end)
-	return function() end -- optional final cleanup
+	local panel = assert(context:CreatePanel({ id = "workbench", title = "Project workbench" }))
+	local section = assert(panel:Section({ id = "project", title = "Current project" }))
+	section:Input({ id = "notes", text = "Working notes", value = "", multiline = true })
+	section:Button({ id = "vault", text = "Open Master Vault", callback = function()
+		context.app.show("vault")
+	end })
+	panel:Show()
 end
 ```
+
+For a panel inside the existing UAI application, use `context:CreatePanel`.
+The native Mod workspace supplies ordinary sections, buttons, switches, inputs,
+select menus and sliders using UAI's appearance and mobile dimensions. Declare
+values and domain callbacks; do not construct a new GUI or add a header marker
+as a substitute for the requested panel. Standalone script interfaces continue
+to use Project UAI UI LIB.
+
+`CreatePanel({id,title,description?})` returns `panel` or `nil, reason`.
+`panel:Section({id,title,description?})` returns a section, which provides
+`Text`, `Button`, `Toggle`, `Input`, `Select` and `Slider`. Controls declare
+`id`, `text`, optional `value`/`hint`/`enabled` and a domain `callback(value, control)`.
+Inputs additionally accept `placeholder` and `multiline`; Select accepts
+`options={{value="code",label="Code"}}`; Slider requires finite increasing
+`min`/`max` and optionally a usable positive `step`. Slider callbacks commit on
+release. Navigation/action labels are text only; raw style/sizing/icon fields
+are unavailable in this declaration API.
+
+`panel:Get(id)` returns its original control. `control:Get()`, `Set(value,notify?)`
+and `SetEnabled(boolean)` read/update retained state; Set invokes the callback
+only with `notify=true`. `panel:Show()` selects the panel in Mod workspace,
+`panel:Destroy()` unregisters it and releases scoped ownership early, and
+`panel:IsAlive()` checks ownership.
+Create once in the startup factory. Native panels own their presentation remounts;
+do not recreate them in `OnMount`. Appearance rebuilds preserve declarations
+and values automatically. Disable/unload releases them, and no input is saved
+implicitly. Native panels are bounded to four per mod, eight sections/32 controls
+per panel, 32 distinct select options, 4,000-byte text and 8,000-byte inputs.
+Titles/labels use plain 100-byte UTF-8 text; descriptions/hints hold 500 bytes.
+Panel callbacks share the runner's owned native lifetime and reject overlap
+while their own control is busy. Keep typing callbacks brief and check
+`context:IsAlive()` after yielding.
 
 `context.require(id)` uses the normal factory-module loader. `uai` is the full
 client handle; `env`, `app`, `root`, and `scope` are implementation escape

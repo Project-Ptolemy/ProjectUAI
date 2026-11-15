@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.0.5 - Steadier agents, faster conversations
+
+November 15, 2026. Client, bridge package and Windows desktop: **4.0.5**.
+UI LIB remains **1.6.0**, embedding SDK **1.1.0**, Android companion **3.7.2**.
+
+- **Bridge stops:** accepted inference retains its verified endpoint through missed
+  desktop discovery probes and transient route health changes. Stop, changed
+  credentials and explicit disconnect remain effective; no uncertain request replays.
+- **Kilo models:** request plain JSON from the live catalog to avoid undecoded
+  Brotli responses, and report compressed or unexpected replies clearly.
+- **Long conversations:** reduce repeated context estimation and Markdown work,
+  defer closed reasoning content, and replay Cowork snapshots in bounded batches.
+- **Native mod panels:** script mods declare workspace sections, controls and
+  values through an owned `context:CreatePanel` API that follows UAI's native theme
+  and lifecycle.
+- **Mobile size:** preserve handheld metrics across rotation, Window layout and
+  synthetic mouse capabilities instead of switching to desktop dimensions.
+  Provider setup also keeps the typing row within short keyboard bounds.
+- **Personas:** UAI, Femboy, Catboy, Gremlin, Tsundere, Goth, Drill Sergeant,
+  Evil Genius and Brainrot, with previews in native and Cowork Agent settings.
+- **Ponytail:** shared system instructions use the project's adaptation of the
+  smallest-complete-change workflow, with callers, cleanup and focused verification.
+
+See [release notes](docs/RELEASE_4_0_5.md) and [agent voice](docs/AGENT_VOICE.md).
+
 ## 4.0.0 - a major release
 
 November 14, 2026. Client, bridge package and Windows desktop: **4.0.0**.

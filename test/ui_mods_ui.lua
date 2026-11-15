@@ -483,4 +483,37 @@ case("closing a pending Disable suppresses late interface work", function()
 	f.healthy(); f.close()
 end)
 
+case("script panels appear inside the native Mod workspace with retained controls", function()
+	local f = F.ui(900, 700); local value = record(spec("script", "native-fixture"))
+	local w = workspaceFixture(f, value)
+	local models = f.env.require("runtime/ui_mod_panels")
+	local native = assert(models.create({ id = "workspace", title = "Project controls" }, {
+		id = value.id, gate = function() return true end, invoke = function(fn, ...) return fn(...) end,
+	}))
+	local section = assert(native:Section({ id = "notes", title = "Working notes" }))
+	local notes = assert(section:Input({ id = "scratchpad", text = "Scratchpad", value = "Original draft" }))
+	w.open()
+	check("script mods have a native workspace tab and real controls", f.h.byName("UiModNativeTab_workspace", f.host) ~= nil
+		and f.h.byName("UiModNativeSection_notes", f.host) ~= nil and f.h.byName("UiModScriptWorkspace", f.host) == nil)
+	local nativeField = field(f, "UiModNativeInput_scratchpad", f.host)
+	nativeField.Text = "Retain my scratchpad"; f.h.settle(0.2)
+	check("native mod inputs retain their domain state", notes:Get() == "Retain my scratchpad")
+	notes:Set("Live update"); f.h.settle(0.2)
+	check("value changes update the existing field rather than rebuilding the workspace", field(f, "UiModNativeInput_scratchpad", f.host) == nativeField
+		and nativeField.Text == "Live update")
+	local second = assert(models.create({ id = "second", title = "Second panel" }, {
+		id = value.id, gate = function() return true end, invoke = function(fn, ...) return fn(...) end,
+	}))
+	assert(second:Section({ id = "content", title = "Second panel content" })):Text({ id = "retained", text = "Selected after remount" })
+	f.h.settle(0.2)
+	assert(w.panel.select(second.key)); f.h.settle(0.2)
+	w.panel.destroy(); w.open()
+	check("native mod workspace remounts retain the selected panel", f.h.byName("UiModNativeText_retained", f.host) ~= nil
+		and w.app.modPanelSelection == second.key)
+	second:Destroy(); assert(w.panel.select(native.key)); f.h.settle(0.2)
+	native:Destroy(); f.h.settle(0.2)
+	check("removing the owned panel removes its native workspace view", f.h.byName("UiModNativeInput_scratchpad", f.host) == nil
+		and f.h.byName("UiModScriptWorkspace", f.host) ~= nil)
+	w.panel.destroy(); f.healthy(); f.close()
+end)
 suite.finish()

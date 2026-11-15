@@ -401,3 +401,89 @@ test('replay reports dropped frame ranges while the authoritative raw body stays
   assert.ok(gap.from > 1); assert.equal(frames.length, 4096); assert.equal(frames[0].seq, gap.from);
   assert.equal(view.body, payload);
 });
+
+test('fresh replay shares its frame budget across full jobs and retains terminal outcomes', async t => {
+  const raw = 'data: {"choices":[{"delta":{"reasoning_content":"x"}}]}\n\n'.repeat(4096) + 'data: [DONE]\n\n';
+  const calls = new Map(), events = [];
+  const url = await upstream(t, (req, res) => {
+    calls.set(req.url, (calls.get(req.url) || 0) + 1);
+    if (req.url === '/failed') { res.writeHead(503, { 'content-type': 'text/plain' }); res.end('Retained refusal'); return; }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    if (req.url === '/cancelled') res.write('data: {"choices":[{"delta":{"content":"Partial before Stop"}}]}\n\n');
+    else res.end(raw);
+  });
+  const relay = createInference({ publish: event => events.push(event) });
+  t.after(() => relay.close());
+  const ids = ['full-first', 'full-second', 'failed-job', 'cancelled-job'];
+  for (const [index, path] of ['/first', '/second', '/failed', '/cancelled'].entries()) {
+    relay.start({ id: ids[index], instance: relay.instance, url: url + path, sessionId: 's1', body: '{}' });
+  }
+  for (let attempt = 0; attempt < 500 && (ids.slice(0, 3).some(id => relay.get(id).state === 'running') ||
+      !events.some(event => event.id === 'cancelled-job' && event.kind === 'inference:delta')); attempt++) await sleep(5);
+  assert.ok(relay.cancel('cancelled-job'));
+  const replay = relay.previews('s1');
+  assert.ok(replay.length <= 4500);
+  assert.ok(replay.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0) <= 7 * 1024 * 1024);
+  for (const id of ids.slice(0, 2)) {
+    const retained = replay.filter(event => event.id === id), frames = deltas(retained);
+    const gap = retained.find(event => event.kind === 'inference:resync');
+    assert.ok(frames.length > 0 && frames.length < 4096);
+    assert.equal(frames[0].seq, gap.from); assert.equal(frames.at(-1).seq, 4096);
+    assert.equal(retained.at(-1).state, 'completed'); assert.equal(retained.at(-1).overflow, true);
+    assert.equal(relay.get(id).body, raw, 'projection leaves the complete provider receipt unchanged');
+  }
+  assert.match(replay.find(event => event.id === 'failed-job' && event.kind === 'inference:done').providerError, /HTTP 503/);
+  assert.equal(replay.find(event => event.id === 'cancelled-job' && event.kind === 'inference:done').state, 'cancelled');
+  assert.deepEqual([...calls.values()], [1, 1, 1, 1], 'projecting previews never resubmits a provider request');
+});
+
+test('fresh replay clips aggregate bytes to contiguous tails without changing receipts', async t => {
+  const frames = [
+    { choices: [{ delta: { reasoning_content: 'x'.repeat(2 * 1024 * 1024 - 1024) } }] },
+    ...Array.from({ length: 3 }, () => ({ choices: [{ delta: { reasoning_content: 'tail' } }] })),
+  ];
+  const raw = frames.map(frame => 'data: ' + JSON.stringify(frame) + '\n\n').join('') + 'data: [DONE]\n\n';
+  let calls = 0;
+  const url = await upstream(t, (req, res) => { calls++; res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end(raw); });
+  const relay = createInference(); t.after(() => relay.close());
+  for (const id of ['large-first', 'large-second']) relay.start({ id, instance: relay.instance, url, sessionId: 's1', body: '{}' });
+  for (let attempt = 0; attempt < 500 && ['large-first', 'large-second'].some(id => relay.get(id).state === 'running'); attempt++) await sleep(5);
+  const replay = relay.previews('s1');
+  assert.ok(replay.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0) <= 7 * 1024 * 1024);
+  for (const id of ['large-first', 'large-second']) {
+    const retained = replay.filter(event => event.id === id);
+    assert.equal(retained.find(event => event.kind === 'inference:resync').from, 2);
+    assert.deepEqual(deltas(retained).map(event => event.seq), [2, 3, 4]);
+    assert.equal(retained.at(-1).overflow, true); assert.equal(relay.get(id).body, raw);
+  }
+  assert.equal(calls, 2);
+});
+
+test('fresh replay retains an older running job ahead of excessive terminal previews', async t => {
+  let calls = 0;
+  const response = { status: 200, headers: {}, body: '{"choices":[{"message":{"content":"Complete"}}]}' };
+  const relay = createInference({ opencode: {
+    capability: () => ({ available: true }), accepts: () => true,
+    request: async ({ body, onFrame, signal }) => {
+      calls++;
+      if (JSON.parse(body).model !== 'old-running') return response;
+      onFrame({ choices: [{ delta: { content: 'Still running' } }] });
+      return new Promise(resolve => signal.addEventListener('abort', () => resolve(response), { once: true }));
+    },
+  } });
+  t.after(() => relay.close());
+  relay.start({ id: 'old-running', instance: relay.instance, sessionId: 's1', url: 'https://fixture.invalid', body: '{"model":"old-running"}' });
+  for (let index = 1; index <= 34; index++) {
+    relay.start({ id: 'terminal-' + index, instance: relay.instance, sessionId: 's1', url: 'https://fixture.invalid', body: '{"model":"complete"}' });
+    await Promise.resolve();
+  }
+  const replay = relay.previews('s1');
+  assert.equal(replay.filter(event => event.kind === 'inference:start').length, 32);
+  assert.ok(replay.some(event => event.kind === 'inference:start' && event.id === 'old-running'));
+  assert.ok(replay.some(event => event.kind === 'inference:delta' && event.id === 'old-running'));
+  assert.equal(replay.filter(event => event.kind === 'inference:done').length, 31);
+  assert.ok(replay.some(event => event.kind === 'inference:done' && event.id === 'terminal-34'));
+  assert.ok(replay.some(event => event.kind === 'status' && /older live previews/.test(event.text)));
+  assert.equal(relay.get('old-running').state, 'running', 'recovery never cancels an admitted job');
+  assert.equal(calls, 35, 'projection starts no additional native inference');
+});

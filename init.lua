@@ -20,7 +20,7 @@ end
 local hostContext = ...
 local replacementConfig, replacementVault
 
-local VERSION = "4.0.0"
+local VERSION = "4.0.5"
 local FOLDER = "UAI"
 local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 
@@ -498,6 +498,7 @@ local function start()
 			handle.uiMounted = false
 			handle.cleanupFailed = not screenOk or #(failed or {}) > 0
 			pcall(function() config.saveNow() end)
+			env.require("runtime/util").clearTextCache()
 			handle.unloading = false
 			if globalTable and globalTable.UAI == handle then globalTable.UAI = nil end
 			log.info("boot", string.format("unloaded -- %d cleanups run", ran or 0))

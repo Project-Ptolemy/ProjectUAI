@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "script",
+  "id": "native-workbench",
+  "name": "Native workbench",
+  "description": "A native UAI panel with working notes, live request counts and project actions.",
+  "author": "Project UAI",
+  "sources": [{"label":"Native UAI panel declarations and lifecycle","url":"https://github.com/Project-Ptolemy/ProjectUAI/blob/main/docs/UI_MODS.md#script-lifecycle-and-context"}],
+  "source": "return function(context)\n\tlocal panel = assert(context:CreatePanel({ id = \"workbench\", title = \"Project workbench\", description = \"Working notes and project actions inside Project UAI.\" }))\n\tlocal notes = assert(panel:Section({ id = \"notes\", title = \"Working notes\", description = \"Retained for this loaded mod, including appearance changes.\" }))\n\tnotes:Input({ id = \"scratchpad\", text = \"Scratchpad\", value = \"\", multiline = true, placeholder = \"Write your next step\" })\n\tlocal overview = assert(panel:Section({ id = \"overview\", title = \"Conversation overview\" }))\n\tlocal status = assert(overview:Text({ id = \"requests\", text = \"Reading request count\" }))\n\tlocal sessions = context.require(\"agent/session\")\n\tlocal function refresh()\n\t\tif not context:IsAlive() or not panel:IsAlive() then return end\n\t\tlocal current = sessions.current()\n\t\tlocal metrics = current.modMetrics()\n\t\tstatus:Set(\"Requests: \" .. tostring(metrics.requests or \"Unavailable\"))\n\tend\n\toverview:Button({ id = \"refresh\", text = \"Refresh request count\", callback = refresh })\n\toverview:Button({ id = \"vault\", text = \"Open Master Vault\", callback = function() context.app.show(\"vault\") end })\n\toverview:Button({ id = \"code\", text = \"Open Code\", callback = function() context.app.show(\"code\") end })\n\tcontext:Connect(sessions.listChanged, refresh)\n\tcontext:Connect(sessions.usageChanged, refresh)\n\trefresh()\n\tpanel:Show()\nend\n"
+}

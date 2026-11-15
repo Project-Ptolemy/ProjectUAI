@@ -135,12 +135,12 @@ case("main and child prompts require independent work, periodic checks and colle
 	local f, agents, parent = setup()
 	local prompt = f.env.require("agent/prompt")
 	for _, text in ipairs({ prompt.build({ session = parent }), prompt.subagent("Inspect source") }) do
-		check("delegation reserves parent work and checks periodically", text:find("reserve independent work for yourself", 1, true)
-			and text:find("Check agent_status periodically", 1, true))
-		check("polling is bounded and completion requires report collection", text:find("do not tight-poll", 1, true)
-			and text:find("wait_seconds=15-30", 1, true) and text:find("follow nextOffset with offset until eof", 1, true))
-		check("concurrent edits and stale reports are explicitly avoided", text:find("Do not edit the same", 1, true)
-			and text:find("unread work is not complete", 1, true))
+		check("delegation reserves parent work and checks periodically", text:find("continue independent work", 1, true)
+			and text:find("Check agent_status with wait_seconds=15-30", 1, true))
+		check("polling is bounded and completion requires report collection", text:find("no tight polls", 1, true)
+			and text:find("wait_seconds=15-30", 1, true) and text:find("through nextOffset/offset until eof", 1, true))
+		check("concurrent edits and stale reports are explicitly avoided", text:find("never edit the same target concurrently", 1, true)
+			and text:find("integrate before finishing", 1, true))
 	end
 	f.healthy(); f.close()
 end)

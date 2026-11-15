@@ -17,6 +17,12 @@ const RING_BYTES = 4 * 1024 * 1024;
 const DELIVERABLE_MAX = 8 * 1024 * 1024;
 const PREVIEW_PAGE_BYTES = 64 * 1024;
 const PREVIEW_FRAME_BYTES = 8 * 1024;
+// A fresh SSE connection replays all uncommitted jobs, separately from the
+// server's transcript ring. Share a bounded projection across those jobs so its
+// backlog and picture catalog fit the browser's 5000-event / 16 MiB recovery.
+const BROWSER_REPLAY_JOBS = 32;
+const BROWSER_REPLAY_FRAMES = 4096;
+const BROWSER_REPLAY_BYTES = 7 * 1024 * 1024;
 
 // Requests live independently of the short executor polls. IDs are never reused
 // during a server lifetime, even after response bodies expire.
@@ -462,23 +468,48 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
     limits: { maxBytes, deliverableMax: effectiveMax },
     commit(id, sessionId) { const job = jobs.get(id); if (!job) return false; if (sessionId !== undefined && job.sessionId !== sessionId) return false; job.committed = true; return true; },
     previews(sessionId) {
-      const out = [];
-      for (const j of jobs.values()) {
-        if (j.sessionId !== sessionId || j.committed) continue;
-        if (!['running', 'completed', 'failed', 'cancelled'].includes(j.state)) continue;
-        out.push({ kind: 'inference:start', id: j.id, sessionId, model: j.model, startedAt: j.startedAt });
-        if (j.ringDropped) out.push({ kind: 'inference:resync', id: j.id, sessionId, from: j.ring[0]?.seq || j.seq + 1 });
-        for (const rec of j.ring) out.push(legacy ? { kind: 'inference:delta', id: j.id, sessionId, frame: rec.frame } : { kind: 'inference:delta', id: j.id, sessionId, seq: rec.seq, channel: rec.channel, text: rec.text, model: j.model, frame: rec.frame });
-        // Replay a terminal failure/partial-cancel so a fresh reconnect re-renders the
-        // truthful error state instead of a silently missing turn. A pre-submission
-        // cancel (no frames) is not surfaced as an error.
-        if (j.state !== 'running') {
-          out.push({ kind: 'inference:done', id: j.id, sessionId, state: j.state, error: j.error,
-            providerError: j.status >= 400 ? help('Provider returned HTTP ' + j.status) : undefined,
-            status: j.status, streamed: !!j.streaming, sawText: !!j.sawText, overflow: !!j.ringDropped });
-        }
+      const eligible = [...jobs.values()].filter(j => j.sessionId === sessionId && !j.committed &&
+        ['running', 'completed', 'failed', 'cancelled'].includes(j.state));
+      const running = eligible.filter(j => j.state === 'running').slice(-BROWSER_REPLAY_JOBS);
+      const terminal = eligible.filter(j => j.state !== 'running');
+      const selected = running.concat(terminal.slice(Math.max(0, terminal.length - (BROWSER_REPLAY_JOBS - running.length))));
+      const notice = { kind: 'status', sessionId, text: 'Some older live previews are unavailable in this view.' };
+      let bytesLeft = BROWSER_REPLAY_BYTES - Buffer.byteLength(JSON.stringify(notice));
+      const groups = [];
+      // Reserve starts, gap notices and terminal states before assigning delta
+      // space. Trimming a preview never trims the job's raw Roblox receipt.
+      for (const j of selected) {
+        const model = typeof j.model === 'string' ? j.model.slice(0, 300) : undefined;
+        const start = { kind: 'inference:start', id: j.id, sessionId, model, startedAt: j.startedAt };
+        const gap = { kind: 'inference:resync', id: j.id, sessionId, from: j.seq + 1 };
+        const end = j.state === 'running' ? null : { kind: 'inference:done', id: j.id, sessionId, state: j.state,
+          error: typeof j.error === 'string' ? j.error.slice(0, 2000) : j.error,
+          providerError: j.status >= 400 ? help('Provider returned HTTP ' + j.status) : undefined,
+          status: j.status, streamed: !!j.streaming, sawText: !!j.sawText, overflow: !!j.ringDropped };
+        const metadataBytes = [start, gap, end].filter(Boolean).reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0);
+        if (metadataBytes > bytesLeft) continue;
+        bytesLeft -= metadataBytes; groups.push({ j, model, start, gap, end });
       }
-      return out;
+      const withFrames = groups.filter(group => group.j.ring.length).length || 1;
+      const frameLimit = Math.floor(BROWSER_REPLAY_FRAMES / withFrames), byteLimit = Math.floor(bytesLeft / withFrames);
+      const projected = new Map();
+      for (const { j, model, start, gap, end } of groups) {
+        const frames = []; let used = 0, index = j.ring.length;
+        while (index > 0 && frames.length < frameLimit) {
+          const rec = j.ring[index - 1];
+          const event = legacy ? { kind: 'inference:delta', id: j.id, sessionId, frame: rec.frame } :
+            { kind: 'inference:delta', id: j.id, sessionId, seq: rec.seq, channel: rec.channel, text: rec.text, model, frame: rec.frame };
+          const size = Buffer.byteLength(JSON.stringify(event));
+          if (used + size > byteLimit) break;
+          used += size; frames.push(event); index--;
+        }
+        const clipped = index > 0;
+        gap.from = j.ring[index]?.seq || j.seq + 1;
+        if (end) end.overflow = !!j.ringDropped || clipped;
+        projected.set(j, [start, ...(j.ringDropped || clipped ? [gap] : []), ...frames.reverse(), ...(end ? [end] : [])]);
+      }
+      // Keep the original job order and each job's terminal event after its tail.
+      return [...(groups.length < eligible.length ? [notice] : []), ...eligible.flatMap(j => projected.get(j) || [])];
     },
     close() { clearInterval(cleanup); for (const id of jobs.keys()) cancel(id); } };
 }

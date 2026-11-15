@@ -70,6 +70,61 @@ return function(env)
 			calibrated = false,
 		}
 		local calibration, promptEstimate, promptKey
+		local estimates, estimateMap, estimateTotal, estimateRoles = {}, {}, 0, {}
+		local function unchanged(entry, message)
+			if not entry or entry.message ~= message or entry.mutable or entry.content ~= message.content
+				or entry.reasoning ~= (message.reasoning_content or message.reasoning)
+				or entry.images ~= #(message.images or {}) then return false end
+			local calls = message.toolCalls or message.tool_calls or {}
+			if #calls ~= #entry.calls then return false end
+			for index, call in ipairs(calls) do
+				local fn, saved = call["function"] or {}, entry.calls[index]
+				if saved.name ~= fn.name or saved.arguments ~= fn.arguments then return false end
+			end
+			return true
+		end
+		local function estimate(message)
+			local entry = { message = message, content = message.content, reasoning = message.reasoning_content or message.reasoning,
+				images = #(message.images or {}), calls = {}, mutable = type(message.content) == "table" }
+			for index, call in ipairs(message.toolCalls or message.tool_calls or {}) do
+				local fn = call["function"] or {}
+				entry.calls[index] = { name = fn.name, arguments = fn.arguments }
+				entry.mutable = entry.mutable or type(fn.arguments) == "table"
+			end
+			entry.tokens = usage.estimateMessages({ message })
+			return entry
+		end
+		-- Public message tables remain editable. One shallow metadata pass detects
+		-- changed prose/call strings; unchanged history never repeats JSON argument
+		-- encoding or the full estimator. Mutable graphs are estimated conservatively.
+		local function refreshEstimates()
+			local total, roles, rebuild = 0, {}, #estimates > #ctx.messages
+			for index, message in ipairs(ctx.messages) do
+				local previous = estimates[index]
+				local entry = previous and previous.message == message and previous or estimateMap[message]
+				if not unchanged(entry, message) then entry = estimate(message) end
+				if previous and previous.message ~= message then rebuild = true end
+				estimates[index], estimateMap[message] = entry, entry
+				total = total + entry.tokens
+				local role = message.role or "message"
+				roles[role] = (roles[role] or 0) + 1
+			end
+			for index = #estimates, #ctx.messages + 1, -1 do estimates[index] = nil end
+			if rebuild then
+				estimateMap = {}
+				for _, entry in ipairs(estimates) do estimateMap[entry.message] = entry end
+			end
+			estimateTotal, estimateRoles = total, roles
+			return total
+		end
+		local function preparedEstimate(messages)
+			local total = 0
+			for _, message in ipairs(messages or {}) do
+				local entry = estimateMap[message]
+				total = total + (entry and unchanged(entry, message) and entry.tokens or usage.estimateMessages({ message }))
+			end
+			return total
+		end
 		local function messageText(message, contentLimit, callLimit)
 			local role = tostring(message.role or "message")
 			local label = role == "tool" and ("tool " .. tostring(message.name or "unknown")) or role
@@ -129,13 +184,13 @@ return function(env)
 			if type(record) ~= "table" then return record end
 			return tostring(record.id or "") .. "|" .. tostring(record.baseUrl or "") .. "|" .. tostring(record.model or "")
 		end
-		local function overheadFor(record)
+		local function overheadFor(record, history)
 			local key = providerKey(record)
 			if key ~= nil and promptKey ~= nil and key ~= promptKey then return promptEstimate or 0, false end
 			if ctx.calibrated and calibration then
 				-- Tokenizer error in a large history is not fixed system overhead.
 				-- Retire that correction proportionally when the history shrinks.
-				local retained = math.min(1, ctx.tokens() / math.max(1, calibration.history))
+				local retained = math.min(1, (history or ctx.tokens()) / math.max(1, calibration.history))
 				ctx.overhead = math.max(0, (promptEstimate or 0) + (calibration.overhead - calibration.estimate) * retained)
 			end
 			return math.max(ctx.overhead or 0, 0), ctx.calibrated
@@ -206,7 +261,7 @@ return function(env)
 		end
 
 		function ctx.tokens()
-			local total = usage.estimateMessages(ctx.messages)
+			local total = refreshEstimates()
 			if ctx.summary then total = total + usage.estimateText(ctx.summary) end
 			return total
 		end
@@ -230,13 +285,14 @@ return function(env)
 		-- What the next request is expected to actually cost the window: the message
 		-- estimate plus the measured overhead of the system prompt and tool schemas.
 		function ctx.pressure(record)
-			return ctx.tokens() + overheadFor(record)
+			local history = ctx.tokens()
+			return history + overheadFor(record, history)
 		end
 
 		function ctx.observeRequest(messages, tools, record)
 			local history = ctx.tokens()
 			local toolTokens = tools and #tools > 0 and usage.estimateText(util.encode(tools)) or 0
-			promptEstimate = math.max(0, usage.estimateMessages(messages) + toolTokens - history)
+			promptEstimate = math.max(0, preparedEstimate(messages) + toolTokens - history)
 			promptKey = providerKey(record)
 			ctx.calibrated = calibration ~= nil and calibration.key == promptKey
 			ctx.overhead = ctx.calibrated and math.max(0, calibration.overhead + promptEstimate - calibration.estimate) or promptEstimate
@@ -244,9 +300,9 @@ return function(env)
 		end
 
 		function ctx.breakdown(record)
-			local system, calibrated = overheadFor(record)
-			local messages = usage.estimateMessages(ctx.messages)
+			local messages = refreshEstimates()
 			local summary = ctx.summary and usage.estimateText(ctx.summary) or 0
+			local system, calibrated = overheadFor(record, messages + summary)
 			return { system = system, messages = messages, summary = summary, used = system + messages + summary,
 				calibrated = calibrated, estimatedPrompt = promptEstimate ~= nil }
 		end
@@ -265,19 +321,16 @@ return function(env)
 		end
 
 		function ctx.stats()
-			local counts = { user = 0, assistant = 0, tool = 0 }
-			for _, message in ipairs(ctx.messages) do
-				counts[message.role] = (counts[message.role] or 0) + 1
-			end
+			local tokens = ctx.tokens()
 			local archived = 0
 			for _, segment in ipairs(ctx.archive) do archived = archived + segment.messages end
 			return {
 				messages = #ctx.messages,
-				tokens = ctx.tokens(),
-				pressure = ctx.pressure(),
+				tokens = tokens,
+				pressure = tokens + overheadFor(nil, tokens),
 				overhead = ctx.overhead or 0,
-				turns = counts.user,
-				toolResults = counts.tool,
+				turns = estimateRoles.user or 0,
+				toolResults = estimateRoles.tool or 0,
 				compactions = ctx.compactions,
 				dropped = ctx.dropped,
 				archived = archived,
@@ -344,7 +397,7 @@ return function(env)
 			if not force and before <= msgLimit then return nil, "already below the compaction point" end
 			local original, originalSummary = ctx.messages, ctx.summary
 			local count = #original
-			local dropped, keptTokens = {}, usage.estimateMessages(original)
+			local dropped, keptTokens = {}, estimateTotal
 			local reserve = math.min(SUMMARY_BYTES / 4, math.max(64, math.floor(msgLimit * 0.2)))
 			local target = math.max(0, math.floor(msgLimit * 0.75))
 			local function needsSpace() return force or keptTokens + reserve > target end
@@ -352,7 +405,7 @@ return function(env)
 				for index = first, last do
 					if not dropped[index] then
 						dropped[index] = true
-						keptTokens = keptTokens - usage.estimateMessages({ original[index] })
+						keptTokens = keptTokens - estimateMap[original[index]].tokens
 					end
 				end
 			end
@@ -537,6 +590,7 @@ return function(env)
 
 		function ctx.clear()
 			ctx.messages = {}
+			estimates, estimateMap, estimateTotal, estimateRoles = {}, {}, 0, {}
 			ctx.summary = nil
 			ctx.compactions = 0
 			ctx.dropped = 0

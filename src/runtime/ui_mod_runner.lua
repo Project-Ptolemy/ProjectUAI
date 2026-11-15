@@ -84,6 +84,26 @@ return function(env)
 			if type(fn) ~= "function" then return nil, "Delay needs a callback" end
 			return scope.delay(seconds, function(...) return invoke(fn, ...) end, ...)
 		end
+		function context:CreatePanel(options)
+			if not self:IsAlive() then return nil, "The mod context is closed" end
+			local panel, why = env.require("runtime/ui_mod_panels").create(options, {
+				id = record.id, gate = function() return self:IsAlive() end, invoke = invoke,
+				show = function(key)
+					if not self:IsAlive() or not client.app or not client.app.showModPanel then return nil, "The native mod workspace is unavailable" end
+					return client.app.showModPanel(key)
+				end,
+			})
+			if not panel then return nil, why end
+			local release, reason = self:Give(panel)
+			if not release then panel:Destroy(); return nil, reason end
+			local destroy = panel.Destroy
+			function panel:Destroy()
+				local cleanup = release; release = nil
+				if cleanup then cleanup() else destroy(self) end
+			end
+			panel.destroy = panel.Destroy
+			return panel
+		end
 		function context:OnMount(fn)
 			if type(fn) ~= "function" then return nil, "OnMount needs a function" end
 			local releaseMount, mountEpoch, closed = nil, 0, false

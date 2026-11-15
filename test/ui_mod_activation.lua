@@ -329,4 +329,74 @@ case("early mount release cannot admit a new mount during yielding cleanup", fun
 	check("Disable cannot repeat the released mount cleanup", f.h.sandbox.__earlyMountCleanup == 1)
 	f.healthy(); f.close()
 end)
+case("CreatePanel owns native panel state and outstanding domain callbacks", function()
+	local f = newFixture()
+	f.client.app.showModPanel = function(key) f.shownPanel = key; return true end
+	local saved = f.save([[return function(context)
+		local host = getgenv()
+		host.__nativePanel = assert(context:CreatePanel({ id = "workspace", title = "Native workspace" }))
+		local section = assert(host.__nativePanel:Section({ id = "actions", title = "Actions" }))
+		host.__nativeInput = assert(section:Input({ id = "notes", text = "Notes", value = "Keep across mounts" }))
+		assert(section:Button({ id = "slow", text = "Owned operation", callback = function()
+			host.__nativeStarted = true
+			task.wait(1)
+			host.__nativeFinished = true
+		end }))
+		assert(host.__nativePanel:Show())
+	end]])
+	local work = f.begin(saved); f.finish()
+	local models = f.env.require("runtime/ui_mod_panels")
+	local panel = f.h.sandbox.__nativePanel
+	check("authorized Apply exposes a real native panel through the owned context", work.done and work.result.ok
+		and f.shownPanel == panel.key and models.snapshot(panel.key).title == "Native workspace")
+	f.runner.notifyMount(f.client.app.screen)
+	check("presentation remounts cannot replace the native domain state", f.h.sandbox.__nativePanel == panel
+		and f.h.sandbox.__nativeInput:Get() == "Keep across mounts")
+	f.h.sched.spawn(function() models.trigger(panel.key, "slow") end); f.h.sched.advance(0.1)
+	check("panel domain callbacks participate in runner native ownership", f.h.sandbox.__nativeStarted and f.runner.isBusy())
+	local disabled = f.run(f.activation.disable)
+	check("Disable unregisters panels while outstanding native callbacks remain owned", disabled.ok and models.snapshot(panel.key) == nil
+		and not panel:IsAlive() and f.runner.isBusy() and panel:Show() == nil)
+	f.h.sched.advance(1.1)
+	check("callback completion releases ownership without restoring a removed panel", f.h.sandbox.__nativeFinished
+		and not f.runner.isBusy() and models.snapshot(panel.key) == nil)
+	f.healthy(); f.close()
+end)
+case("early native panel destruction releases scoped ownership without cancelling callbacks", function()
+	local f = newFixture()
+	local saved = f.save([[return function(context)
+		local host = getgenv()
+		host.__earlyPanelContext = context
+		host.__earlyPanelBaseline = context.scope.resourceCount()
+		host.__earlyPanel = assert(context:CreatePanel({ id = "early", title = "Early release" }))
+		local section = assert(host.__earlyPanel:Section({ id = "actions", title = "Actions" }))
+		assert(section:Button({ id = "slow", text = "Owned operation", callback = function()
+			host.__earlyPanelStarted = true
+			task.wait(1)
+			host.__earlyPanelFinished = true
+		end }))
+	end]])
+	local work = f.begin(saved); f.finish()
+	local models = f.env.require("runtime/ui_mod_panels")
+	local context, panel = f.h.sandbox.__earlyPanelContext, f.h.sandbox.__earlyPanel
+	local baseline, removed = f.h.sandbox.__earlyPanelBaseline, 0
+	local off = models.changed:connect(function(key, kind)
+		if key == panel.key and kind == "structure" and not models.snapshot(key) then removed = removed + 1 end
+	end)
+	check("an authorized panel adds one owned scope resource", work.done and work.result.ok and context.scope.resourceCount() == baseline + 1)
+	f.h.sched.spawn(function() models.trigger(panel.key, "slow") end); f.h.sched.advance(0.1)
+	panel:Destroy(); panel:Destroy()
+	check("early destruction removes the scope entry and panel exactly once", context.scope.resourceCount() == baseline
+		and models.snapshot(panel.key) == nil and removed == 1)
+	check("early panel destruction retains outstanding native callback ownership", f.h.sandbox.__earlyPanelStarted and f.runner.isBusy())
+	for index = 1, 6 do
+		local temporary = assert(context:CreatePanel({ id = "temporary", title = "Temporary panel" }))
+		temporary:Destroy()
+	end
+	check("repeated early destruction cannot accumulate scoped panel resources", context.scope.resourceCount() == baseline and #models.list(context.id) == 0)
+	local disabled = f.run(f.activation.disable); f.h.sched.advance(1.1)
+	check("Disable preserves callback settlement without repeating early cleanup", disabled.ok and f.h.sandbox.__earlyPanelFinished
+		and not f.runner.isBusy() and context.scope.resourceCount() == 0 and removed == 1)
+	off(); f.healthy(); f.close()
+end)
 suite.finish()

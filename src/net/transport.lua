@@ -56,10 +56,12 @@ return function(env)
 	-- New requests prefer a connected Cowork bridge, then a healthy companion.
 	-- Running jobs can retain their configured endpoint through a failed probe.
 	function M.endpoint(retainTarget)
-		if (retainTarget == "cowork" or not retainTarget and M.coworkWeb()) and connection.enabled() then
-			local current = connection.get()
-			return { target = "cowork", base = "http://127.0.0.1:" .. tostring(current.port),
-				token = current.token, instance = current.instance, enabled = current.enabled }
+		if retainTarget == "cowork" or not retainTarget and M.coworkWeb() then
+			local current = connection.get(retainTarget == "cowork")
+			if current.enabled then
+				return { target = "cowork", base = "http://127.0.0.1:" .. tostring(current.port),
+					token = current.token, instance = current.instance, enabled = current.enabled }
+			end
 		end
 		if retainTarget == "cowork" then return nil end
 		return relayLink.endpoint(retainTarget == "companion")

@@ -254,6 +254,7 @@ return function(env)
 		for path, choices in pairs(enums) do
 			if not choices[util.get(merged, path)] then return nil, "config." .. path .. " is not a supported choice" end
 		end
+		if not env.require("runtime/personas").valid(merged.agent.persona) then return nil, "config.agent.persona is not a supported choice" end
 		if merged.relay.port < 1 or merged.relay.port > 65535 then
 			return nil, "config.relay.port must be between 1 and 65535"
 		end

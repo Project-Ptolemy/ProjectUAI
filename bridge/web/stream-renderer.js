@@ -13,7 +13,7 @@
   }
 
   function create(deps) {
-    const live = new Map(), committed = new Map(), anchors = new Map(), pendingReasoning = new Map();
+    const live = new Map(), committed = new Map(), anchors = new Map(), pendingReasoning = new Map(), reasonEntries = new WeakMap();
     let anonymous = 0;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const identity = e => e.requestId || e.streamId || e.id;
@@ -121,6 +121,9 @@
       }
       if (deps.attachReasoning) deps.attachReasoning(entry, details);
       else entry.node.insertBefore(details, entry.body);
+      // Folded activity keeps raw Markdown only. Opening either enclosing
+      // disclosure paints the current text; later text-channel deltas reuse it.
+      reasonEntries.set(details, entry);
       contentState(entry, entry.finalText ?? entry.text);
       reasoningState(entry, entry.streaming && !entry.text && !entry.reasonCommitted);
     }
@@ -130,6 +133,27 @@
       document.removeEventListener('selectionchange', entry.reasonDeferred);
       entry.reasonBody.removeEventListener('focusout', entry.reasonDeferred);
       entry.reasonDeferred = null;
+    }
+    function paintReasoning(entry) {
+      if (!entry.reasonBody?.isConnected) return;
+      let visible = !document.hidden;
+      for (let parent = entry.reasonBody.parentElement; visible && parent; parent = parent.parentElement) {
+        if (parent.tagName === 'DETAILS' && !parent.open) visible = false;
+      }
+      if (!visible) { cancelReasoning(entry); return; }
+      const text = entry.reasonFinalText ?? entry.reasoningText ?? '';
+      if (entry.reasonPainted === text) { cancelReasoning(entry); return; }
+      if (isInteracting(entry.reasonBody)) {
+        if (!entry.reasonDeferred) {
+          entry.reasonDeferred = () => queueMicrotask(() => paintReasoning(entry));
+          document.addEventListener('selectionchange', entry.reasonDeferred);
+          entry.reasonBody.addEventListener('focusout', entry.reasonDeferred);
+        }
+        return;
+      }
+      const fragment = document.createElement('template'); fragment.innerHTML = deps.md(text);
+      morph(entry.reasonBody, fragment.content); entry.reasonBody.classList.add('rendered');
+      entry.reasonPainted = text; entry.reasonFinalText = null; cancelReasoning(entry);
     }
     function cancel(entry, dispose = false) {
       clearTimeout(entry.timer); cancelAnimationFrame(entry.raf);
@@ -237,19 +261,7 @@
         entry.stableLength += cut;
       }
       entry.paintedTail = entry.text.slice(entry.stableLength);
-      if (entry.reasonBody && !entry.reasonCommitted) {
-        const renderReasoning = () => {
-          if (!entry.reasonBody?.isConnected || isInteracting(entry.reasonBody)) return;
-          const fragment = document.createElement('template'); fragment.innerHTML = deps.md(entry.reasoningText || '');
-          morph(entry.reasonBody, fragment.content); cancelReasoning(entry);
-        };
-        if (!isInteracting(entry.reasonBody)) renderReasoning();
-        else if (!entry.reasonDeferred) {
-          entry.reasonDeferred = () => queueMicrotask(renderReasoning);
-          document.addEventListener('selectionchange', entry.reasonDeferred);
-          entry.reasonBody.addEventListener('focusout', entry.reasonDeferred);
-        }
-      }
+      if (entry.reasonBody && !entry.reasonCommitted) paintReasoning(entry);
       if (entry.streaming && (entry.text || entry.reasoning)) state(entry, entry.text ? 'writing' : 'thinking', entry.text ? 'Writing' : 'Thinking through it');
       reasoningState(entry, entry.streaming && !entry.text && !entry.reasonCommitted);
       if (pinned) deps.scrollToEnd();
@@ -299,7 +311,7 @@
       const entry = ensure(e); if (!entry) return;
       flush(entry);
       entry.text = ''; entry.stableLength = 0; entry.paintedTail = ''; entry.stable.replaceChildren(); entry.tail.replaceChildren();
-      if (!entry.reasonCommitted) { entry.reasoning = ''; entry.reasoningText = ''; if (entry.reasonBody) entry.reasonBody.textContent = ''; }
+      if (!entry.reasonCommitted) { entry.reasoning = ''; entry.reasoningText = ''; entry.reasonPainted = null; if (entry.reasonBody) entry.reasonBody.textContent = ''; }
       entry.lastSeq = Math.max(0, (e.from || entry.lastSeq + 1) - 1);
       if (!entry.gap) { entry.gap = node('p', 'stream-gap', 'Earlier live text is unavailable. The saved reply will replace this preview.'); entry.node.append(entry.gap); }
     }
@@ -386,17 +398,7 @@
         if (!entry.reasonBody && e.text) ensureReasoning(entry);
         if (entry.reasonBody) {
           cancelReasoning(entry); entry.reasonFinalText = e.text || ''; entry.reasoningText = e.text || '';
-          const render = () => {
-            if (entry.reasonFinalText === null || isInteracting(entry.reasonBody)) return;
-            const fragment = document.createElement('template'); fragment.innerHTML = deps.md(entry.reasonFinalText);
-            morph(entry.reasonBody, fragment.content); entry.reasonBody.classList.add('rendered');
-            cancelReasoning(entry); entry.reasonFinalText = null;
-          };
-          if (isInteracting(entry.reasonBody)) {
-            entry.reasonDeferred = () => queueMicrotask(render);
-            document.addEventListener('selectionchange', entry.reasonDeferred);
-            entry.reasonBody.addEventListener('focusout', entry.reasonDeferred);
-          } else render();
+          paintReasoning(entry);
         }
         entry.reasonCommitted = true; reasoningState(entry, false);
       }
@@ -462,7 +464,19 @@
       anchors.clear(); pendingReasoning.clear();
       signal();
     }
-    const resume = () => { if (!document.hidden) for (const entry of live.values()) if (entry.needsPaint) schedule(entry); };
+    const resume = () => {
+      if (!document.hidden) {
+        for (const entry of live.values()) if (entry.needsPaint) schedule(entry);
+        for (const entry of committed.values()) paintReasoning(entry);
+      }
+    };
+    const reasonToggle = event => {
+      if (event.target.tagName !== 'DETAILS') return;
+      const direct = reasonEntries.get(event.target); if (direct) paintReasoning(direct);
+      for (const details of event.target.querySelectorAll('details.thinking[open]')) {
+        const entry = reasonEntries.get(details); if (entry) paintReasoning(entry);
+      }
+    };
     const reduce = () => {
       if (!reducedMotion.matches) return;
       for (const map of [live, committed]) for (const entry of map.values()) {
@@ -471,9 +485,10 @@
       }
     };
     document.addEventListener('visibilitychange', resume);
+    document.addEventListener('toggle', reasonToggle, true);
     reducedMotion.addEventListener('change', reduce);
     return { start, delta, done, resync, commitText, commitReasoning, anchorUser, endTurn, dropSession, dropNode, reset,
-      destroy() { reset(); document.removeEventListener('visibilitychange', resume); reducedMotion.removeEventListener('change', reduce); },
+      destroy() { reset(); document.removeEventListener('visibilitychange', resume); document.removeEventListener('toggle', reasonToggle, true); reducedMotion.removeEventListener('change', reduce); },
       has: id => [...live.keys(), ...committed.keys()].some(value => value.endsWith(':' + id)) };
   }
 

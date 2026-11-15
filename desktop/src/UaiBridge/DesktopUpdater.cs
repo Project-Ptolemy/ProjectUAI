@@ -7,7 +7,7 @@ namespace ProjectUai.Bridge;
 
 internal sealed class DesktopUpdater
 {
-    public const string CurrentVersion = "4.0.0";
+    public const string CurrentVersion = "4.0.5";
     private const string Repo = "Project-Ptolemy/ProjectUAI";
     private const string ManifestName = "desktop-release.json";
     private const string Executable = "UAI Bridge.exe";

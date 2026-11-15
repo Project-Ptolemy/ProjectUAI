@@ -1,6 +1,6 @@
-UAI BRIDGE 4.0.0 - WINDOWS 10/11 (64-BIT)
+UAI BRIDGE 4.0.5 - WINDOWS 10/11 (64-BIT)
 
-1. Open UAI-Bridge-4.0.0-win-x64.exe directly. Official published downloads:
+1. Open UAI-Bridge-4.0.5-win-x64.exe directly. Official published downloads:
    https://github.com/Project-Ptolemy/ProjectUAI/releases/latest
 2. On Workspace, if Node.js is missing, choose Get Node.js or Manual setup,
    then Check again. Click Start Cowork.

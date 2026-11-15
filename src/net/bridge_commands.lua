@@ -51,6 +51,7 @@ return function(env)
 				["agent.effort"] = { off = true, minimal = true, low = true, medium = true, high = true, xhigh = true, max = true },
 			}
 			if choices[path] and not choices[path][command.value] then error("Unsupported setting choice", 0) end
+			if path == "agent.persona" and not env.require("runtime/personas").valid(command.value) then error("Unsupported persona", 0) end
 			local ranges = { ["ui.fontScale"] = { 0.85, 1.4 }, ["agent.temperature"] = { 0, 2 },
 				["agent.toolConcurrency"] = { 1, 8 }, ["agent.maxTurns"] = { 1, 1000 },
 				["agent.toolTimeout"] = { 1, 86400 }, ["agent.requestTimeout"] = { 1, 86400 },

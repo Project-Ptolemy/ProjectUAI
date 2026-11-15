@@ -181,6 +181,7 @@ return function(env)
 			-- that half -- runtime/clock formats with a hardcoded en-us and English month
 			-- names -- so ten of the eleven tiles did one thing and advertised two.
 			replyLanguage = "",
+			persona = "uai",
 			-- The user's own standing instructions, appended to the system prompt each
 			-- turn. Empty means none. The system prompt itself is not editable -- it is
 			-- this client's behaviour, and a prompt a user can silently rewrite is one

@@ -398,6 +398,15 @@ return function(env)
 			end,
 		})
 		control.text = control.label(labelFor(current), 1, theme.color.text, "small")
+		if props.path then
+			local disconnect = config.changed:connect(function(path)
+				if path == nil or path == props.path or util.startsWith(props.path, tostring(path) .. ".") then
+					current = config.get(props.path, options[1] and options[1].value)
+					control.text.Text = labelFor(current)
+				end
+			end)
+			control.instance.Destroying:Connect(disconnect)
+		end
 		local caret = P.frame(control.row, {
 			name = "Caret",
 			size = UDim2.fromOffset(theme.size.icon, theme.size.icon),

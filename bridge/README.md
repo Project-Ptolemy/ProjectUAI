@@ -150,20 +150,21 @@ update state before any restart it causes. The cache keeps the active version
 and recent entries, and prunes stale predecessors and quarantine folders.
 
 Publish `dist/bridge-release.json` and `dist/uai-bridge-package.json` on the same
-official `bridge-v4.0.0` GitHub release. Release 4.0.0 supplies the client, bridge,
+official `v4.0.5` GitHub release. Bridge-only releases may use a matching
+`bridge-v<version>` tag. Release 4.0.5 supplies the client, bridge,
 web UI and Windows app together; the Android companion retains its separate
 release. Generate the bundles with
 `node tools/build_bridge.js` after reviewing final bridge/web inputs, inspect
 the outputs, then run `node tools/build_bridge.js --check` and focused tests.
 Later releases must bump `bridge/release.js` and use the matching release tag.
 The release builder embeds OpenCode, MCP and support helpers into the original
-permitted root filenames so compatible installed updaters can verify and activate 4.0.0. Checkout,
+permitted root filenames so compatible installed updaters can verify and activate 4.0.5. Checkout,
 executor downloads and desktop payloads retain the separate source modules.
 
 Existing compatible installs receive bridge and web updates while idle.
 Refresh an open browser page to load changed web assets. The desktop's **Copy
 client script** uses its embedded client; update the desktop app to refresh that
-copy. See the [4.0.0 release guide](../docs/RELEASE_4_0_0.md),
+copy. See the [4.0.5 release guide](../docs/RELEASE_4_0_5.md),
 [3.8.0 verification record](../docs/POLISH_2026_10.md),
 [3.6.5 verification](../docs/TESTING_3.6.5.md) and the earlier
 [bridge 3.6.2 record](../docs/TESTING_3.6.2.md).
@@ -201,6 +202,10 @@ and applies it on restart. An old 1.0 desktop ZIP needs one manual upgrade first
   Stop, or a real provider/connection failure. This is permanent, with no timeout
   setting. Individual status polls stay short and reuse the original request ID;
   a stalled poll does not submit the provider request again.
+  A missed or unusable desktop-discovery check pauses admission through that
+  connection while accepted requests keep polling their verified endpoint.
+  Recovery reuses the same job; Stop, turning off discovery, changed desktop
+  credentials/instance and actual terminal provider failures still end it.
   Waiting inference jobs do not occupy the native HTTP slots needed for those
   polls. The bridge cannot remove a provider's own timeout or a tool's execution
   deadline.
@@ -352,6 +357,13 @@ frames. Raw provider response bodies remain separate from browser preview rings;
 oversized or truncated responses fail explicitly. Picture capability v2 uses
 `provider-image-content`; game state advertises `imageInput = true`. The bridge
 rejects image sends to older clients instead of substituting text markers.
+
+Fresh browser connections share at most 4,096 preview deltas and 7 MiB across
+32 running/recent uncommitted jobs. Running jobs take priority; older preview
+omissions are announced. Each shortened tail has a gap notice and retains its
+terminal outcome. This leaves room for the saved transcript backlog and picture
+catalog during bounded browser recovery. Raw Roblox receipts stay complete, and
+recovery never submits inference again.
 
 Image sends carry compact, conversation-scoped references into model context.
 At inference dispatch, the bridge expands them to Chat Completions `image_url`

@@ -17,6 +17,7 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local log = env.require("runtime/log")
 	local dispose = env.require("runtime/dispose")
+	local device = env.require("runtime/device")
 
 	local BREAKPOINTS = {
 		{ name = "xs", max = 520 },
@@ -33,6 +34,8 @@ return function(env)
 		orientation = "landscape",
 		touch = false,
 		pointer = true,
+		keyboard = true,
+		deviceMobile = false,
 		gamepad = false,
 		console = false,
 		reduceMotion = false,
@@ -65,7 +68,7 @@ return function(env)
 		if forced and forced ~= "auto" then return forced end
 		if M.console then return "tv" end
 		if breakpoint == "xs" then return "sheet" end
-		if M.touch and not M.pointer then return "panel" end
+		if M.deviceMobile then return "panel" end
 		if breakpoint == "sm" then return "panel" end
 		if M.orientation == "portrait" then return "panel" end
 		return "window"
@@ -86,15 +89,12 @@ return function(env)
 		M.viewport = Vector2.new(width, height)
 		M.orientation = (height > width) and "portrait" or "landscape"
 
-		local okInput = pcall(function()
-			M.touch = env.uis.TouchEnabled == true
-			M.pointer = env.uis.MouseEnabled == true
-			M.gamepad = env.uis.GamepadEnabled == true
-		end)
-		if not okInput then M.touch, M.pointer = false, true end
+		local input = device.input()
+		M.touch, M.pointer, M.keyboard, M.gamepad = input.touch, input.pointer, input.keyboard, input.gamepad
+		M.deviceMobile, M.console = input.handheld, input.console
 		-- Mobile GUI coordinates can differ from the camera's render resolution.
 		-- Use the same measured space for breakpoints, placement and keyboard bounds.
-		if M.touch and not M.pointer and M.screenFrame then
+		if M.deviceMobile and M.screenFrame then
 			local size = M.screenFrame.AbsoluteSize
 			if size.X > 0 and size.Y > 0 then
 				width, height = size.X, size.Y
@@ -103,9 +103,6 @@ return function(env)
 			end
 		end
 
-		pcall(function()
-			M.console = env.guisvc:IsTenFootInterface() == true
-		end)
 		-- Application motion is permanently enabled; older saved preferences and
 		-- platform changes cannot turn off the client's owned transitions.
 		M.reduceMotion = false
@@ -252,7 +249,7 @@ return function(env)
 		end)
 		-- A trackpad or keyboard can be attached after mounting. Re-sample input
 		-- capability changes so layout and touch targets reflect the current host.
-		for _, property in ipairs({ "TouchEnabled", "MouseEnabled", "GamepadEnabled" }) do
+		for _, property in ipairs({ "TouchEnabled", "MouseEnabled", "KeyboardEnabled", "GamepadEnabled" }) do
 			pcall(function()
 				watch(env.uis:GetPropertyChangedSignal(property):Connect(function() refresh("input") end))
 			end)
@@ -311,8 +308,7 @@ return function(env)
 	end
 
 	function M.isMobile()
-		return M.touch and not M.console
-			and (not M.pointer or M.mode == "sheet" or M.mode == "panel")
+		return M.deviceMobile
 	end
 
 	function M.isCompactHeight()

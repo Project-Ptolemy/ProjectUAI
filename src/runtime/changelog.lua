@@ -19,6 +19,36 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "4.0.5",
+			revision = "2026-11-15-stability-panels-and-personas",
+			date = "November 15, 2026",
+			title = "Steadier agents, faster conversations",
+			highlights = "Bridge requests survive missed discovery probes. Long conversations do less repeated work. Mods gain native panels, handheld sizing stays compact, and you can pick an agent persona.",
+			sections = {
+				{ category = "fixed", label = "Bridge request ownership", items = {
+					"Accepted requests retain their verified endpoint through transient discovery and health failures, so a missed background probe cannot produce an unsolicited Stop.",
+					"Automatically routed Free requests keep their original transport owner. Stop, changed credentials, discovery opt-out and terminal provider failures remain effective; uncertain inference is never replayed.",
+				} },
+				{ category = "fixed", label = "Kilo model discovery", items = {
+					"Request plain JSON from Kilo's catalog to avoid parse failures in hosts that advertise Brotli without decoding it. Custom headers retain precedence; unusable replies receive clear diagnostics and are not cached.",
+				} },
+				{ category = "improved", label = "Long conversations", items = {
+					"Reduce repeated token estimation and Markdown work, defer closed reasoning content, and replay Cowork transcripts in bounded batches.",
+				} },
+				{ category = "added", label = "Native mod panels", items = {
+					"Script mods can declare native workspace panels with UAI sections, values and controls through context:CreatePanel, with owned callbacks, remounts and cleanup.",
+				} },
+				{ category = "fixed", label = "Handheld sizing", items = {
+					"Phones keep handheld dimensions across rotation, explicit window layouts and synthetic mouse capabilities instead of unexpectedly switching to desktop sizes.",
+					"Provider setup yields optional spacing to keep its notice and typing row within short keyboard bounds while preserving control sizes and drafts.",
+				} },
+				{ category = "added", label = "Personas and Ponytail", items = {
+					"Choose UAI, Femboy, Catboy, Gremlin, Tsundere, Goth, Drill Sergeant, Evil Genius or Brainrot in Agent settings. Native and Cowork pickers preview the voice and preserve custom instructions.",
+					"Main and delegated system instructions include a UAI adaptation of Ponytail: solve the whole task with the smallest complete change, reuse shared components, and verify the actual result.",
+				} },
+			},
+		},
+		{
 			version = "4.0.0",
 			revision = "2026-11-14-workspaces-and-mods",
 			date = "November 14, 2026",

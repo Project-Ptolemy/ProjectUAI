@@ -173,7 +173,7 @@ case("main and child prompts share the canonical workspace without synchronous n
 	local function canonicalRules(text)
 		return has(text, "check_luau and run_luau share one namespace")
 			and has(text, "Pass files/... or pastes/...")
-			and has(text, "never add an app root or extra files/.")
+			and has(text, "add no app root or files/.")
 			and has(text, "files/files/... is a real legacy folder")
 	end
 	for index = 1, 3 do
@@ -181,9 +181,9 @@ case("main and child prompts share the canonical workspace without synchronous n
 		check("both agents receive the same verbatim path", has(main, "Current game files: " .. workspace.path .. "/")
 			and has(child, "Current game files: " .. workspace.path .. "/"))
 		check("both prompts replace obsolete prefix workarounds", canonicalRules(main) and canonicalRules(child))
-		check("pace applies to parent and child", has(main, "Do not overthink routine steps") and has(child, "Do not overthink routine steps"))
+		check("pace applies to parent and child", has(main, "Act on clear requests") and has(child, "Act on clear requests"))
 		check("both agents can choose bulk reads without broad game setup", has(main, "file_read_many") and has(child, "file_read_many")
-			and has(main, "Avoid whole-game inventories") and has(child, "Avoid whole-game inventories"))
+			and has(main, "Inspect named targets before broad scans") and has(child, "Inspect named targets before broad scans"))
 	end
 	check("rebuilding prompts makes no Marketplace requests", calls == 0)
 	f.healthy(); f.close()
@@ -199,7 +199,7 @@ case("changing live environment leaves all standing rules in the reusable prefix
 	check("main prefix remains byte-identical", first:sub(1, boundary - 1) == nextPrompt:sub(1, boundary - 1))
 	check("child prefix remains byte-identical", child:sub(1, childBoundary - 1) == nextChild:sub(1, childBoundary - 1))
 	check("dynamic facts still refresh", has(nextPrompt, "Different game") and has(nextPrompt, "model second") and has(nextChild, "Second task"))
-	check("working rules precede metadata", has(first:sub(1, boundary - 1), "Avoid whole-game inventories"))
+	check("working rules precede metadata", has(first:sub(1, boundary - 1), "Inspect named targets before broad scans"))
 	f.healthy(); f.close()
 end)
 

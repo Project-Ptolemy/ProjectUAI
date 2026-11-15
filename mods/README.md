@@ -1,7 +1,7 @@
 # UI mod examples
 
 These version-1 portable JSON definitions are reviewed examples for Project UAI
-4.0.0. Importing them creates disabled records. Inspect the full definition/source,
+4.0.5. Importing them creates disabled records. Inspect the full definition/source,
 then explicitly Apply its current revision under normal tool permissions.
 
 - [Project workbench](project-workbench.json) is a visual appearance/panel example
@@ -10,6 +10,10 @@ then explicitly Apply its current revision under normal tool permissions.
   with full native context. It sets an attribute on the actual root and returns
   guarded cleanup for remount/disable. It demonstrates the source/factory and
   owned-lifetime contracts, with no claimed native or in-game verification.
+- [Native workbench](native-workbench.json) creates a real panel inside Mod
+  workspace through `context:CreatePanel`. It includes editable working notes,
+  observed conversation request counts and native Code/Vault actions, retaining
+  values across appearance rebuilds and releasing them on Disable.
 
 `catalog.json` lists these authored examples. They are not automatically
 installed or activated. There is no source loader or network dependency in the

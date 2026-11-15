@@ -101,7 +101,7 @@ case("prompt exact tool names do not match unrelated prefixes", function()
 	local scoped = prompt.build({ tools = { { name = "memory_read" } } })
 	check("memory-only scope has no unavailable mutations", not scoped:find("todo_write", 1, true) and not scoped:find("conversation_rename", 1, true))
 	check("similarly named tool cannot enable delegation", not prompt.build({ tools = { { name = "agent_status_extra" } } }):find("Delegation:", 1, true))
-	check("source workflow explains Lua and compilation limits", prompt.build({ tools = { { name = "run_luau" } } }):find("check_luau only compiles", 1, true))
+	check("source workflow explains Lua and compilation limits", prompt.build({ tools = { { name = "run_luau" } } }):find("check_luau compiles without API/type checks", 1, true))
 	f.healthy(); f.close()
 end)
 

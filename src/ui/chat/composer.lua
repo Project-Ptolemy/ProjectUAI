@@ -857,9 +857,17 @@ return function(env)
 			metaRow.Position = UDim2.fromOffset(0, expanded and fieldHeight + theme.space.xs or 0)
 			metaRow.Size = UDim2.new(1, 0, 0, controlHeight)
 			local surfaceHeight = top + inputHeight + inset
-			surface.Position = UDim2.fromOffset(sideInset, topInset + noticeHeight)
+			-- Outer padding yields when setup text and control targets fill a short window.
+			local fittedTopInset, fittedBottomInset = topInset, bottomInset
+			if parent.AbsoluteSize.Y > 0 then
+				local outerRoom = math.max(0, parent.AbsoluteSize.Y - noticeHeight - surfaceHeight)
+				fittedTopInset = math.min(topInset, outerRoom)
+				fittedBottomInset = math.min(bottomInset, outerRoom - fittedTopInset)
+			end
+			providerNotice.Position = UDim2.fromOffset(sideInset, fittedTopInset)
+			surface.Position = UDim2.fromOffset(sideInset, fittedTopInset + noticeHeight)
 			surface.Size = UDim2.new(1, -sideInset * 2, 0, surfaceHeight)
-			shell.Size = UDim2.new(1, 0, 0, noticeHeight + surfaceHeight + topInset + bottomInset)
+			shell.Size = UDim2.new(1, 0, 0, noticeHeight + surfaceHeight + fittedTopInset + fittedBottomInset)
 			fitLabels()
 			fitAttachments()
 			resizing = false

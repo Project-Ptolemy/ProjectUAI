@@ -4,24 +4,26 @@ return function(env)
 	local clock = env.require("runtime/clock")
 	local dispose = env.require("runtime/dispose")
 	local caps = env.require("runtime/caps")
+	local device = env.require("runtime/device")
 	local http = env.require("net/http")
 	local util = env.require("runtime/util")
 	local signal = env.require("runtime/signal")
 	local M = { PORT = 28791, changed = signal.new("bridge connection") }
 	local alive, started, paused = true, false, false
-	local desktop, epoch, nextProbe = nil, 0, 0
-	local function phone()
-		local ok, value = pcall(function() return env.uis.TouchEnabled == true and env.uis.MouseEnabled ~= true end)
-		return ok and value
-	end
-
-	local function automatic()
+	local desktop, reachable, epoch, nextProbe = nil, false, 0, 0
+	local function configured()
 		return alive and not paused and config.get("bridge.autoDiscover", true) == true
-			and not phone()
+	end
+	local function automatic()
+		return configured() and not device.isHandheld()
 	end
 
-	function M.get()
-		if automatic() and desktop then
+	function M.get(retainIdentity)
+		-- Discovery health controls admission for new work. An accepted inference
+		-- keeps its verified identity through a missed probe until settings change
+		-- or discovery confirms a different desktop instance/token. Optional input
+		-- capabilities can change during a request without changing that owner.
+		if configured() and desktop and (retainIdentity == true or reachable and not device.isHandheld()) then
 			return { enabled = true, source = "desktop", port = M.PORT, token = desktop.token, instance = desktop.instance }
 		end
 		return { enabled = false, source = "none", port = M.PORT, token = "" }
@@ -51,10 +53,15 @@ return function(env)
 					if not config.accessProblem() and alive and automatic() and mine == epoch then
 						local capacity = not response and tostring(err or ""):find("capacity:", 1, true)
 						local value = response and response.ok and #response.body <= 1024 and util.decode(response.body)
-						if capacity then value = desktop elseif not accept(value) then value = nil end
-						local changed = (desktop == nil) ~= (value == nil)
+						if not accept(value) then value = nil end
+						local available = capacity and reachable or value ~= nil
+						local changed = reachable ~= available
 							or (desktop and value and (desktop.token ~= value.token or desktop.instance ~= value.instance))
-						desktop = value
+						-- A timeout, refused probe or malformed reply is not evidence that
+						-- an already submitted provider job changed owner. Retain the last
+						-- verified identity solely for that job's receipt polling.
+						if value then desktop = value end
+						reachable = available
 						nextProbe = clock.ms() + 4000
 						if changed then M.changed:fire() end
 					end
@@ -65,7 +72,7 @@ return function(env)
 	end
 
 	function M.pause()
-		paused, desktop, epoch = true, nil, epoch + 1
+		paused, desktop, reachable, epoch = true, nil, false, epoch + 1
 		M.changed:fire()
 	end
 
@@ -79,11 +86,11 @@ return function(env)
 
 	dispose.add(config.changed:connect(function(path)
 		if path ~= nil and path ~= "bridge" and path ~= "bridge.autoDiscover" then return end
-		epoch, nextProbe, desktop, paused = epoch + 1, 0, nil, false
+		epoch, nextProbe, desktop, reachable, paused = epoch + 1, 0, nil, false, false
 		M.changed:fire()
 	end), "bridge connection settings")
 	dispose.add(function()
-		alive, desktop, epoch = false, nil, epoch + 1
+		alive, desktop, reachable, epoch = false, nil, false, epoch + 1
 	end, "desktop discovery")
 	return M
 end

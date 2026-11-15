@@ -41,6 +41,7 @@ return function(env)
 		end
 		return true
 	end
+	M.validLabel = plainLabel
 	local function object(value, allowed, maximum)
 		if type(value) ~= "table" then return false end
 		local count = 0

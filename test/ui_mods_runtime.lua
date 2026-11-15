@@ -141,8 +141,8 @@ case("authored catalog examples validate and script checks only compile", functi
 		local file = assert(io.open(path, "rb")); local bytes = file:read("*a"); file:close(); return bytes
 	end
 	local catalog = assert(doc.decodeJson(readFile("mods/catalog.json"), 2048, 3, 16))
-	local expected = { "project-workbench.json", "native-lifecycle-marker.json" }
-	check("catalog contains the two reviewed examples", catalog.version == 1 and type(catalog.entries) == "table" and #catalog.entries == #expected)
+	local expected = { "project-workbench.json", "native-lifecycle-marker.json", "native-workbench.json" }
+	check("catalog contains the three reviewed examples", catalog.version == 1 and type(catalog.entries) == "table" and #catalog.entries == #expected)
 	for index, name in ipairs(expected) do
 		check("catalog preserves the reviewed filename " .. name, catalog.entries[index] == name)
 		local value = assert(doc.parse(readFile("mods/" .. name)))
@@ -151,7 +151,7 @@ case("authored catalog examples validate and script checks only compile", functi
 		local ok, why, diagnostic = mods.checkScript(value)
 		check(name .. " has a valid inert preview", ok and why == nil and diagnostic.executed == false)
 	end
-	check("only the scripted example was compiled and no chunk was called", compiled == 1 and not executed)
+	check("only the scripted examples were compiled and no chunk was called", compiled == 2 and not executed)
 	check("reading examples does not install or select them", mods.list().total == 0 and mods.getActive() == nil)
 	f.healthy(); f.close()
 end)

@@ -1247,6 +1247,23 @@ return function(env)
 
 	local function paneAgent(container)
 		local build = builder(container)
+		local personas = env.require("runtime/personas")
+		local personality = build.section("Persona", "Pick the voice. Every persona stays direct and gets the work done.")
+		R.select(personality, {
+			name = "AgentPersona", label = "Persona", path = "agent.persona", options = personas.options(),
+			hint = "Applies to the next model request, including delegated agents. Custom instructions can override the style.",
+		})
+		local preview = R.paragraph(personality, "", { name = "AgentPersonaPreview" })
+		local function showPersona()
+			local selected = personas.get(config.get("agent.persona", "uai"))
+			preview.Text = selected.description .. "\nExample: " .. selected.sample
+		end
+		showPersona()
+		local stopPersona = config.changed:connect(function(path)
+			if path == nil or path == "agent" or path == "agent.persona" then showPersona() end
+		end)
+		preview.Destroying:Connect(stopPersona)
+		R.paragraph(personality, "Ponytail workflow is built in: fix the shared cause, reuse UAI's components, finish the whole task, and check the result.")
 
 		local agent = build.section("Tools & execution", "Control how much work the agent can do in one turn.")
 		R.number(agent, "Step limit", "Tool rounds allowed in one turn, unless the switch below removes it.",

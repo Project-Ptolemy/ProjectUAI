@@ -28,6 +28,7 @@ return function(env)
 		{ "cowork", "Cowork", "bridge desktop browser connection relay", {} },
 		{ "import_export", "Import & export", "backup restore configuration", {} },
 		{ "agent", "Behaviour", "agent model requests response limits", {
+			{ "agent.persona", "Persona", "personality femboy catboy gremlin tsundere goth drill sergeant evil genius brainrot voice style Ponytail" },
 			{ "agent.maxTurns", "Step limit", "tool rounds" },
 			{ "agent.unlimitedTurns", "Unlimited tool calls", "step limit deadline" },
 			{ "agent.toolConcurrency", "Parallel tools", "concurrency" },

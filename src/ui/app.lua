@@ -1142,6 +1142,17 @@ return function(env)
 		if M.panel == "chat" then M.readNotifications(sessions.activeId) end
 	end
 
+	function M.showModPanel(key)
+		if M.disposed or dispose.draining or not env.require("runtime/ui_mod_panels").snapshot(key) then
+			return nil, "This native mod panel is unavailable"
+		end
+		if not M.syncCredentialAccess() then return nil, "Unlock Project UAI before opening a native mod panel" end
+		M.show("mods")
+		local panel = M.panels and M.panels.mods
+		if not panel or not panel.select then return nil, "The native mod workspace could not open" end
+		return panel.select(key)
+	end
+
 	function M.hide()
 		if M.window then M.window.hide() end
 	end

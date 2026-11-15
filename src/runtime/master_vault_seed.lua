@@ -2,7 +2,7 @@
 return function(env)
 	return {
 		version = 1,
-		release = "4.0.0",
+		release = "4.0.5",
 		entries = {
 			{ id = "starter:project-knowledge", markdown = [=[
 ---

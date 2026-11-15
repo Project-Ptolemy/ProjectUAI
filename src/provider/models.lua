@@ -26,6 +26,42 @@ return function(env)
 	local config = env.require("runtime/config")
 
 	local CACHE_MS = 10 * 60 * 1000
+	local KILO_CATALOG_PATHS = {
+		["/api/gateway/models"] = true,
+		["/api/gateway/v1/models"] = true,
+		["/api/v1/models"] = true,
+	}
+	local function kiloCatalog(url)
+		local parsed = urls.parse(url)
+		return parsed and parsed.scheme == "https" and (parsed.host == "api.kilo.ai" or parsed.host == "ai-gateway.kilo.ai")
+			and (parsed.authority:lower() == parsed.host or parsed.authority:lower() == parsed.host .. ":443")
+			and KILO_CATALOG_PATHS[parsed.path] == true
+	end
+	local function kiloDecodeProblem(res)
+		local encoding = tostring(http.header(res, "Content-Encoding") or ""):lower()
+		local body = tostring(res.body or "")
+		if encoding == "br" or encoding == "gzip" or encoding == "deflate" or body:sub(1, 2) == "\31\139" then
+			return "Kilo returned compressed model data this host did not decode. Remove any custom Accept-Encoding header and fetch again."
+		end
+		local contentType = tostring(http.header(res, "Content-Type") or ""):lower()
+		if contentType:find("text/html", 1, true) or body:sub(1, 200):find("^%s*<") then
+			return "Kilo returned a web page instead of its JSON model list. Check Requests for the response status, or enter an exact model ID."
+		end
+		return "Kilo returned a model list this host could not parse as JSON. Fetch again or enter an exact model ID."
+	end
+	local function kiloTransportProblem(err)
+		local text = tostring(err or ""):lower()
+		if text:find("json", 1, true) then
+			return "The host could not parse Kilo's response as JSON. Remove any custom Accept-Encoding header and fetch again."
+		end
+		if text:find("capacity:", 1, true) then
+			return "Kilo model discovery could not start while earlier native HTTP calls were still running. Fetch again after they finish."
+		end
+		if text:find("deadline", 1, true) or text:find("timeout", 1, true) or text:find("timed out", 1, true) then
+			return "Kilo model discovery timed out. Let the native HTTP call finish before fetching again, or enter an exact model ID."
+		end
+		return "Kilo model discovery could not complete the host's HTTP request. Check Requests for the transport diagnostic, or enter an exact model ID."
+	end
 
 	local M = {
 		cache = setmetatable({}, { __mode = "k" }),
@@ -191,6 +227,12 @@ return function(env)
 		end
 		local url, cloudflare = cloudflareCatalog.endpoint(registry.endpoint(snapshot, "/models"))
 		local headers = env.require("provider/chat").headers(snapshot)
+		local kilo = kiloCatalog(url)
+		if kilo then
+			-- Some executor wrappers advertise Brotli without decoding the reply.
+			-- This public catalog supports plain JSON; explicit host headers still win.
+			headers = env.require("net/headers").merge({ Accept = "application/json", ["Accept-Encoding"] = "identity" }, headers)
+		end
 		local deadline = env.require("net/deadline").at(opts.timeout, opts.deadlineMs)
 		local recovery = proxy.new(record, { aborted = opts.aborted, onRetry = opts.onRetry, deadlineMs = deadline })
 		local function fetch()
@@ -272,17 +314,22 @@ return function(env)
 		if not res or not res.ok or type(decoded) ~= "table" or decoded.error ~= nil then
 			if cli then return {}, support.error(err or (cli == "cline" and "Could not read Cline's free model list." or "Could not read the OpenCode CLI model list.")) end
 			local note = "could not read the model list"
+			if kilo and res and res.ok and decodeError then note = kiloDecodeProblem(res) end
 			if res and res.status == 404 then note = "this endpoint has no /models route -- add a model by hand" end
 			if res and res.status == 401 then note = "the API key was rejected" end
 			if res and res.status == 403 then note = "the key is not allowed to list models" end
 			if cloudflare and not res and err then
 				note = note .. ": " .. err
+			elseif kilo and not res and err then
+				note = kiloTransportProblem(err)
 			elseif proxy.isClientRefusal(res) or registry.isOpencode(record) then
 				note = "the endpoint rejected this client: " .. env.require("provider/chat").errorText(snapshot, res, err)
-			elseif res and res.status ~= 401 and res.status ~= 403 and res.status ~= 404 then
+			elseif res and res.status ~= 401 and res.status ~= 403 and res.status ~= 404 and not (kilo and res.ok and decodeError) then
 				note = note .. ": " .. env.require("provider/chat").errorText(snapshot, res, err)
 			end
-			log.info("models", tostring(record.label) .. ": " .. note, err)
+			local detail = err
+			if kilo and (decodeError or not res) then detail = nil end
+			log.info("models", tostring(record.label) .. ": " .. note, detail)
 			return {}, support.error(note)
 		end
 

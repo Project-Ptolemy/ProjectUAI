@@ -13,9 +13,15 @@ let state={},bridgeUpdate={},kiloStatus={},clineStatus={},openCodeStatus={},page
 let drafts={};try{const value=JSON.parse(stored('sessionStorage','uai.drafts')||'{}');if(value&&typeof value==='object'&&!Array.isArray(value))drafts=value;}catch{}
 const tools=new Map(),dirtyDrafts=new Set();
 let currentResponse=null,responseUser=null,transcriptOrder=0;
+let snapshotReplay=null,snapshotGeneration=0;
+let transcriptResyncNeeded=false,recoveringTranscript=false;
+const snapshotResponses=new Set();
 let toastTimer,draftTimer,storageWarning=false,renderingSnapshot=false,eventBytes=0,sendOperation=null,connectionRetry,readingFiles=0,modalRefresh=null,panelRefreshPending=false,panelPointerActive=false,panelPointerTimer;
 const draftLoads=new Map();
 const MAX_DRAFT_BYTES=16*1024*1024,MAX_EVENTS_BYTES=8*1024*1024;
+// Match the bridge replay ring during recovery: a fresh stream includes its
+// durable backlog followed by picture metadata and uncommitted preview frames.
+const MAX_RECOVERY_EVENTS=5000,MAX_RECOVERY_BYTES=16*1024*1024;
 // Explicit operation state machine (contract): the visible/label state is derived
 // from link + sendPhase + busy rather than a tangle of loose booleans.
 document.body.dataset.page='chat';
@@ -195,6 +201,7 @@ function renderAttachments(){
 function hasContent(){return !!$('input').value.trim()||uploads.length>0||!!(window.UAI&&UAI.pictures&&UAI.pictures.hasStaged());}
 function picturesBusy(){return !!(window.UAI&&UAI.pictures&&UAI.pictures.busy());}
 function setBusy(value){busy=!!value;refresh();}
+function refreshTranscriptBusy(){$('transcript').setAttribute('aria-busy',String(!!snapshotReplay||busy||sendPhase!=='idle'));}
 function refresh(){
   const generating=busy;
   const canQueue=!!state.queue,queueing=canQueue&&(generating||state.queue.count>0);
@@ -204,7 +211,7 @@ function refresh(){
   const blocked=stopping||sending||sendPhase!=='idle'||readingFiles>0||draftLoads.has(sessionId)||!connected||picturesBusy()||UAI.pictures?.hasErrors()||canQueue&&state.queue.count>=state.queue.limit;
   $('send').disabled=blocked||!hasContent();
   $('attachPictures').hidden=!UAI.pictures?.enabled();
-  $('transcript').setAttribute('aria-busy',String(generating||sendPhase!=='idle'));
+  refreshTranscriptBusy();
   document.body.dataset.op=generating?'generating':(sendPhase!=='idle'?sendPhase:'idle');
   document.body.dataset.link=link;document.body.dataset.game=connected?'connected':'disconnected';
   $('connectionLabel').textContent=connected?'Game connected':link==='online'?'Connect your game':'Bridge reconnecting';
@@ -264,11 +271,12 @@ function chatLayout(empty){
     });
   }
 }
-function trimTranscript(){
+function trimTranscript(slice){
   const root=$('transcript'),selector='.message,.tool-call,.thinking,.activity-note,.subagent-report';
   // A grouped turn can contain many entries. Bound the leaves as well as the
   // top-level history; never let a focused old control block all later eviction.
-  const retained=[...root.querySelectorAll(selector)].sort((a,b)=>a._uaiTranscriptOrder-b._uaiTranscriptOrder);let excess=retained.length-450;
+  const retained=slice?.retained||[...root.querySelectorAll(selector)].sort((a,b)=>a._uaiTranscriptOrder-b._uaiTranscriptOrder);
+  let excess=slice?.excess??retained.length-450,index=slice?.index||0,processed=0;const started=performance.now();
   const remove=node=>{
     const response=responseFor(node);
     renderer.dropNode(node);
@@ -278,19 +286,23 @@ function trimTranscript(){
     node.remove();
     if(response){if(!response.node.querySelector(selector))response.node.remove();else updateResponse(response);}
   };
-  for(const node of retained){
+  for(;index<retained.length;index++){
     if(excess<=0)break;
+    if(slice&&(processed>=12||(processed&&performance.now()-started>=6))){slice.retained=retained;slice.excess=excess;slice.index=index;return false;}
+    const node=retained[index];processed++;
     if(!node.isConnected){excess--;continue;}
     if(node.contains(document.activeElement)||node._uaiReasoning?.contains(document.activeElement))continue;
     remove(node);excess--;
   }
   for(const node of [...root.children]){if(root.children.length<=450)break;if(!node.contains(document.activeElement))remove(node);}
+  if(slice)slice.retained=null;return true;
 }
-function append(node,parent=$('transcript')){const pinned=!renderingSnapshot&&stick();const root=$('transcript');chatLayout(false);root.querySelector('.welcome')?.remove();if(renderingSnapshot)node.classList.add('restored');node._uaiTranscriptOrder=++transcriptOrder;parent.append(node);trimTranscript();if(pinned)scrollToEnd();}
+function append(node,parent=$('transcript')){const pinned=!renderingSnapshot&&stick();const root=$('transcript');chatLayout(false);root.querySelector('.welcome')?.remove();if(renderingSnapshot)node.classList.add('restored');node._uaiTranscriptOrder=++transcriptOrder;parent.append(node);if(!renderingSnapshot)trimTranscript();if(pinned)scrollToEnd();}
 function resetResponses(){currentResponse=null;responseUser=null;}
 function responseFor(node){return node.closest('.response-turn')?._response;}
 function updateResponse(response){
   if(!response?.node.isConnected)return;
+  if(renderingSnapshot){snapshotResponses.add(response);return;}
   const calls=[...response.activity.querySelectorAll('.tool-call>.tool')],running=calls.filter(node=>node.dataset.status==='running');
   const failed=calls.filter(node=>['failed','timeout'].includes(node.dataset.status));
   const declined=calls.filter(node=>node.dataset.status==='declined'),unknown=calls.filter(node=>node.dataset.status==='unknown');
@@ -528,7 +540,7 @@ function finishTool(e){
   updateResponse(responseFor(row.node));
   tools.delete(key);
 }
-function renderEvent(e){
+function renderEvent(e,controlsCurrent=true){
   if(e.sessionId&&sessionId&&e.sessionId!==sessionId)return;
   const pinned=!renderingSnapshot&&stick();
   switch(e.kind){
@@ -548,8 +560,12 @@ function renderEvent(e){
     case 'tool:progress':{const row=tools.get(toolKey(e))||(!e.id&&tools.size===1?[...tools.values()][0]:null);if(row){row.progress.textContent=e.text||'';row.progress.hidden=!e.text;updateResponse(responseFor(row.node));}break;}
     case 'error':{const error=el('div','error');error.setAttribute('role','alert');const actions=renderFailure(error,e);actions.prepend(button('Review message',()=>resendLast(e.sessionId||sessionId),'retry'));append(error);break;}
     case 'status':announce(e.text||'Ready');break;
-    case 'turn:start':if(sendOperation&&sendOperation.sessionId===sessionId)sendOperation.sawTurn=true;clearTimeout(awaitTurnTimer);if(sendPhase!=='uncertain')sendPhase='idle';setBusy(true);break;
-    case 'turn:end':case 'abort':if(sendOperation&&sendOperation.sessionId===sessionId)sendOperation.sawTurn=true;clearTimeout(awaitTurnTimer);if(sendPhase!=='uncertain')sendPhase='idle';renderer.endTurn(sessionId,e.kind==='abort');finishResponse(e.kind==='abort');setBusy(false);break;
+    case 'turn:start':if(renderingSnapshot)break;if(sendOperation&&sendOperation.sessionId===sessionId)sendOperation.sawTurn=true;clearTimeout(awaitTurnTimer);if(sendPhase!=='uncertain')sendPhase='idle';if(controlsCurrent)setBusy(true);else refresh();break;
+    case 'turn:end':case 'abort':{
+      if(!renderingSnapshot){if(sendOperation&&sendOperation.sessionId===sessionId)sendOperation.sawTurn=true;clearTimeout(awaitTurnTimer);if(sendPhase!=='uncertain')sendPhase='idle';}
+      renderer.endTurn(sessionId,e.kind==='abort');finishResponse(e.kind==='abort');
+      if(!renderingSnapshot){if(controlsCurrent)setBusy(false);else refresh();}break;
+    }
     case 'cleared':events=[];renderer.reset();tools.clear();resetResponses();if(window.UAI&&UAI.pictures)UAI.pictures.clearSession(sessionId);$('transcript').replaceChildren();welcome();break;
     case 'provider:switch':append(el('div','note','Switched provider to '+e.to));break;
     case 'model:route':append(el('div','note',e.text||('Automatic free routing selected '+e.model+'. Turn it off in Settings → Agent → Automatic free routing.')));break;
@@ -579,7 +595,7 @@ const renderer=window.UAIStreamRenderer.create({
   onState:entry=>updateResponse(responseFor(entry.node)),
   getSession:()=>sessionId,
   defaultModel:()=>state.agent?.model,
-  isPinned:stick,
+  isPinned:()=>!renderingSnapshot&&stick(),
   scrollToEnd,
   onActivity:active=>{document.body.dataset.streaming=active?'on':'off';},
   onRetry:resendLast,
@@ -588,31 +604,94 @@ const renderer=window.UAIStreamRenderer.create({
   onFinal:decorateMessage,
 });
 UAI.pictures=UAI.createPictures({token,browserId,getSession:()=>sessionId,api,toast,tray:$('pictureTray'),input:$('pictureInput'),pickerButton:$('attachPictures'),dropZone:$('composer'),onTextFiles:attachFiles,onChange:refresh});
-function apply(e){
+function cancelSnapshotReplay(){
+  snapshotGeneration++;if(snapshotReplay){clearTimeout(snapshotReplay.timer);snapshotReplay.events=[];snapshotReplay.pending=[];snapshotReplay.pendingBytes=0;snapshotReplay.responses=[];snapshotReplay.trim.retained=null;}
+  snapshotReplay=null;renderingSnapshot=false;snapshotResponses.clear();refreshTranscriptBusy();
+}
+function settleRestoredTools(){
+  if(state.agent?.busy)return;
+  for(const row of tools.values())if(row.restored){
+    row.restored=false;row.node.dataset.status='unknown';row.verdict.textContent='No saved result';
+    row.outcome.textContent='No result was kept in this transcript.';row.outcome.hidden=false;
+    updateResponse(responseFor(row.node));
+  }
+}
+function queueSnapshotReplay(task){
+  if(task!==snapshotReplay||task.timer!==null||document.hidden)return;
+  task.timer=setTimeout(()=>{
+    task.timer=null;if(task!==snapshotReplay||task.generation!==snapshotGeneration)return;
+    if(document.hidden)return;
+    const started=performance.now();let processed=0;
+    while(task===snapshotReplay&&processed<12&&(processed===0||performance.now()-started<6)){
+      if(task.cursor<task.events.length){
+        const event=task.events[task.cursor++];
+        try{renderEvent(event);}catch(error){console.error(error);toast('Could not display a saved message.');}
+      }else if(task.phase==='events'){
+        task.phase='summaries';renderingSnapshot=false;task.responses=[...snapshotResponses];snapshotResponses.clear();
+      }else if(task.responseCursor<task.responses.length){
+        updateResponse(task.responses[task.responseCursor++]);
+      }else if(task.phase==='summaries'){
+        if(!trimTranscript(task.trim))break;
+        task.phase='live';task.events=[];task.responses=[];welcome();
+        if(!task.readerMoved){if(task.readingSession===sessionId&&!task.wasPinned)$('transcript').scrollTop=task.readingY;else scrollToEnd();}
+        $('latest').hidden=stick();
+      }else if(task.pendingCursor<task.pending.length){
+        const pending=task.pending[task.pendingCursor];task.pending[task.pendingCursor++]=null;task.pendingBytes-=pending.bytes;
+        try{apply(pending.event,true,pending.stateVersion===task.stateVersion);}catch(error){console.error(error);toast('Could not display a bridge update.');}
+        if(task.pendingCursor>=128){task.pending=task.pending.slice(task.pendingCursor);task.pendingCursor=0;}
+      }else{
+        snapshotReplay=null;recoveringTranscript=false;task.events=[];task.pending=[];task.pendingBytes=0;refreshTranscriptBusy();settleRestoredTools();return;
+      }
+      processed++;
+    }
+    queueSnapshotReplay(task);
+  },0);
+}
+function startSnapshotReplay(e){
+  const readingSession=sessionId,readingY=$('transcript').scrollTop,wasPinned=stick();
+  cancelSnapshotReplay();events=[];eventBytes=0;for(const event of Array.isArray(e.events)?e.events:[])retainEvent(event);
+  renderer.reset();tools.clear();resetResponses();UAI.pictures.resetMessages();$('transcript').replaceChildren();changeSession(e.sessionId);
+  // Keep input and connection callbacks responsive while restoring a large
+  // conversation. Live events wait in order behind the frozen snapshot.
+  const task={generation:snapshotGeneration,recovery:recoveringTranscript,events:events.slice(),cursor:0,pending:[],pendingCursor:0,pendingBytes:0,stateVersion:0,timer:null,phase:'events',responses:[],responseCursor:0,trim:{},
+    readingSession,readingY,wasPinned,readerMoved:false};
+  snapshotReplay=task;renderingSnapshot=true;refreshTranscriptBusy();queueSnapshotReplay(task);
+}
+function queueSnapshotEvent(e){
+  const task=snapshotReplay,bytes=new TextEncoder().encode(JSON.stringify(e)).length;
+  const countLimit=task.recovery?MAX_RECOVERY_EVENTS:400,byteLimit=task.recovery?MAX_RECOVERY_BYTES:MAX_EVENTS_BYTES;
+  if(task.pending.length-task.pendingCursor>=countLimit||task.pendingBytes+bytes>byteLimit){
+    // Existing SSE resync returns the bridge's retained snapshot/backlog. Stop
+    // collecting while hidden, rather than silently dropping ordered receipts.
+    cancelSnapshotReplay();closeEventStream();transcriptResyncNeeded=true;recoveringTranscript=true;
+    if(!document.hidden&&!$('app').hidden){transcriptResyncNeeded=false;openEventStream();}
+    return;
+  }
+  task.pending.push({event:e,bytes,stateVersion:task.stateVersion});task.pendingBytes+=bytes;
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)return;
+  if(transcriptResyncNeeded&&!$('app').hidden){transcriptResyncNeeded=false;openEventStream();}
+  else if(snapshotReplay)queueSnapshotReplay(snapshotReplay);
+});
+function apply(e,fromReplay=false,controlsCurrent=true){
   if(typeof e.kind!=='string')return;
+  if(transcriptResyncNeeded&&!fromReplay)return;
+  // Current controls must remain available while saved transcript entries wait.
+  // A different session's state still follows the snapshot that owns this replay.
+  const currentState=e.kind==='bridge:state'&&(!e.state?.sessionId||e.state.sessionId===sessionId);
+  if(snapshotReplay&&!fromReplay&&!currentState&&!['bridge:snapshot','bridge:reset','bridge:game','bridge:update','bridge:cursor','kilo:state','cline:state','opencode:state'].includes(e.kind)){queueSnapshotEvent(e);return;}
   if(e.kind==='bridge:update'){bridgeUpdate=e.update||{};if(page==='cowork')requestPanelRefresh();return;}
   if(e.kind==='kilo:state'){kiloStatus=e.kilo||{};if(page==='cowork'||page==='tunnels')requestPanelRefresh();return;}
   if(e.kind==='cline:state'){clineStatus=e.cline||{};if(page==='tunnels')requestPanelRefresh();return;}
   if(e.kind==='opencode:state'){openCodeStatus=e.opencode||{};if(page==='tunnels')requestPanelRefresh();return;}
-  if(e.kind==='bridge:reset'){events=[];eventBytes=0;renderer.reset();tools.clear();resetResponses();UAI.pictures.resetMessages();$('transcript').replaceChildren();welcome();if(e.resync)toast('Connection restored. Reloaded the latest saved conversation.');return;}
-  if(e.kind==='bridge:snapshot'){
-    const readingSession=sessionId,readingY=$('transcript').scrollTop,wasPinned=stick();
-    events=[];eventBytes=0;for(const event of Array.isArray(e.events)?e.events:[])retainEvent(event);
-    renderer.reset();tools.clear();resetResponses();UAI.pictures.resetMessages();$('transcript').replaceChildren();changeSession(e.sessionId);
-    renderingSnapshot=true;
-    try{for(const event of events)renderEvent(event);}finally{renderingSnapshot=false;}
-    welcome();
-    if(readingSession===sessionId&&!wasPinned)$('transcript').scrollTop=readingY;else scrollToEnd();
-    $('latest').hidden=stick();return;
-  }
+  if(e.kind==='bridge:reset'){cancelSnapshotReplay();events=[];eventBytes=0;renderer.reset();tools.clear();resetResponses();UAI.pictures.resetMessages();$('transcript').replaceChildren();welcome();if(e.resync)toast('Connection restored. Reloaded the latest saved conversation.');return;}
+  if(e.kind==='bridge:snapshot'){startSnapshotReplay(e);return;}
   if(e.kind==='bridge:state'){
+    if(snapshotReplay&&!fromReplay)snapshotReplay.stateVersion++;
     const next=e.state||{};changeSession(next.sessionId);state=next;renderState();
     if(requestedSettings){const section=requestedSettings;requestedSettings=null;openSettings(section);}
-    if(!state.agent?.busy)for(const row of tools.values())if(row.restored){
-      row.restored=false;row.node.dataset.status='unknown';row.verdict.textContent='No saved result';
-      row.outcome.textContent='No result was kept in this transcript.';row.outcome.hidden=false;
-      updateResponse(responseFor(row.node));
-    }
+    if(!snapshotReplay)settleRestoredTools();
     return;
   }
   if(e.kind==='bridge:game'){const changed=connected!==!!e.connected;connected=!!e.connected;setBusy(state.agent?.busy);renderQueue();welcome();if(changed&&page==='cowork')requestPanelRefresh();return;}
@@ -623,7 +702,7 @@ function apply(e){
   if(e.kind==='bridge:picture'){if(window.UAI&&UAI.pictures)UAI.pictures.handleEvent(e);return;}
   if(e.kind.startsWith('bridge:'))return;
   if(e.sessionId&&sessionId&&e.sessionId!==sessionId)return;
-  retainEvent(e);renderEvent(e);
+  retainEvent(e);renderEvent(e,controlsCurrent);
 }
 function retainEvent(e){
   if(!e||typeof e.kind!=='string')return;
@@ -1273,7 +1352,7 @@ function openSettings(initial='general'){
     function sync(){
       for(const choice of themeChoices.children){const selected=choice.dataset.themeChoice===UAI.theme.get();choice.classList.toggle('selected',selected);choice.setAttribute('aria-pressed',String(selected));}
       for(const choice of modes.children){const selected=choice.dataset.permission===state.permissions?.mode;choice.classList.toggle('selected',selected);choice.setAttribute('aria-pressed',String(selected));choice.disabled=!connected||!!modalContext?.pending;}
-      for(const input of root.querySelectorAll('[data-setting]')){if(document.activeElement===input||['saving','error'].includes(input.closest('.setting').dataset.state))continue;const [section,key]=input.dataset.setting.split('.'),value=state.settings?.[section]?.[key];input.disabled=!connected||!!modalContext?.pending||!!modalContext?.uncertain;if(value===undefined)continue;if(input.type==='checkbox')input.checked=!!value;else input.value=value;}
+      for(const input of root.querySelectorAll('[data-setting]')){if(document.activeElement===input||['saving','error'].includes(input.closest('.setting').dataset.state))continue;const [section,key]=input.dataset.setting.split('.'),value=state.settings?.[section]?.[key];input.disabled=!connected||!!modalContext?.pending||!!modalContext?.uncertain;if(value===undefined)continue;if(input.type==='checkbox')input.checked=!!value;else input.value=value;input.syncPersonaHelp?.();}
     }
     modalRefresh=sync;sync();activate(panels.has(initial)?initial:'general');modalActions(modalCancel('Done'));
   },{size:'settings',focusHeading:true});
@@ -1286,12 +1365,19 @@ function renderSettingFields(details,section,values){
       caption.append(status);row.append(caption);
       let input;
       if(typeof value==='boolean'){input=el('input');input.type='checkbox';input.checked=value;}
+      else if(path==='agent.persona'){
+        const choices=Array.isArray(state.personaOptions)&&state.personaOptions.length?state.personaOptions:[{value:'uai',label:'UAI',description:'Direct answers and practical action.',sample:''}];
+        input=el('select');for(const item of choices){if(typeof item.value!=='string'||typeof item.label!=='string')continue;const option=el('option',null,item.label);option.value=item.value;input.append(option);}input.value=value;
+        const description=el('small','field-help persona-description'),sample=el('small','field-help persona-sample');caption.append(description,sample);
+        input.syncPersonaHelp=()=>{const item=choices.find(choice=>choice.value===input.value)||choices[0];description.textContent=item?.description||'';sample.textContent=item?.sample?'Example: '+item.sample:'';sample.hidden=!item?.sample;};input.syncPersonaHelp();
+      }
       else if(SETTING_CHOICES[path]){input=el('select');for(const item of SETTING_CHOICES[path]){const [id,title]=Array.isArray(item)?item:[item,item[0].toUpperCase()+item.slice(1)];const option=el('option',null,title);option.value=id;input.append(option);}input.value=value;}
       else{input=el(key==='customInstructions'?'textarea':'input');if(input.tagName==='INPUT')input.type=typeof value==='number'?'number':'text';input.value=value;if(typeof value==='number'){const [min,max,step]=SETTING_RANGES[path]||[0,10000000,1];input.min=min;input.max=max;input.step=step;}else input.maxLength=16000;}
       input.dataset.setting=path;input.disabled=!connected;
       let saveVersion=0;
       input.onchange=async()=>{
         const version=++saveVersion;
+        input.syncPersonaHelp?.();
         if(!input.reportValidity()){status.textContent=input.validationMessage;row.dataset.state='error';return;}
         status.textContent='Saving…';row.dataset.state='saving';
         try{await command('setting',{path,value:typeof value==='boolean'?input.checked:typeof value==='number'?Number(input.value):input.value});if(version===saveVersion){status.textContent='Saved';row.dataset.state='saved';}}
@@ -1504,8 +1590,11 @@ document.addEventListener('pointercancel',()=>{if(panelPointerActive)panelPointe
 document.addEventListener('click',()=>{if(panelPointerActive)queueMicrotask(releasePanelPointer);});
 window.addEventListener('blur',releasePanelPointer);
 document.addEventListener('selectionchange',()=>queueMicrotask(flushPanelRefresh));
-$('latest').onclick=scrollToEnd;
+$('latest').onclick=()=>{if(snapshotReplay){snapshotReplay.readerMoved=false;snapshotReplay.wasPinned=true;}scrollToEnd();};
 $('transcript').onscroll=()=>$('latest').hidden=stick();
+const noteSnapshotReading=()=>{if(snapshotReplay)snapshotReplay.readerMoved=true;};
+$('transcript').addEventListener('wheel',noteSnapshotReading,{passive:true});$('transcript').addEventListener('touchmove',noteSnapshotReading,{passive:true});
+$('transcript').addEventListener('keydown',event=>{if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))noteSnapshotReading();});
 $('exportChat').onclick=()=>{
   const transcript=events.filter(e=>['user','assistant:text'].includes(e.kind)).map(e=>`### ${e.kind==='user'?'You':'Assistant'}\n\n${e.text}\n`).join('\n');
   const pictures=UAI.pictures.manifest();
@@ -1531,29 +1620,34 @@ document.addEventListener('uai:theme',themeChanged);themeChanged();
 window.addEventListener('resize',()=>{syncSidebar();resizeComposer();});syncSidebar();
 window.addEventListener('pagehide',()=>{saveDraft();persistDrafts();});
 function showGate(reason=''){
-  saveDraft();persistDrafts();stream?.close();clearTimeout(connectionRetry);closeSidebar();if($('modal').open)closeModal(true,false);closeWorkspace(false);
+  saveDraft();persistDrafts();cancelSnapshotReplay();transcriptResyncNeeded=false;recoveringTranscript=false;closeEventStream();closeSidebar();if($('modal').open)closeModal(true,false);closeWorkspace(false);
   connected=false;link='disconnected';$('app').hidden=true;$('gate').hidden=false;$('gate-error').textContent=reason;
   $('gate-connect').disabled=false;refresh();$('gate-token').focus({preventScroll:true});
 }
-async function checkConnection(){
+async function checkConnection(connection=stream){
+  if(connection!==stream||$('app').hidden)return;
   try{await api('/hello');}catch(error){if(error.status===401)return;}
-  if(!$('app').hidden&&stream?.readyState!==EventSource.OPEN)connectionRetry=setTimeout(checkConnection,3000);
+  if(connection===stream&&!$('app').hidden&&stream?.readyState!==EventSource.OPEN)connectionRetry=setTimeout(()=>checkConnection(connection),3000);
+}
+function closeEventStream(){const connection=stream;stream=null;connection?.close();clearTimeout(connectionRetry);}
+function openEventStream(){
+  closeEventStream();const connection=new EventSource('/api/stream?token='+encodeURIComponent(token));stream=connection;
+  connection.onopen=()=>{if(connection!==stream)return;clearTimeout(connectionRetry);link='online';refresh();if(page==='cowork'||page==='tunnels')requestPanelRefresh();};
+  connection.onmessage=e=>{if(connection!==stream)return;try{apply(JSON.parse(e.data));}catch(err){console.error(err);toast('Could not render bridge update: '+err.message);}};
+  connection.onerror=()=>{if(connection!==stream)return;link='offline';connected=false;refresh();if(page==='cowork'||page==='tunnels')requestPanelRefresh();clearTimeout(connectionRetry);connectionRetry=setTimeout(()=>checkConnection(connection),2000);};
 }
 async function enter(){
   clearTimeout(connectionRetry);const hello=await api('/hello');
   if(hello.protocol!==2)throw Error('Update the bridge files, then restart the bridge to connect.');
   if(instance&&hello.instance!==instance){
-    UAI.pictures.reset();renderer.reset();events=[];eventBytes=0;tools.clear();state={};$('transcript').replaceChildren();
+    cancelSnapshotReplay();recoveringTranscript=false;UAI.pictures.reset();renderer.reset();events=[];eventBytes=0;tools.clear();state={};$('transcript').replaceChildren();
     if(sendOperation){sendOperation.lost=true;setPhase('uncertain');persistOperation();}
   }
   instance=hello.instance;connected=!!hello.connected;bridgeUpdate=hello.update||{};kiloStatus=hello.capabilities?.kilo||{};clineStatus=hello.capabilities?.cline||{};openCodeStatus=hello.capabilities?.opencode||{};link='online';
   UAI.pictures.setToken(token);await UAI.pictures.configure(hello);
   try{sessionStorage.setItem('uai.token',token);sessionStorage.setItem('uai.instance',instance);localStorage.removeItem('uai.token');}catch{}
   $('gate').hidden=true;$('gate-error').textContent='';$('gate-token').value='';$('app').hidden=false;refresh();welcome();syncSidebar();(page==='chat'?$('input'):$('panel')).focus({preventScroll:true});
-  stream?.close();stream=new EventSource('/api/stream?token='+encodeURIComponent(token));
-  stream.onopen=()=>{clearTimeout(connectionRetry);link='online';refresh();if(page==='cowork'||page==='tunnels')requestPanelRefresh();};
-  stream.onmessage=e=>{try{apply(JSON.parse(e.data));}catch(err){console.error(err);toast('Could not render bridge update: '+err.message);}};
-  stream.onerror=()=>{link='offline';connected=false;refresh();if(page==='cowork'||page==='tunnels')requestPanelRefresh();clearTimeout(connectionRetry);connectionRetry=setTimeout(checkConnection,2000);};
+  transcriptResyncNeeded=false;openEventStream();
   if(requestedSettings&&!connected){const section=requestedSettings;requestedSettings=null;openSettings(section);}
 }
 $('gate-form').onsubmit=async e=>{e.preventDefault();token=$('gate-token').value.trim().toLowerCase();$('gate-connect').disabled=true;$('gate-error').textContent='';try{await enter();}catch(err){showGate(err.message);}finally{$('gate-connect').disabled=false;}};

@@ -61,4 +61,14 @@ check("new placeholder cannot be forged", "\1\1\1\1\1 `safe` \1\1\1\1\1",
 theme.codeFontEnumName = "RobotoMono"
 check("code font follows theme", "`café | 東京`",
 	'<font color="#CCAABB"><font face="RobotoMono">café | 東京</font></font>')
+local escape, escapedCalls = markdown.escape, 0
+markdown.escape = function(value) escapedCalls = escapedCalls + 1; return escape(value) end
+local long = string.rep("A long café paragraph keeps <markup> & quoted words. ", 1200)
+check("long ordinary prose remains exact", long, escape(long))
+assert(escapedCalls == 1, "ordinary prose must escape a span once, not every byte")
+escapedCalls = 0
+check("long prose preserves inline code and escaped punctuation", long .. " `kept <value>` \\*literal\\* tail",
+	escape(long) .. ' <font color="#CCAABB"><font face="RobotoMono">kept &lt;value&gt;</font></font> *literal* tail')
+assert(escapedCalls <= 8, "ordinary spans must stay bounded around code/escape markers")
+markdown.escape = escape
 print("markdown regressions: " .. checked .. " passed")

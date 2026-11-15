@@ -1,19 +1,20 @@
 # Project UAI — contract
 
-Release: **Project UAI client, bridge package and Windows desktop 4.0.0 —
-November 14, 2026 — a major release**. The new update focus is persistent agent
-workspaces: native Master Vault knowledge, dependent micro-goals, shareable
-full-access UI mods, read/full delegation and explicit questions in every
-permission mode. Manual native bridging is retired in favor of desktop discovery.
-Completed responses carry measured request averages. Existing script workflows, tool
-families, provider setup, Obsidian integration and staged startup remain supported.
+Release: **Project UAI client, bridge package and Windows desktop 4.0.5 —
+November 15, 2026**. Accepted bridge requests survive transient discovery failures,
+long conversations avoid repeated context/rendering work, script mods declare native
+workspace panels, and handheld sizing stays compact across input/layout changes.
+Agent settings add selectable speaking personas; shared system instructions include
+the UAI adaptation of Ponytail's smallest-complete-change workflow.
+Persistent Master Vault knowledge, micro-goals, full-access mods, delegation,
+explicit questions, Obsidian and automatic desktop discovery remain supported.
 The embedding SDK is **1.1.0** and standalone **UI LIB is 1.6.0**.
 The Android companion is **3.7.2 (version code 9)**. It can try another provider
 address after a failed connection without replaying a sent inference request.
 Its existing protocol and Kilo quota recovery remain compatible.
 
 Bridge/web 3.8.1 added the November 2 OpenCode API-key transport fix, retained in
-4.0.0. Bridge and Windows desktop 4.0.0 use verified automatic GitHub updates.
+4.0.5. Bridge and Windows desktop 4.0.5 use verified automatic GitHub updates.
 Bridge worker replacement waits for idle work and retains its session token;
 desktop app updates stage for restart with a retained fallback. Desktop detects
 Node.js 18+ or downloads a verified LTS runtime per user instead of bundling Node.
@@ -705,6 +706,12 @@ Names never determine whether a model is chat-compatible. An endpoint with no
 `/models` route is a normal case: the Providers editor
 takes a typed id, and saving requires one.
 
+Exact HTTPS Kilo catalogs request JSON with identity content encoding by default,
+avoiding binary Brotli replies from executor wrappers that cannot decode them.
+Explicit custom headers retain precedence. Failed compressed, HTML or malformed
+catalogs have fixed diagnostics and are never cached; discovery does not change
+the saved model or the native call's deadline/ownership rules.
+
 Model metadata is independent of discovery: the reviewed catalog enriches known
 ids but never adds models to a provider. `tools/data/model_metadata.json` records
 the source URLs, hashes and refresh date. Reviewed exact primary-source corrections
@@ -811,6 +818,16 @@ so the settings do not reserve a permanent block above the model list.
 Main and subagent prompts place standing rules before changing environment facts,
 keeping a stable prefix eligible for provider caching without guaranteeing cache
 support. Shared rules favor direct action, relevant skill reads and focused checks.
+Ponytail guidance requires the smallest complete change, affected-caller inspection,
+existing shared components, retained validation/cleanup and the project's manual
+review/build/output-inspection/verification order. The adaptation and MIT notice
+ship locally; no runtime hook or skill download is installed.
+`agent.persona` defaults to `uai` and selects one bounded speaking-style overlay
+from `runtime/personas`. Native and Cowork Agent settings share that catalogue and
+preview descriptions/examples. Main and delegated prompts inherit it before live
+context; custom instructions and reply language remain authoritative. Invalid local
+values fall back to UAI; imports and browser commands reject unsupported IDs.
+Public chat workers retain their independent operator instructions.
 Task lists and delegation are useful options, not mandatory setup for routine work.
 The loop builds tool definitions once per request and passes them to the prompt
 builder; specialized workflow sections follow the offered catalogue. An unscoped
@@ -1359,6 +1376,16 @@ never automatically execute script selections; validated selected visual
 versions can restore outside safe mode.
 
 Script factories receive `uai`, `env`, `app`, `root`, `require` and an SDK scope.
+`context:CreatePanel({id,title,description?})` registers an owned native Mod
+workspace panel. Sections declare Text, Button, Toggle, Input, Select and Slider
+controls with stable IDs, values and domain callbacks. `runtime/ui_mod_panels`
+owns declarations/state; `ui/mod_panel` uses existing UAI primitives and theme.
+Limits are four panels, eight sections/32 controls per panel, 32 select options,
+4,000-byte text and 8,000-byte inputs. Snapshots are detached. Control changes are
+silent unless notify is requested; callbacks reject overlap for that control and
+share runner ownership. Values survive appearance remounts, remain local to the
+loaded mod, and release on Disable/unload. `panel:Show()` selects the native panel
+through the app adapter; creation alone does not navigate.
 Colon methods Give/OnDestroy/Connect/Delay/OnMount/IsAlive/GetRoot supply owned
 resources and cooperative callbacks. OnMount runs immediately and once after
 each completed window build, releasing the prior mount; stale yielded mount
@@ -1737,8 +1764,13 @@ built before old content is released; a failed block falls back to readable text
 Breakpoints: `xs < 520`, `sm < 900`, `md < 1280`, `lg < 1700`, `xl`. Layout modes:
 `sheet` (xs), `panel` (sm, touch-only input, and any portrait orientation), `window` (md+), plus `tv`
 when `GuiService:IsTenFootInterface()`. These modes control placement and bounds;
-phones use the same application components and navigation as desktop. Handheld
-layout metrics use 55% of desktop dimensions, spacing and radii before user
+phones use the same application components and navigation as desktop.
+`runtime/device` identifies handhelds independently of layout: available Android/iOS
+platform identity, or touch input without a native pointer or keyboard, keeps compact
+metrics through rotation, synthetic mouse capabilities and explicit Window mode.
+Touch desktops with a pointer and keyboard keep desktop metrics; console targets
+retain their own policy. Handheld layout metrics use 55% of desktop dimensions,
+spacing and radii before user
 density settings. Handheld text has a 10px baseline minimum before the user's
 text scale; the mobile sidebar uses dedicated 9px navigation roles while keeping
 its control sizes. Standard icons have a 12px minimum to retain their strokes.
@@ -2068,10 +2100,10 @@ checks justified by the change. Review each fix before rebuilding affected
 outputs and rerunning affected checks. Use native static checks, deterministic
 freshness checks and the official Luau compiler where applicable.
 
-The 4.0.0 plan and actual outcomes belong in
-[docs/TESTING_4.0.0.md](docs/TESTING_4.0.0.md). This major release uses the broader
-`tools/test_native.js --verify-only` workflow after focused new-feature checks,
-plus local bridge/browser/desktop verification. The broader command reference
+The 4.0.5 plan and actual outcomes belong in
+[docs/TESTING_4.0.5.md](docs/TESTING_4.0.5.md). Changes to common runtime, device and
+presentation paths use the broader `tools/test_native.js --verify-only` workflow
+after focused regressions, plus local bridge/browser/desktop verification. The broader command reference
 below includes independent product/site workflows; it does not require running
 them for every client change. Offline verification measures behavior and syntax,
 not native Roblox rendering, host input, live model quality or native performance.
@@ -2105,6 +2137,10 @@ Authenticated bridge contact automatically selects Web runtime; disconnect
 restores Game for subsequent requests. Active Cowork inference has no overall
 request time limit in the client or bridge. The retired `bridge.requestTimeout`
 setting is stripped from saved/imported configurations and cannot be edited.
+Discovery health controls admission for future requests; missed probes retain
+the last verified identity for accepted inference. Input-profile changes do not
+invalidate that accepted identity. Explicit pause/opt-out, changed token/instance
+and unload do invalidate it. Free route settlement uses the same retained owner.
 Individual executor polling calls remain bounded to five seconds; lost receipts
 reuse the original job ID. Stop, unload, changed credentials and actual provider
 failures remain terminal. Providers may impose their own upstream limits.
@@ -2179,7 +2215,7 @@ automatic desktop-update preferences under the stable installation identity.
 Ctrl+1 through Ctrl+5 select Workspace, Connections, Updates, Settings and Tunnels
 through the same navigation commands. Current supported capability replies own
 OpenCode/Cline/Kilo status; missing, malformed or disconnected replies clear stale
-readiness and versions. Desktop 4.0.0 embeds the matching reviewed client and
+readiness and versions. Desktop 4.0.5 embeds the matching reviewed client and
 bridge, including all native/browser Obsidian payload modules.
 Integration switches apply at Start and remain disabled while running. Minimize
 retains the taskbar window; closing stops owned processes and exits. No tray icon
