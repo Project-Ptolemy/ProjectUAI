@@ -11,8 +11,9 @@ automatically on dedicated port **28791**. No terminal or token copying is neede
 The bridge needs **Node.js 18 or newer** and has no production npm dependencies.
 
 Join the [Project UAI Discord](https://discord.gg/9xYyyYuKap) for help, provider
-availability updates and new free options. Add Project UAI Free explicitly from
-the Providers library if you want that route. HCNSEC is a separate provider.
+availability updates and new free options. Choose a provider explicitly from
+the Providers library; [migration](../docs/providers/migration.md) removes retired
+community access and preserves personal connections.
 
 ## Obsidian notes
 
@@ -55,8 +56,9 @@ Version 3.2 also added an optional native route through an **already installed
 OpenCode CLI**. Install
 [OpenCode Desktop](https://opencode.ai), restart Cowork, and wait for its OpenCode
 status to become ready. UAI does not download or package the OpenCode binary.
-OpenCode free models require the UAI Relay app from Discord on mobile; install and
-start the app, then connect it in UAI. Project UAI Free also remains available.
+Mobile relayed requests use the UAI Relay app from Discord; install and start
+the app, then connect it in UAI. The [4.1.1 matrix](../docs/OPENCODE_4_1_1_VALIDATION.md)
+records standalone direct API results separately for every current free Chat model.
 The retired OpenCode HTTPS proxy is never used; the proxy supports AgentRouter only.
 
 **OpenCode Go subscriptions use a separate endpoint:**
@@ -150,21 +152,21 @@ update state before any restart it causes. The cache keeps the active version
 and recent entries, and prunes stale predecessors and quarantine folders.
 
 Publish `dist/bridge-release.json` and `dist/uai-bridge-package.json` on the same
-official `v4.0.5` GitHub release. Bridge-only releases may use a matching
-`bridge-v<version>` tag. Release 4.0.5 supplies the client, bridge,
+official `v4.1.1` GitHub release. Bridge-only releases may use a matching
+`bridge-v<version>` tag. Release 4.1.1 supplies the client, bridge,
 web UI and Windows app together; the Android companion retains its separate
 release. Generate the bundles with
 `node tools/build_bridge.js` after reviewing final bridge/web inputs, inspect
 the outputs, then run `node tools/build_bridge.js --check` and focused tests.
 Later releases must bump `bridge/release.js` and use the matching release tag.
 The release builder embeds OpenCode, MCP and support helpers into the original
-permitted root filenames so compatible installed updaters can verify and activate 4.0.5. Checkout,
+permitted root filenames so compatible installed updaters can verify and activate 4.1.1. Checkout,
 executor downloads and desktop payloads retain the separate source modules.
 
 Existing compatible installs receive bridge and web updates while idle.
 Refresh an open browser page to load changed web assets. The desktop's **Copy
 client script** uses its embedded client; update the desktop app to refresh that
-copy. See the [4.0.5 release guide](../docs/RELEASE_4_0_5.md),
+copy. See the [4.1.1 release guide](../docs/RELEASE_4_1_1.md),
 [3.8.0 verification record](../docs/POLISH_2026_10.md),
 [3.6.5 verification](../docs/TESTING_3.6.5.md) and the earlier
 [bridge 3.6.2 record](../docs/TESTING_3.6.2.md).

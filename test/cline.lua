@@ -76,6 +76,9 @@ case("virtual route restrictions reject unsupported requests before transport", 
 		{ url = "https://uai-tunnel.invalid/cline/v1/responses" },
 		{ method = "GET" }, { headers = { Authorization = "Bearer fixture-secret" } },
 		{ headers = { ["X-API-Key"] = "fixture-secret" } },
+		{ headers = { Authentication = "fixture-secret" } }, { headers = { Secret = "fixture-secret" } },
+		{ headers = { Credential = "fixture-secret" } }, { headers = { Org = "fixture-workspace" } },
+		{ headers = { ["X-Org-Id"] = "fixture-workspace" } }, { headers = { ["OpenAI-Organization"] = "fixture-workspace" } },
 	}) do
 		local spec = { url = URL, method = "POST", body = "{}", attempts = 4 }
 		for key, value in pairs(change) do spec[key] = value end

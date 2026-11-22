@@ -1,7 +1,13 @@
 # Project UAI — contract
 
-Release: **Project UAI client, bridge package and Windows desktop 4.0.5 —
-November 15, 2026**. Accepted bridge requests survive transient discovery failures,
+Release: **Project UAI client, bridge package and Windows desktop 4.1.1 —
+November 22, 2026**. Project UAI Free and HCNSEC presets are retired; community
+credentials and automatic free routing are removed. Personal HCNSEC connections
+migrate to custom endpoints with their settings preserved. OpenCode Zen receives
+scoped direct compatibility, dynamic public catalog eligibility and native
+routing fixes. Global and per-provider request-per-minute limits share inference
+capacity across concurrent conversations.
+Accepted bridge requests survive transient discovery failures,
 long conversations avoid repeated context/rendering work, script mods declare native
 workspace panels, and handheld sizing stays compact across input/layout changes.
 Agent settings add selectable speaking personas; shared system instructions include
@@ -14,7 +20,7 @@ address after a failed connection without replaying a sent inference request.
 Its existing protocol and Kilo quota recovery remain compatible.
 
 Bridge/web 3.8.1 added the November 2 OpenCode API-key transport fix, retained in
-4.0.5. Bridge and Windows desktop 4.0.5 use verified automatic GitHub updates.
+4.1.1. Bridge and Windows desktop 4.1.1 use verified automatic GitHub updates.
 Bridge worker replacement waits for idle work and retains its session token;
 desktop app updates stage for restart with a retained fallback. Desktop detects
 Node.js 18+ or downloads a verified LTS runtime per user instead of bundling Node.
@@ -258,6 +264,25 @@ credentials or raw error bodies. Runtime modules do not depend on `net/*`.
   jitter, numeric or GMT-date `Retry-After` honoured with a cancellable 60-second
   maximum wait, capped attempts, then the next provider in the
   fallback chain.
+* `agent.requestsPerMinute` defaults to `0`; each saved provider connection can
+  also set `requestsPerMinute`. Values are integers from 0 to 1,000,000, with 0
+  disabling that cap. `runtime/inference_rate` reserves global and provider
+  capacity atomically in rolling 60-second windows shared by concurrent client
+  conversations. Eligible waiters keep FIFO ordering; a provider-specific wait
+  cannot prevent another provider from using available global capacity.
+  Only dispatch commits an attempt. Key rotation, protocol repairs and transport
+  retries retain the same limits; model discovery and relay/bridge polling do not
+  consume them. Waiting retains cancellation, native ownership and the original
+  explicit caller deadline, and occurs without occupying a native worker.
+  Unused reservations release on failure. Counters, draft identities and permits
+  remain in memory; changing a cap retains the current window's prior attempts.
+  Histories, provider scopes and pending admission are structurally bounded;
+  exhausted capacity returns a terminal error before sending the attempt.
+  One accepted bridge/companion inference job counts once; same-ID receipt
+  recovery and polling are uncounted. Upstream retries owned by the local app,
+  including Kilo tunnel/circuit recovery and CLI internal retries, remain outside
+  the Lua counter. Caps pace this client run rather than an entire account;
+  a fresh runtime resets the histories, while same-build reuse retains them.
 * Native request deadlines, cancellation, malformed streams and response-limit
   errors are terminal. A long unanswered transport failure cannot trigger a
   smaller-request retry, key/provider fallback or a second dispatch after a socket
@@ -304,7 +329,7 @@ credentials or raw error bodies. Runtime modules do not depend on `net/*`.
   key itself. Configuration copies omit credentials by default. The separate
   explicitly labelled private copy retains vault encryption when enabled, or
   contains reversibly encoded credentials after the unprotected-storage choice.
-  Included community access is represented by a reference, never its raw key.
+  Retired community credentials and references are removed during migration.
   Import previews report counts and provider names without displaying keys, and
   imports retain this device's storage choice and vault password, if any.
 * `util.encode` is the only path to `JSONEncode`, and it scrubs on the way through:
@@ -355,9 +380,9 @@ model list. Choosing a card seeds the editor with that preset; nothing is writte
 until Save, and a dismissed editor draft resumes on the next Add instead of
 reopening the gallery. Switching vendors from inside the editor reopens the same
 gallery and keeps everything already typed. Each card carries an access label
-rather than a bare tier: Included for the distributed community key, Free tier or
-No key for free routes, and the free half by name for hybrid services (OpenCode
-Zen's CLI models, OpenRouter's free ids, OpenCode Go's CLI catalog). A hybrid is
+rather than a bare tier: Free tier or No key for free routes, and the free half
+by name for hybrid services (OpenCode
+Zen's free Chat API models, OpenRouter's free ids, OpenCode Go's CLI catalog). A hybrid is
 never labelled Paid, and no label claims a whole service is free when only part
 of it is.
 
@@ -390,25 +415,49 @@ URLs normalize to `https://opencode.ai/zen/v1`; the old Workers.dev OpenCode URL
 recognized only for migration away from it. `FreeTierError` never switches to a
 proxy. Direct desktop requests use the verified desktop User-Agent/client headers,
 timestamp-based session identity and wildcard Accept header, while retaining required
-compatibility tool declarations and the Chat/Responses protocol fallback. Explicit
+compatibility tool declarations and model-specific protocol selection. Explicit
 custom header overrides remain effective. Generated project/request headers are
 omitted because the live Chat probe rejected the previous CLI fingerprint. Mobile
-OpenCode requires the UAI Relay app from Discord; mobile free-tier refusals do not
-retry the alternate lane or a retired proxy. Errors explain the optional installed
-CLI desktop path and the mobile relay requirement.
+relayed requests use the UAI Relay app from Discord; mobile free-tier refusals do
+not retry the alternate lane or a retired proxy. Errors describe direct free Chat
+API access, model/host requirements, and the optional CLI or relay routes.
+
+`provider/opencode_public` supplies OpenCode's published `public` token on standard
+official Zen Chat routes only after fresh official catalog metadata verifies the
+selected model's Chat kind, protocol and zero-price tiers. Its eligibility cache
+is scoped to endpoint, authentication, headers and connection policy; a model ID
+or `-free` suffix alone cannot establish access. Zen discovery reads the API
+catalog independently of an installed CLI. Pending setup can be saved without a
+personal key, but inference verifies the catalog after restart or expiration
+before sending a POST. Unknown, priced, decision-only and incomplete rows retain
+their guards without model substitution.
+
+The module stores no personal credential and initializes no bridge. Personal
+keys take precedence. Paused or pinned pools, omitted/corrupt/stored credentials,
+explicit authentication, model overrides, queries and socket settings cannot
+become anonymous public access. The final body must retain the selected Chat
+model and messages; Responses bodies never receive this default token. Current
+catalog Chat models retain Chat even if old learned metadata selected Responses.
+Other models retain their documented adapter and authentication requirements.
 
 Exact Zen Chat and Responses requests include reusable truthful `<env>` context
 with `Working directory: Roblox runtime` and `Platform: Roblox`. It is added in
 system/instructions context without mutating original conversation history. The
 existing seven compatibility declarations and desktop identity remain effective.
 Go and unrelated routes receive no such context; explicit body overrides retain
-precedence. The desktop bridge's direct HTTPS transport offers the native Bun
+precedence. The reusable direct HTTPS profile offers the native Bun
 cipher-suite list on exact Zen Chat/Responses routes without URL credentials,
 queries, fragments or nonstandard ports. Certificate validation and Node's TLS
 version defaults remain effective. The profile applies before the first dispatch
-and adds no replay or runtime dependency; the installed CLI retains priority.
-The November 2 checks restored the same service-account API key outside the CLI.
-Executor and Android TLS transports are separate and remain unverified.
+and adds no replay or Bun dependency. Standalone API clients can use the profile
+without a bridge server or CLI; the desktop bridge applies it to its direct API
+dispatches. Personal API authentication keeps the request on this HTTP route
+even when the optional CLI is available. Unkeyed/public native routing requires
+an exact qualified URL and a discovered CLI model. The November 22 matrix checks
+every current free Chat ID, rather than inferring coverage from one model; see
+[OpenCode 4.1.1 validation](docs/OPENCODE_4_1_1_VALIDATION.md). Ordinary HTTPS and
+executor/Android TLS stacks can have different eligibility; native device
+transport requires separate verification.
 
 An explicit HTTP 429 `FreeUsageLimitError` is a free-access refusal, distinct from
 temporary rate limiting. Complete JSON error replies with this code or the
@@ -450,57 +499,35 @@ never submits a corrective native prompt or approves desktop execution. Mixed to
 batches retain provider order even when MCP calls arrive out of order.
 Capability and catalog data cannot survive a changed connection.
 
-Project UAI Free is an optional Providers library preset (`projectuai-free`),
-separate from personal-key HCNSEC (`hcnsec`). Selecting its card prepares a draft;
-Save configures it. Startup, reset and empty imports do not insert a provider.
-Existing saved configurations remain intact. Recognized legacy community-only
-records adopt Free's identity; arbitrary personal/custom records are not guessed.
-Switching away from Free removes recognized community credentials, even after a
-draft's endpoint/auth fields change, while preserving other personal key metadata.
+Project UAI Free (`projectuai-free`) and HCNSEC (`hcnsec`) are retired presets in
+4.1.1. No bundled credential, community-key restoration, schedule gate, latency
+probe or automatic free-routing preference remains. Other free routes retain
+their normal provider contracts; free model choices keep their subdued green
+rounded outline in menus, distinct from selection.
 
-Project UAI Free uses an intentionally distributed community key
-and the provider-supported `auto` router, verified through live discovery and tool
-inference. New included-access inference, discovery and background probes are
-admitted daily during **20:00–12:00 UTC+8**, including the opening instant and
-excluding the closing instant, independent of the device's local timezone.
-Accepted replies retain their owner and are not cut off at 12:00. Personal
-HCNSEC credentials and other providers are unaffected. Client checks communicate
-the schedule; the upstream service must enforce actual availability and quotas.
-The key is reversibly encoded to deter literal searches, not encrypted or secret
-from other executor scripts. Exact retired included credentials migrate on the
-official endpoint; personal keys and custom endpoints are not guessed or replaced.
-**Settings → Agent → Automatic free routing** (`agent.autoFreeRouting`)
-is optional and enabled by default. Disabling it cancels background measurements
-and preserves the selected provider model for future requests; accepted requests
-keep their original owner and route until completion. The provider's `auto` can
-still perform server-side routing. A retained `model:route` notice names each
-changed measured-model selection and gives the exact settings path to disable it.
-With this setting enabled, default Chat settings and saved `auto` selection, opening the
-model picker or preparing an agent request starts background latency measurements.
-At most two workers probe up to 32 live-discovered IDs with synthetic tool calls
-and tool-result replay, each with a ten-second deadline. No conversation or real
-tool execution enters a probe. The fastest fresh candidate whose two responses
-both finish below ten seconds is selected before prompt preparation when its
-documented context can hold the estimated request and reply. Images, unknown
-windows, explicit body/query/socket settings and manual/private-key selections
-retain their existing route. A cold or unmatched request uses `auto` immediately.
-Measurements expire after ten minutes and on connection/auth changes. Slow or
-failed user responses remove that candidate for subsequent requests; they never
-race or replay the current prompt. Synthetic latency is not a real-request SLA.
-Per-request selections retain the saved `auto`, preserve scoped adapter lessons,
-and cannot override later provider edits. Free model choices have a subdued green
-rounded outline in the model picker and provider menus; selection stays distinct.
-Empty startup/import/reset configurations remain empty. Public credentials remain
-masked in the UI. A persistent setup notice above the composer states that sending
-is disabled and opens Providers directly. Send and keyboard submission remain
-blocked in Chat and Quick Chat until the configured inference chain contains an
-enabled provider. Sends without an enabled provider retain drafts and do not add
-user/error messages, reserve queued input, or prepare attachments. Setup is rechecked
-after yielding preparation; unconsumed queued input remains held if enabled
-providers are removed or disabled, while already accepted inference retains its
-original owner. A selected Free
-record shows its schedule and variable shared availability. Personal HCNSEC
-setup never offers or automatically installs the community credential.
+`runtime/provider_retirement` recognizes retired distributed keys using one-way
+fingerprints only. Configuration load, replacement, save and import remove
+community-only records and saved community references, strip recognized retired
+keys, and migrate personal HCNSEC entries to custom providers. Surviving keys keep
+their aligned names, pauses, accounting IDs and selection policy; unrelated
+provider configuration is preserved. Removing a pinned community key requires
+an explicit reviewed connection Save before using surviving personal keys.
+Provider IDs, active selection, fallback
+references and model shortcuts remain valid after filtering. Repeated migration
+is idempotent and never adds a replacement provider or sends network requests.
+Encrypted payloads retain their bound provider IDs until authenticated unlock,
+then apply the same retirement policy before credential use. Undecided storage
+and unreadable envelopes keep their existing verified recovery rules.
+See [provider migration](docs/providers/migration.md).
+
+Empty startup/import/reset configurations remain empty. Keys stay masked in the
+UI. A persistent setup notice above the composer states that sending is disabled
+and opens Providers directly. Send and keyboard submission remain blocked in Chat
+and Quick Chat until the configured inference chain contains an enabled provider.
+Sends without an enabled provider retain drafts and do not add user/error messages,
+reserve queued input, or prepare attachments. Setup is rechecked after yielding
+preparation; unconsumed queued input remains held if enabled providers are removed
+or disabled, while already accepted inference retains its original owner.
 No session-only development credential belongs in source or generated artifacts.
 
 Saved providers own exact-ID model favorites and recent selections in
@@ -515,8 +542,7 @@ order, quoted phrases, exclusions, favorites and documented tool support.
 
 Duplicate setup opens an unsaved draft retaining public endpoint/model/protocol
 fields and fresh preset defaults; it omits keys, URL queries and custom maps.
-Community access is added through its own library card. Reset learned
-compatibility clears parameter repairs and token/tool limits while retaining
+Reset learned compatibility clears parameter repairs and token/tool limits while retaining
 health, key cooldowns and accepted request ownership. It never resends work.
 
 Provider key pools select ready credentials round-robin, advancing the shared
@@ -624,7 +650,7 @@ Wrong passwords, malformed envelopes and authentication failures release no keys
 `config.vaultStatus()` reports required, ready, enabled, locked, busy, error and
 protection state (`password`, `unprotected` or `undecided`).
 `config.accessProblem()` returns nil when required access is ready; otherwise it
-returns a bounded setup/unlock/storage-choice explanation. New inference, model discovery, free routing,
+returns a bounded setup/unlock/storage-choice explanation. New inference, model discovery,
 agent/tool dispatch, remote commands and credential transfers respect this gate.
 With a vault enabled, re-execution challenges even an unlocked session: the password
 is derived and verified again while current live edits are retained. Keeping a
@@ -665,11 +691,9 @@ These stripped pools lose their saved per-key metadata and are marked
 `credentialsOmitted`; requests require a reviewed connection Save before reuse.
 Background/model-only saves cannot clear that guard. `keyRotation` is never
 persisted, including remembered mode, because its cooldown map contains raw keys.
-Included credentials use `communityCredential` references in all saved configs
-and exports, with restoration restricted to the official endpoint. Versioned
-`communityKeyState` preserves included-key names, pauses, selection and accounting
-IDs in local saves/private transfers; a changed credential revision resets its IDs.
-Ordinary exports omit that private metadata. Unrestorable references cannot dispatch.
+Retired `communityCredential` references and `communityKeyState` metadata are
+removed after credential decoding or authenticated vault unlock. No current save
+or export restores distributed access or contains a retired community key.
 
 Legacy storage APIs remain available to isolated compatibility modules but cannot
 bypass the bootstrap's required storage choice. Bridge/relay pairing storage
@@ -690,8 +714,7 @@ or its explicit unprotected-storage choice before import or export.
 User-authored memory, notes and instructions still require
 review before sharing. See [API key security](docs/API_KEY_SECURITY.md).
 
-**Models are never guessed.** General presets carry no model list; the managed
-Project UAI Free default uses the live-verified `auto` router. `provider/models`
+**Models are never guessed.** General presets carry no model list. `provider/models`
 resolves a provider's models from exactly two sources — ids the user added by
 hand (which rank first, and persist on the record) and whatever `GET /v1/models`
 reported, or the authenticated desktop backend's catalog for CLI routes (cached
@@ -721,8 +744,8 @@ hashes and dates alongside the five feeds. `tools/sync_pricing.js` generates
 offline generation and `--check` are deterministic. The November 14 snapshot has
 1,855 exact model/provider entries across 15 providers. Prices match exact ids within
 their provider, never a paid id inferred from a free alias. Rates include documented
-cache categories and context tiers. Unknown gateway prices stay unknown. Included
-Project UAI Free access costs zero; personal HCNSEC rates are not assumed. Context
+cache categories and context tiers. Unknown gateway prices stay unknown. Free
+rates require exact provider/model metadata. Context
 and reply limits use the same catalog, while protocol-specific request traits
 remain explicit. User-declared context overrides remain effective.
 Scheduled prices with unsupported conditions stay unknown. Introductory rates
@@ -1844,6 +1867,15 @@ explicit Star us on GitHub action, falling back to a copied or selectable URL
 when the host denies browser access. Both entry and modal reuse the frame-drawn
 brand mark. Viewing it does not mark release notes read.
 
+After completed startup, What's New opens automatically once per client release.
+Numeric release ordering and the running client version select the notice;
+`ui.changelogAutoShownVersion` records an actual display independently of the
+manual revision-read markers. Authentication, hidden windows, active requests,
+text editing and existing overlays defer display. UI-hidden embeddings retain
+the pending notice until their normal app is shown. A manual opening consumes
+the same pending release notice. Same-version executions and revision edits do
+not automatically reopen it; disposal and screen destruction cancel the watcher.
+
 UI LIB retains its existing per-window Light/Dark token palettes and live bindings.
 Its built-in header mode icon, `GetTheme` and `ToggleTheme` use `SetTheme`;
 `ThemeToggle=false` permits a script's existing theme control. Configuration
@@ -2100,8 +2132,8 @@ checks justified by the change. Review each fix before rebuilding affected
 outputs and rerunning affected checks. Use native static checks, deterministic
 freshness checks and the official Luau compiler where applicable.
 
-The 4.0.5 plan and actual outcomes belong in
-[docs/TESTING_4.0.5.md](docs/TESTING_4.0.5.md). Changes to common runtime, device and
+The 4.1.1 plan and actual outcomes belong in
+[docs/TESTING_4.1.1.md](docs/TESTING_4.1.1.md). Changes to common runtime, device and
 presentation paths use the broader `tools/test_native.js --verify-only` workflow
 after focused regressions, plus local bridge/browser/desktop verification. The broader command reference
 below includes independent product/site workflows; it does not require running
@@ -2140,7 +2172,7 @@ setting is stripped from saved/imported configurations and cannot be edited.
 Discovery health controls admission for future requests; missed probes retain
 the last verified identity for accepted inference. Input-profile changes do not
 invalidate that accepted identity. Explicit pause/opt-out, changed token/instance
-and unload do invalidate it. Free route settlement uses the same retained owner.
+and unload do invalidate it. Provider settlement uses the same retained owner.
 Individual executor polling calls remain bounded to five seconds; lost receipts
 reuse the original job ID. Stop, unload, changed credentials and actual provider
 failures remain terminal. Providers may impose their own upstream limits.
@@ -2215,7 +2247,7 @@ automatic desktop-update preferences under the stable installation identity.
 Ctrl+1 through Ctrl+5 select Workspace, Connections, Updates, Settings and Tunnels
 through the same navigation commands. Current supported capability replies own
 OpenCode/Cline/Kilo status; missing, malformed or disconnected replies clear stale
-readiness and versions. Desktop 4.0.5 embeds the matching reviewed client and
+readiness and versions. Desktop 4.1.1 embeds the matching reviewed client and
 bridge, including all native/browser Obsidian payload modules.
 Integration switches apply at Start and remain disabled while running. Minimize
 retains the taskbar window; closing stops owned processes and exits. No tray icon

@@ -1,6 +1,6 @@
 # Project UAI
 
-**4.0.5 — steadier agents, faster conversations** · [Release notes](docs/RELEASE_4_0_5.md)
+**4.1.1 — provider retirement, Zen fixes and request limits** · [Release notes](docs/RELEASE_4_1_1.md)
 
 An open-source AI workspace inside Roblox: chat with your chosen model, inspect
 the game, build scripts, and run tools. Use it on its own or embed it in a host script.
@@ -20,10 +20,17 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Project-Ptolemy/Proje
 2. Open **Providers**, add a service from the library, and select a model.
 3. Choose a tool permission mode under the composer and send your first message.
 
-**No provider is added automatically.** Project UAI Free is an optional Providers
-library preset with shared access during **20:00–12:00 UTC+8**. **HCNSEC is a
-separate provider for your personal API key.** Shared availability and speed vary.
-Existing configured providers are preserved.
+**No provider is added automatically.** Choose a hosted service, an available free
+route, or a local server from Providers. Release 4.1.1 retires Project UAI Free
+and the HCNSEC preset: community connections are removed, while personal HCNSEC
+connections become custom endpoints with their settings preserved.
+See [provider migration](docs/providers/migration.md).
+
+Set **Requests per minute** under **Settings → Behaviour → Model requests** to match your service's
+quota, such as 1, 2 or 10. Each provider can also have its own limit. `0` leaves
+that limit off; queued requests remain cancellable.
+After startup, **What's New** opens once for each new client release; later
+executions of that version keep it closed.
 
 New installations use **Allow everything**; choose **Ask first** to review tool
 calls before they run. Stop cancels further work, but does not undo applied changes.

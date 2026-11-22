@@ -32,7 +32,6 @@ return function(env)
 	local models = env.require("provider/models")
 	local chat = env.require("provider/chat")
 	local traits = env.require("provider/traits")
-	local communityKey = env.require("provider/community_key")
 	local icons = env.require("ui/icons")
 	local urls = env.require("net/url")
 	local connectionActions = env.require("provider/connection_actions")
@@ -99,7 +98,8 @@ return function(env)
 		local raw = tostring(record.apiKey or "")
 		if registry.isCline(record) then return "Sign in to Cline in the desktop app", nil end
 		if record.authStyle == "none" then return "No API key required", nil end
-		if util.trim(raw) == "" and registry.opencodeKeyOptional(record) then return "Provided by connected OpenCode CLI", nil end
+		if util.trim(raw) == "" and env.require("provider/opencode_public").available(record) then return "Official public authentication", nil end
+		if util.trim(raw) == "" and env.require("provider/opencode_public").pending(record) then return "Catalog verification pending", nil end
 		if util.trim(raw) == "" then return "not set", "warn" end
 		local pool = registry.keysOf(record)
 		if #pool > 0 and #keyData.requestKeys(record) == 0 then return "No active API key", "warn" end
@@ -120,7 +120,6 @@ return function(env)
 
 	local function modelSource(record)
 		if registry.isCline(record) then return "Cline's free catalog through the desktop bridge" end
-		if registry.isOpencodeZen(record) and env.require("net/bridge").opencodeStatus().available then return "OpenCode CLI through the desktop bridge" end
 		return urls.display(registry.endpoint(record, "/models"))
 	end
 
@@ -752,7 +751,7 @@ return function(env)
 		})
 		if editing.credentialsOmitted == true then
 			R.paragraph(form,
-				"Provider credentials were omitted from saved settings. Restore your API key and any required custom headers, query parameters, body fields or URL credentials. Saving this connection confirms you reviewed those fields and enables requests.",
+				"This connection needs review before sending requests. Review the API keys and selected key, and restore any missing custom headers, query parameters, body fields or URL credentials. Saving the full connection confirms your review and enables requests.",
 				{ name = "RestoreProviderCredentials", color = theme.color.warn, role = "small", layoutOrder = 0 })
 		end
 
@@ -820,7 +819,7 @@ return function(env)
 		local presetButton, urlField, nameField
 		local protocolControl, authControl, keyHintLabel
 		local docsRow, docsNoteRow, presetNoteRow
-		local proxyNote, communityRow, keyLabel, setKeyButton
+		local proxyNote, keyLabel, setKeyButton
 		local urlColumn, keyUsageLabel
 		local function refreshConnectionInfo()
 			local custom = editing.preset == "custom"
@@ -836,12 +835,10 @@ return function(env)
 					or target and ("If this endpoint rejects UAI as an unauthorized client, UAI retries through " .. env.require("net/url").display(target)
 					.. " and saves that Base URL for this provider. Requests and API keys pass through puai-proxy.davidzk.tech. Shared limit: 90,000 requests per day. The URL stays editable.") or ""
 			end
-			local included = communityKey.isApplied(editing)
-			if communityRow then communityRow.Visible = communityKey.eligible(editing) and not included end
 			local preset = catalog.get(editing.preset)
-			local requirement = preset and not preset.free and preset.noteHighlight or ""
+			local requirement = preset and preset.noteHighlight or ""
 			if requirement ~= "" and tostring(preset.description):find(requirement, 1, true) then requirement = "" end
-			accessNotice.Text = included and "Included access is ready. Shared capacity and response times vary." or requirement
+			accessNotice.Text = requirement
 			accessNotice.Visible = accessNotice.Text ~= ""
 		end
 		-- Any connection edit invalidates fetched choices and in-flight discovery,
@@ -984,8 +981,7 @@ return function(env)
 					})
 				end
 				docsNoteRow = R.paragraph(guideBody,
-					presetRecord.free and "Save this library choice to enable community access. Discord has availability notices and help."
-						or presetRecord.authStyle == "none"
+					presetRecord.authStyle == "none"
 						and "Server setup and API documentation are at the address above."
 						or "Keys for this provider are issued at the address above.",
 					{ layoutOrder = 12 })
@@ -1166,29 +1162,12 @@ return function(env)
 						onApply = function(updated)
 							if modal.closed or registry.isCline(editing) then return false end
 							if applyKeys(editing, updated) and forgetFetchedModels then forgetFetchedModels() end
-							if editing.preset == "projectuai-free" and not communityKey.isApplied(editing)
-								and util.trim(editing.apiKey) ~= "" then
-								if not applyPreset("hcnsec") then return false end
-								overlay.toast("Personal keys use the separate HCNSEC provider. This draft now uses HCNSEC.", "info")
-							end
 							showProblems()
 							return true
 						end,
 					})
 				end,
 			})
-			communityRow = P.column(column, { name = "CommunityKey", size = UDim2.new(1, 0, 0, 0), auto = "Y", gap = theme.space.xs, layoutOrder = 6 })
-			R.paragraph(communityRow, "Restore this provider's community access. Personal keys belong to the separate HCNSEC provider.", { layoutOrder = 1 })
-			P.button(communityRow, { name = "UseCommunityKey", text = "Use included free access", variant = "secondary", fill = true, layoutOrder = 2,
-				onClick = function()
-					local ok, why = communityKey.apply(editing)
-					if not ok then overlay.toast(why, "warn"); return end
-					if forgetFetchedModels then forgetFetchedModels() end
-					local shown = maskedKey(editing)
-					keyLabel.Text, keyLabel.TextColor3 = shown, theme.color.textSecondary
-					showProblems()
-					overlay.toast("Community key added to this draft. Choose a model and save to use it.", "good")
-				end })
 			return keyLabel
 		end)
 
@@ -1406,6 +1385,23 @@ return function(env)
 			return modelButton
 		end)
 
+		row("Requests per minute", nil, function(column)
+			local rateField = P.field(column, {
+				name = "ProviderRequestsPerMinute",
+				text = tostring(editing.requestsPerMinute or 0),
+				placeholder = "0",
+				onChange = function(text)
+					local clean = util.trim(text)
+					editing.requestsPerMinute = clean == "" and 0 or tonumber(clean) or clean
+					invalidateTest()
+				end,
+				onBlur = showProblems,
+			})
+			R.paragraph(column, "0 adds no provider cap. This provider's keys share one cap, alongside the global setting. Inference attempts, including retries, count. Stop cancels conversations while they wait; close setup to cancel a waiting test.",
+				{ name = "ProviderRequestRateHelp" })
+			return rateField
+		end)
+
 		forgetFetchedModels = function()
 			modelRevision = modelRevision + 1
 			invalidateTest()
@@ -1450,6 +1446,10 @@ return function(env)
 					modal.scroll.instance.CanvasPosition = Vector2.new(0, 0)
 					return
 				end
+				if not showProblems() then
+					modal.scroll.instance.CanvasPosition = Vector2.new(0, 0)
+					return
+				end
 				handle.setEnabled(false)
 				handle.setText("Testing")
 				local revision = modelRevision
@@ -1466,6 +1466,11 @@ return function(env)
 						maxTokens = 12,
 						attempts = 1,
 						aborted = aborted,
+						onRetry = function(event)
+							if not aborted() and event.rateLimit == true then
+								handle.setText(event.phase == "waiting" and "Waiting for limit" or "Testing")
+							end
+						end,
 					})
 					if aborted() then return end
 					testRun = nil
@@ -1579,7 +1584,7 @@ return function(env)
 				end
 				if connectionChanged then models.invalidate(candidate.id) end
 				if candidate.credentialsOmitted == true then
-					overlay.toast("Keys updated. Open Edit connection to review custom authentication, then save to enable requests.", "info", 5)
+					overlay.toast("Keys updated. Open Edit connection to review the selected key and custom authentication, then save to enable requests.", "info", 5)
 				end
 				if onSaved then onSaved(candidate.id) end
 				return true
@@ -1593,7 +1598,7 @@ return function(env)
 	-- One card rather than a stack of five. The gallery is where the full list lives
 	-- now, so this surface only has to answer "what do I do first": browse, go custom,
 	-- or take one of the first recommendations. Each quick pick opens the editor already
-	-- seeded, and included free access still needs one press.
+	-- seeded for the chosen service.
 	function M.startCard(parent, onSetup, nextOrder)
 		local card = P.card(parent, {
 			name = "StartCard",
@@ -1982,7 +1987,6 @@ return function(env)
 					onClick = function() env.require("ui/credentialvault").open("unlock") end })
 				return
 			end
-			-- Included free access must not hide the way to anything else.
 			local list = registry.list()
 			if not record then
 				if #list == 0 then
@@ -1997,11 +2001,6 @@ return function(env)
 					})
 				end
 				return
-			end
-			-- A panel holding nothing but the included free route is still a first run:
-			-- keep the way to a paid or local provider visible above its detail.
-			if #list == 1 and communityKey.isApplied(list[1]) then
-				M.startCard(detail.instance, function(id) panel.select(id) end, order)
 			end
 
 			local active = registry.active()
@@ -2075,7 +2074,7 @@ return function(env)
 			-- nothing has ever rendered: Azure's deployment-path rule, Ollama's loopback
 			-- warning, DeepSeek's reasoning field.
 			local preset = catalog.get(record.preset)
-			local note = (preset and (preset.free or registry.isOpencode(record)) and preset.note) or record.note
+			local note = (preset and registry.isOpencode(record) and preset.note) or record.note
 			if util.trim(note or "") ~= "" then
 				R.paragraph(status, note, { name = "ProviderIntroduction", layoutOrder = 3 })
 			end
@@ -2108,14 +2107,12 @@ return function(env)
 				variant = "secondary",
 				onClick = function() M.editor(record, function() panel.select(record.id) end) end,
 			}
-			if record.preset ~= "projectuai-free" then
-				actions[#actions + 1] = { name = "DuplicateConnection", text = "Duplicate setup", variant = "ghost", onClick = function()
-					local draft, why = connectionActions.duplicate(record)
-					if not draft then overlay.toast(tostring(why), "warn", 3); return end
-					M.editor(draft, function(id) panel.select(id) end)
-					overlay.toast("Setup copied without keys or custom credential fields. Review and save the new connection.", "info", 4)
-				end }
-			end
+			actions[#actions + 1] = { name = "DuplicateConnection", text = "Duplicate setup", variant = "ghost", onClick = function()
+				local draft, why = connectionActions.duplicate(record)
+				if not draft then overlay.toast(tostring(why), "warn", 3); return end
+				M.editor(draft, function(id) panel.select(id) end)
+				overlay.toast("Setup copied without keys or custom credential fields. Review and save the new connection.", "info", 4)
+			end }
 			if connectionActions.hasLearned(record) then
 				actions[#actions + 1] = { name = "ResetCompatibility", text = "Reset learned compatibility", variant = "ghost", onClick = function()
 					local ok, why = connectionActions.resetLearned(record)
@@ -2145,9 +2142,7 @@ return function(env)
 			local modelSection = R.section(detail.instance, {
 				name = "Model",
 				title = "Model",
-				description = communityKey.isApplied(record)
-					and "Auto measures available models in the background and prefers a verified tool-capable route below ten seconds. Speed varies with your prompt and shared capacity. Choose a specific model to keep it fixed."
-					or "Models come from the endpoint or your manual entries. Fetch the current list if none are known yet.",
+				description = "Models come from the endpoint or your manual entries. Fetch the current list if none are known yet.",
 				layoutOrder = modelOrder,
 			})
 			local known = models.list(record)

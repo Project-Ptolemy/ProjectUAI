@@ -18,20 +18,29 @@ when the server accepts anonymous requests. Extra headers override generated
 headers, so a stale Authorization override can defeat a newly entered key.
 Check query parameters and custom body fields when switching between servers.
 
+Zen public authentication applies only to reviewed standard official HTTPS Chat
+routes with current free-Chat catalog evidence. Editing the route, authentication,
+query or socket settings does not turn a custom API into a public connection.
+Use the endpoint's documented credentials and protocol.
+
 A gateway socket must implement UAI's envelope protocol. A normal HTTP server,
 generic WebSocket or OpenAI Realtime socket is not such a gateway. Leave the
 field empty unless the gateway's operator documents that protocol.
 
+Use **Requests per minute** to add a provider cap. `0` adds no cap; `10` limits
+this provider's whole key pool to ten inference attempts per rolling minute.
+Retries count, and the shared global cap still applies. Stop cancels a conversation
+while it waits for capacity. See [request caps](../CONFIGURATION.md#limit-requests-per-minute).
+
 Save after fetching models or entering a documented ID. Browsing presets and
 editing a connection remain local until Save. Switching presets resets the
 fields that belong to the preset and clears a different preset's socket route;
-custom names and ordinary personal key pools remain in the draft. Community
-keys are removed when switching away from Project UAI Free.
+custom names and ordinary personal key pools remain in the draft. Release 4.1.1
+removes retired community access through [provider migration](migration.md).
 
 **Duplicate setup** opens another unsaved connection with the same endpoint,
 model and protocol. It clears keys, URL query fields and custom header/body/query
-maps, so review authentication and overrides before saving. Community access is
-added through its library card instead of duplicated.
+maps, so review authentication and overrides before saving.
 
 **Reset learned compatibility** clears locally learned parameter repairs and
 token/tool limits. Future requests may relearn them. This keeps key cooldowns,

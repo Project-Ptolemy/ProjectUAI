@@ -29,7 +29,9 @@ suite.case("provider statuses, transport and streamed failures include one invit
 		suite.check("free usage status and detail survive", text:find("429", 1, true) and text:find("Access denied", 1, true))
 		suite.check("direct refusal preserves the working CLI option", text:find("installed CLI can still have access", 1, true)
 			and text:find("installed OpenCode tunnel", 1, true))
-		suite.check("direct refusal explains the bridge API-key fix", text:find("Desktop Bridge for API-key access", 1, true))
+		suite.check("direct refusal explains model and host requirements", text:find("supported free Chat model", 1, true)
+			and text:find("Direct free Chat API access depends on the host transport", 1, true)
+			and text:find("compatible API-key transport", 1, true))
 		suite.check("key replacement makes no free-access promise", text:find("Changing keys may not restore it", 1, true))
 		suite.check("free usage guidance is idempotent", support.error(text) == text)
 	end

@@ -6,9 +6,9 @@ OpenCode now works on mobile through the UAI Relay app from Discord: install and
 start the app, then connect it in UAI. A user confirmed OpenCode inference on a
 Delta Android phone through the relay after one manual retry; the initial request
 returned `Relay rejected the request (400)` and succeeded on retry. Its retired
-proxy still cannot recover FreeTierError. **Project UAI Free** remains the ready
-default for users without a provider, or use another compatible provider; shared
-free capacity and speed vary. Desktop retains the direct OpenCode workaround and
+proxy still cannot recover FreeTierError. Release 4.1.1 removes the old community
+provider; choose another compatible service from Providers. See
+[provider migration](providers/migration.md). Desktop retains the direct OpenCode workaround and
 adds an optional installed CLI bridge path. Phone tool execution, tool-result
 replay and background survival remain unverified.
 For error help and provider updates, join https://discord.gg/9xYyyYuKap.

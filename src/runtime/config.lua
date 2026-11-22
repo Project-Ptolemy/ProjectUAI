@@ -11,6 +11,8 @@ return function(env)
 	local signal = env.require("runtime/signal")
 	local log = env.require("runtime/log")
 	local credentials = env.require("runtime/credentials")
+	local retirement = env.require("runtime/provider_retirement")
+	local ratePolicy = env.require("runtime/inference_rate_policy")
 	local vault = env.require("runtime/credential_vault")
 	local dispose = env.require("runtime/dispose")
 
@@ -68,6 +70,9 @@ return function(env)
 			lastSeenVersion = "0.0.0",
 			-- Note revisions can change without changing the client version.
 			lastSeenChangelog = "",
+			-- A release already presented automatically (or opened manually before
+			-- its pending prompt). Note revisions only change the menu's marker.
+			changelogAutoShownVersion = "0.0.0",
 			communityInvite = { lastShown = 0, disabled = false },
 			-- The intro tour's first-run gate. Set when the tour is shown, so a
 			-- fresh install sees it once; the profile menu's Tutorial entry opens
@@ -93,6 +98,8 @@ return function(env)
 			-- Use the transport's maximum wait without changing the saved shorter
 			-- timeout. This never disables native deadlines or cooperative Stop.
 			requestUnlimited = true,
+			-- Rolling inference dispatch cap shared by all conversations and agents.
+			requestsPerMinute = 0,
 			-- Large contexts increase upload and prefill time under executor HTTP
 			-- deadlines; lower this budget when even short replies time out.
 			contextTokens = 1000000,
@@ -103,8 +110,6 @@ return function(env)
 			keepTurns = 14,
 			compaction = true,
 			stream = true,
-			-- Optional measured routing for included Free access with model auto.
-			autoFreeRouting = true,
 			temperature = 0.4,
 			-- Reasoning depth: sent as `reasoning_effort` on chat completions and as
 			-- `output_config.effort` on the Messages API. Start with low latency;
@@ -274,6 +279,7 @@ return function(env)
 			and M.data.security.credentialProtection == "unprotected"
 	end
 	local function retirePreferences(data)
+		retirement.apply(data)
 		if type(data.ui) == "table" then data.ui.reduceMotion = nil end
 		if type(data.bridge) == "table" then
 			data.bridge.requestTimeout, data.bridge.enabled, data.bridge.port, data.bridge.token = nil, nil, nil, nil
@@ -383,7 +389,16 @@ return function(env)
 		if type(stored) == "table" then
 			M.data = util.merge(DEFAULTS, credentials.restore(stored))
 			if keyHandoff and vault.acceptHandoff(M.data.credentialVault, keyHandoff) then
-				local unlocked = credentials.openVault(M.data, vault.key(M.data.credentialVault))
+				local key = vault.key(M.data.credentialVault)
+				local unlocked = credentials.openVault(M.data, key)
+				if unlocked and retirement.apply(unlocked) > 0 then
+					local projected = credentials.sealVault(unlocked, unlocked.credentialVault, key)
+					if projected then
+						unlocked.credentialVault = projected.credentialVault
+						vault.activate(key, unlocked.credentialVault)
+						M.save()
+					else unlocked = nil end
+				end
 				if unlocked then M.data = unlocked else vault.clear() end
 			end
 			-- Remembering remains the default. Legacy plaintext and current encoded
@@ -459,6 +474,8 @@ return function(env)
 			return nil, "Use a setting path with nonempty names separated by single dots."
 		end
 		if replacing or loading then return nil, "Wait for the configuration operation before changing settings." end
+		local rateProblem = ratePolicy.settingProblem(path, value)
+		if rateProblem then return nil, rateProblem end
 		local protected = path == "providers" or tostring(path):match("^providers%.")
 			or path == "identity" or tostring(path):match("^identity%.")
 			or path == "security" or tostring(path):match("^security%.")
@@ -477,6 +494,13 @@ return function(env)
 		if path == "identity.extraHeaders" and type(value) == "table" then
 			M.data.identity.storedCredentials, M.data.identity.credentialStorageError = nil, nil
 			M.data.identity.credentialsOmitted = nil
+		end
+		if path == "agent.autoFreeRouting" or path:sub(1, 22) == "agent.autoFreeRouting." then
+			return nil, "The bundled community provider has been removed"
+		end
+		if path == "agent" and type(value) == "table" then
+			value = util.deepCopy(value)
+			value.autoFreeRouting = nil
 		end
 		-- Client motion is always enabled. Retired preferences cannot be restored
 		-- by an old host integration or by replacing the appearance section.
@@ -501,6 +525,7 @@ return function(env)
 		end
 		opts = opts or {}
 		util.set(M.data, path, value)
+		retirement.apply(M.data)
 		if not opts.quiet then M.changed:fire(path, value) end
 		if not opts.transient then M.save() end
 		return value
@@ -560,6 +585,7 @@ return function(env)
 	local function installVault(password, options)
 		if not fsx.enabled then return false, "This executor cannot save credentials because filesystem access is unavailable." end
 		return transact(options, function(guarded)
+			retirePreferences(M.data)
 			local envelope, key, why = vault.create(password, guarded)
 			password = nil
 			if not envelope then return false, why end
@@ -607,10 +633,22 @@ return function(env)
 			if guarded.cancelled() then return false, "Cancelled" end
 			local opened, err = credentials.openVault(M.data, key)
 			if not opened then return false, err end
-			vault.activate(key, M.data.credentialVault)
+			local source = status.locked and opened or util.deepCopy(M.data)
+			local migrated = retirement.apply(source)
+			if migrated > 0 then
+				local projected, sealError = credentials.sealVault(source, source.credentialVault, key)
+				if not projected then return false, sealError end
+				source.credentialVault = projected.credentialVault
+			end
+			vault.activate(key, source.credentialVault)
 			-- Warm reauthentication verifies the password without rolling back live
 			-- key edits to the last saved payload. Cold unlock restores that payload.
-			if status.locked then credentials.applyVault(M.data, opened) end
+			if status.locked then credentials.applyVault(M.data, source) end
+			if migrated > 0 then
+				retirement.apply(M.data)
+				M.data.credentialVault = source.credentialVault
+				M.save()
+			end
 			if guarded.accessEpoch == accessEpoch then challengePending = false end
 			return true
 		end)
@@ -755,8 +793,10 @@ return function(env)
 	-- live table, and subscribers see the complete new configuration in one event.
 	function M.replace(snapshot)
 		if type(snapshot) ~= "table" then return false, "configuration must be a table" end
+		local rateProblem = ratePolicy.configProblem(snapshot)
+		if rateProblem then return false, rateProblem end
 		if operation or writing or loading or M.accessProblem() then return false, "Unlock this device's credential vault and finish its current save before importing settings." end
-		local nextData = util.merge(DEFAULTS, credentials.withoutVault(snapshot))
+		local nextData = util.merge(DEFAULTS, credentials.restore(credentials.withoutVault(snapshot)))
 		nextData.security.rememberCredentials = M.get("security.rememberCredentials", true)
 		nextData.security.credentialProtection = M.get("security.credentialProtection", "password")
 		if M.data.credentialVault ~= nil then

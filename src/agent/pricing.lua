@@ -2,7 +2,6 @@
 -- Runtime policy is maintained here; tools/sync_pricing.js generates model_data.
 return function(env)
 	local info = env.require("provider/model_info")
-	local community = env.require("provider/community_key")
 	local urls = env.require("net/url")
 	local clock = env.require("runtime/clock")
 	local M = { updated = info.updated }
@@ -21,7 +20,7 @@ return function(env)
 	end
 
 	function M.ratesFor(model, record, promptTokens)
-		if record and (community.isApplied(record) or localEndpoint(record)) then return ZERO end
+		if record and localEndpoint(record) then return ZERO end
 		local row = info.lookup(model, record)
 		local base = row and row.price
 		if not base then return nil end

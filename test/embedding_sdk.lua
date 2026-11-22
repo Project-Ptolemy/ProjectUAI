@@ -46,7 +46,6 @@ end
 check("untracked and foreign sessions are rejected", sdk.request(sessions.create(), "hello") == nil and sdk.request({ id = session.id }, "hello") == nil)
 -- This process-lifetime cache is loaded lazily by the first inference. Measure
 -- request-owned subscriptions after initializing it, so it is not a false leak.
-uai.env.require("provider/free_route")
 local initialListeners, initialDisposals = session.events:count(), uai.env.require("runtime/dispose").count()
 local completions, firstEvent = 0, nil
 local request = assert(sdk.request(session, "hello", {

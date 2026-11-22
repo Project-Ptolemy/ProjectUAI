@@ -60,7 +60,7 @@ return function(env)
 			role = "caption", color = theme.color.textTertiary, wrap = true, auto = "Y", layoutOrder = 2 })
 		if record.credentialsOmitted == true then
 			P.text(storage, { name = "KeyRestorationRequired",
-				text = "Saved credentials were omitted. After applying keys, open Edit connection to review custom authentication and save the full connection before sending requests.",
+				text = "This connection needs review. Check the keys and selected key, then open Edit connection to restore any missing custom authentication and save the full connection before sending requests.",
 				role = "small", color = theme.color.warn, wrap = true, auto = "Y", layoutOrder = 3 })
 		end
 		local function refreshStorage()

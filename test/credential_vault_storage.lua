@@ -282,22 +282,6 @@ case("nested resets cannot discard a locked credential vault", function()
 	f.finish()
 end)
 
-case("fresh included access keeps its reference and pool settings through same-session locking", function()
-	local f = setup(); local registry = f.env.require("provider/registry")
-	local community = f.env.require("provider/community_key")
-	local record = registry.blank("projectuai-free")
-	record.keyNames, record.keyPaused, record.keyMode, record.selectedKey = { "Included fixture" }, { true }, "single", 1
-	record.keyIds = { "33333333-3333-4333-8333-333333333333" }
-	assert(registry.save(record))
-	check("included fixture starts applied without a persisted reference", community.isApplied(record))
-	f.enable(); assert(f.config.lockVault()); assert(f.call(f.config.unlockVault, PASSWORD))
-	check("included access restores without a cold-load migration", community.isApplied(record) and record.communityCredential == true)
-	check("included key metadata and accounting identity remain exact", record.keyNames[1] == "Included fixture" and record.keyPaused[1]
-		and record.keyMode == "single" and record.selectedKey == 1 and record.keyIds[1] == "33333333-3333-4333-8333-333333333333")
-	check("private provider beside included access remains intact", f.record().apiKey == f.expected.apiKey)
-	f.finish()
-end)
-
 case("credential filesystem errors cannot echo raw host details into diagnostics", function()
 	local f = setup(); local caps = f.env.require("runtime/caps"); local write = caps.fn.writefile
 	local log = f.env.require("runtime/log"); log.mirror = true

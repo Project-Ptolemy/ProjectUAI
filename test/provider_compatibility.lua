@@ -1,6 +1,7 @@
 -- Offline protocol contracts. Every response is synthetic; no model or key is used.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("Provider compatibility")
 local case, check = suite.case, suite.check
 local function has(text, part) return tostring(text):find(part, 1, true) ~= nil end
@@ -9,7 +10,7 @@ local function recordFor(f, preset)
 	record.id, record.label, record.model = "fixture-" .. (preset or "custom"), "Fixture provider", "fixture/model:instruct"
 	record.models = { record.model }
 	if record.baseUrl == "" then record.baseUrl = "https://fixture.test/proxy/v1" end
-	if preset ~= "projectuai-free" then record.apiKey = record.authStyle == "none" and "" or "fixture-key" end
+	record.apiKey = record.authStyle == "none" and "" or "fixture-key"
 	return record
 end
 local function jsonReply(f, text)
@@ -25,8 +26,6 @@ local TOOLS = { { type = "function", ["function"] = { name = "fixture_tool", des
 -- additions must add a row here; the suite cannot quietly skip a new preset.
 local MATRIX = {
 	{ "agentrouter", "https://agentrouter.org/v1", "anthropic", "x-api-key" },
-	{ "hcnsec", "https://api.hcnsec.cn/v1", "openai", "bearer" },
-	{ "projectuai-free", "https://api.hcnsec.cn/v1", "openai", "bearer" },
 	{ "kilo", "https://api.kilo.ai/api/gateway", "openai", "none" },
 	{ "vercel", "https://ai-gateway.vercel.sh/v1", "openai", "bearer" },
 	{ "perplexity", "https://api.perplexity.ai/orchestrator/v1", "openai", "bearer" },
@@ -118,9 +117,6 @@ end)
 for _, row in ipairs(MATRIX) do
 	case(row[1] .. " discovers, calls tools and replays results over JSON/SSE", function()
 		local f = F.new(); local record = recordFor(f, row[1]); local native = row[3] == "anthropic"
-		if row[1] == "projectuai-free" then
-			f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end
-		end
 		local gemini = row[3] == "gemini"
 		if gemini then record.model = "fixture-model" end
 		local posts, seenBodies = 0, {}
@@ -418,12 +414,13 @@ case("small local contexts and explicit output bounds are recognized", function(
 	f.healthy(); f.close()
 end)
 
--- HCNSEC words the refusal in its host language ("field MaxTokens invalid"), and
+-- Some gateways word refusals in their host language ("field MaxTokens invalid"), and
 -- the dispatch compares plain lowercase text: without camel humps put back the
 -- field reads as "maxtokens", no repair fires, and every later turn pays for the
 -- same refusal because the ceiling is never lowered or remembered.
 case("camelCase field names in a refusal are repaired and remembered", function()
-	local f = F.new(); local adapter = f.env.require("provider/openai"); local record = recordFor(f, "hcnsec")
+	local f = F.new(); local adapter = f.env.require("provider/openai"); local record = recordFor(f, "custom")
+	record.baseUrl = "https://gateway.fixture/v1"
 	local text = "the provider rejected the request (400): field MaxTokens invalid, should be in [1, 65536]"
 	local body = { max_tokens = 128000 }
 	local note, key = adapter.repairForTest(body, text)
@@ -466,6 +463,7 @@ end)
 -- surface Responses function calls in the shared tool-call shape.
 case("a model that only speaks Responses switches lanes and assembles once", function()
 	local f = F.new(); local record = recordFor(f, "zen")
+	Z.responses(f, record, true)
 	local chatBodies, responsesBodies = {}, {}
 	local stream = table.concat({
 		"event: response.created",
@@ -508,11 +506,10 @@ case("a model that only speaks Responses switches lanes and assembles once", fun
 	f.healthy(); f.close()
 end)
 
--- On the direct route the free-tier gate answers 403 before protocol validation
--- runs, so a muse-spark record would never reach the reactive switch. Known
--- Responses-only models skip chat from the first turn.
+-- Explicit API facts select a Responses-only model without name guessing.
 case("verified Responses-only models skip chat proactively", function()
-	local f = F.new(); local record = recordFor(f, "zen"); record.model = "muse-spark-1.3-contributor-free"
+	local f = F.new(); local record = recordFor(f, "zen"); record.model = "fixture-new-response-model"
+	Z.responses(f, record)
 	local chatBodies, responsesBodies = {}, {}
 	f.h.http.handler = function(entry)
 		if entry.url:find("/responses", 1, true) then
@@ -535,6 +532,7 @@ end)
 -- the reactive switch would never see those models.
 case("a free-tier refusal also tries the Responses lane once", function()
 	local f = F.new(); local record = recordFor(f, "zen")
+	Z.responses(f, record, true)
 	local chatBodies, responsesBodies = {}, {}
 	f.h.http.handler = function(entry)
 		if entry.url:find("/responses", 1, true) then
@@ -753,7 +751,8 @@ case("OpenCode saved identity overrides remain explicit on both protocol lanes",
 	check("explicit client is retained", defaults["x-opencode-client"] == "custom-client")
 	record.opencode.version = "opencode/custom/verified-client"
 	check("explicit complete user agent is unchanged", registry.opencodeHeaders(record)["User-Agent"] == "opencode/custom/verified-client")
-	record.model = "muse-spark-fixture"
+	record.model = "fixture-response-model"
+	Z.responses(f, record)
 	local intercepted
 	f.h.http.handler = function(spec)
 		intercepted = spec
@@ -770,9 +769,10 @@ end)
 case("Responses connection tests retain OpenCode identity on Game and Web routes", function()
 	for _, route in ipairs({ "game", "web", "image" }) do
 		local f = F.new(); local record = recordFor(f, "zen")
-		record.model = "muse-spark-fixture"
+		record.model = "fixture-response-model"
 		record.baseUrl = record.baseUrl .. "?tenant=one"
 		record.query = { mode = "a b" }
+		record.repairs = { "responses_protocol" }
 		local captured, relayed
 		f.loaded["net/transport"] = { streamForced = function() return route == "web" end,
 			prepare = function() end, unlimited = function() return route ~= "game" end,
@@ -811,6 +811,7 @@ end)
 
 case("Responses lane handoff preserves the selected key and original deadline", function()
 	local f = F.new(); local record = recordFor(f, "zen"); record.apiKey = "first-key\nsecond-key"
+	Z.responses(f, record, true)
 	local specs, keys = {}, {}
 	local http = f.env.require("net/http"); local send = http.send
 	http.send = function(spec) specs[#specs + 1] = spec; return send(spec) end
@@ -834,8 +835,9 @@ end)
 case("Cowork provider calls and explicit-refusal recovery outlive native request limits", function()
 	for _, lane in ipairs({ "chat", "responses", "messages", "handoff" }) do
 		local f = F.new(); local record = recordFor(f, lane == "messages" and "anthropic-messages" or "zen")
-		if lane == "responses" then record.model = "muse-spark-fixture" end
+		if lane == "responses" then record.model = "fixture-response-model" end
 		record.apiKey = "first-key\nsecond-key"
+		if lane == "responses" then Z.responses(f, record) end
 		local calls, deadlines = 0, {}
 		f.loaded["net/transport"] = {
 			prepare = function() end, unlimited = function() return true end,
@@ -858,9 +860,9 @@ case("Cowork provider calls and explicit-refusal recovery outlive native request
 			return { status = 200, body = f.h.json.encode(body), headers = {}, via = "web", inferenceId = "unlimited-response" }
 		end }
 		local result, why = f.run(function() return f.env.require("provider/chat").complete(record, {
-			messages = { { role = "user", content = "hi" } }, timeout = 1,
+			messages = { { role = "user", content = "hi" } },
 		}) end, 303)
-		check(lane .. " outlives old one-second and 300-second limits: " .. tostring(why), result and result.content == "ready")
+		check(lane .. " default request outlives native limits: " .. tostring(why), result and result.content == "ready")
 		check(lane .. " uses one dispatch per explicit refusal", calls == 2 and f.h.http.requestCount == 0)
 		check(lane .. " recovery retains unlimited bridge deadline", deadlines[1] == math.huge and deadlines[2] == math.huge)
 		f.healthy(); f.close()
@@ -889,7 +891,8 @@ end)
 
 case("Responses rotates quota keys without recovering through the retired proxy", function()
 	local f = F.new(); local record = recordFor(f, "zen")
-	record.model, record.apiKey = "muse-spark-fixture", "first-key\nsecond-key"
+	record.model, record.apiKey = "fixture-response-model", "first-key\nsecond-key"
+	Z.responses(f, record)
 	local captured, deadlines = {}, {}
 	local http = f.env.require("net/http"); local send = http.send
 	http.send = function(spec) deadlines[#deadlines + 1] = spec.deadlineMs; return send(spec) end

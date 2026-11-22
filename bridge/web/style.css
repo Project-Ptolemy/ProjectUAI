@@ -1301,7 +1301,6 @@ body[data-op=awaiting-turn] #send { animation: pulse 1500ms ease-in-out infinite
 
 .free-label { flex-shrink: 0; font-size: 10px; line-height: 1.5; font-weight: 650; color: var(--free); }
 
-.free-route { margin: 12px 0 0; font-size: 11px; color: var(--textSecondary); }
 
 #modelButton.is-free,
 .model-picker .model-list button.is-free,

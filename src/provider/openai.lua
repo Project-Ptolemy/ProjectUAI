@@ -115,7 +115,7 @@ return function(env)
 		return out
 	end
 
-	-- Standard OpenCode tool definitions required by OpenCode Zen free tier
+	-- Compatibility declarations do not implement or authorize a host tool.
 	local OPENCODE_TOOLS = {
 		{
 			type = "function",
@@ -216,6 +216,10 @@ return function(env)
 		},
 	}
 
+	for _, tool in ipairs(OPENCODE_TOOLS) do
+		tool["function"].description = "OpenCode compatibility declaration only. This tool does not execute in Roblox; use the supplied Project UAI tools."
+	end
+
 	-- The declarations are shared with the Responses adapter, which must carry
 	-- them too so the same compatibility check passes on that lane.
 	M.opencodeTools = OPENCODE_TOOLS
@@ -254,12 +258,12 @@ return function(env)
 
 		-- Keep compatibility declarations for desktop direct and older bridges.
 		-- The native CLI adapter supplies real schemas and removes these placeholders.
-		if registry.isOpencode(record) then
+		if registry.isOpencodeZen(record) then
 			body.stream = true
 			body.stream_options = { include_usage = true }
 
 			if not body.tools or #body.tools == 0 then
-				body.tools = OPENCODE_TOOLS
+				body.tools = util.deepCopy(OPENCODE_TOOLS)
 				body.tool_choice = "auto"
 			else
 				local toolNames = {}
@@ -270,7 +274,7 @@ return function(env)
 				local merged = { unpack(body.tools) }
 				for _, stdTool in ipairs(OPENCODE_TOOLS) do
 					if not toolNames[stdTool["function"].name] then
-						merged[#merged + 1] = stdTool
+						merged[#merged + 1] = util.deepCopy(stdTool)
 					end
 				end
 				body.tools = merged
@@ -298,7 +302,7 @@ return function(env)
 		-- can exceed Chat Completions' 128 declarations even for unknown models.
 		local toolCeiling = M.toolCeiling(record)
 		if type(body.tools) == "table" and #body.tools > toolCeiling then
-			M.limitTools(body, toolCeiling, registry.isOpencode(record))
+			M.limitTools(body, toolCeiling, registry.isOpencodeZen(record))
 		end
 		env.require("provider/sampling").apply(record, request, body)
 		M.enforceOutputCeiling(record, body, request.outputCeiling)
@@ -938,7 +942,7 @@ return function(env)
 		-- A context error often mentions max_tokens too. It needs shorter history,
 		-- not output-ceiling repairs that would learn the wrong limit.
 		if M.isContextError(message) then return nil end
-		-- Gateways spell fields the way their host language does: HCNSEC's validator
+		-- Gateways spell fields the way their host language does: a gateway validator
 		-- answers "field MaxTokens invalid" where the wire says `max_tokens`, and a
 		-- plain lowercase compare reads that as "maxtokens" -- no underscore -- so the
 		-- repair below never fires and the ceiling is never lowered or learned. The
@@ -1023,6 +1027,23 @@ return function(env)
 		local problem = registry.protocolProblem(record)
 		if problem then return nil, problem end
 		request = util.copy(request or {})
+		local started = clock.ms()
+		local relayUnlimited = env.require("net/transport").unlimited(request)
+		local deadline = registry.inferenceDeadline(request, requestTimeout(request), started, relayUnlimited)
+		request.deadlineMs = deadline
+		local public = env.require("provider/opencode_public")
+		if public.credentials(record) then
+			local verified, why = public.ensure(record, { timeout = request.timeout or 15, deadlineMs = request.deadlineMs,
+				aborted = function() return not owns() or request.aborted and request.aborted() end })
+			if not owns() or request.aborted and request.aborted() then return nil, "aborted" end
+			if not verified then return nil, why end
+		elseif public.route(record) and responses.remembered(record) and not public.current(record) then
+			-- Refresh API facts before applying an old protocol lesson. A keyed
+			-- manual model absent from the catalog retains its saved route.
+			env.require("provider/models").discover(record, { force = true, timeout = request.timeout or 15, deadlineMs = deadline,
+				aborted = function() return not owns() or request.aborted and request.aborted() end })
+			if not owns() or request.aborted and request.aborted() then return nil, "aborted" end
+		end
 		if request.onRetry then
 			local callback = request.onRetry
 			request.onRetry = function(info) if not pcall(callback, info) then log.warn("provider", "retry callback failed safely") end end
@@ -1030,7 +1051,7 @@ return function(env)
 		-- Choose a known native Responses route before building and limiting a
 		-- second, unused Chat Completions payload for the same tool catalog.
 		if responses.eligible(record) and (responses.remembered(record) or responses.wantsResponses(record)) then
-			return responses.complete(record, request)
+			return responses.complete(record, request, { deadlineMs = deadline, relayUnlimited = relayUnlimited, owns = owns })
 		end
 		local wantStream = request.stream
 		if wantStream == nil then wantStream = record.stream ~= false and config.get("agent.stream", true) end
@@ -1043,6 +1064,23 @@ return function(env)
 		local url = registry.endpoint(record, "/chat/completions")
 		local pool = registry.requestKeys(record)
 		local currentKey = registry.nextKey(record)
+		local publicKey = currentKey == nil and public.defaultKey(record, body) or nil
+		currentKey = currentKey or publicKey
+		if public.credentials(record) and not currentKey then return nil, "The request body does not match a verified public Chat model." end
+		local publicEligibilityLost = false
+		-- Queued admission and permit commit both recheck the actual public fallback.
+		-- An explicitly selected personal key named "public" remains a keyed request.
+		local inference = registry.inferenceContext(record, function()
+			if not owns() or registry.compatibilityKey(record) ~= requestScope then return false end
+			if publicKey and not public.available(record, body) then
+				local vault = config.vaultStatus()
+				if not (request.aborted and request.aborted()) and not config.accessProblem() and not vault.locked and not vault.busy then
+					publicEligibilityLost = true
+				end
+				return false
+			end
+			return true
+		end, deadline)
 		local accounting = env.require("runtime/request_accounting").new(record, request)
 		local currentKeyIndex = 0
 
@@ -1053,15 +1091,12 @@ return function(env)
 			end
 			local accept = body.stream and "text/event-stream" or "application/json"
 			if registry.isOpencode(record) then accept = headerMap.get(record.headers, "Accept") or "*/*" end
-			return headerMap.merge(registry.authHeaders(record, currentKey), registry.opencodeHeaders(record, request),
+			return headerMap.merge(registry.authHeaders(record, currentKey, body), registry.opencodeHeaders(record, request),
 				record.headers, { Accept = accept })
 		end
 
 		local headers = rebuildHeaders()
 
-		local started = clock.ms()
-		local relayUnlimited = env.require("net/transport").unlimited(request)
-		local deadline = env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
 		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local lastRequestMs = 0
 		local attemptsAllowed = request.attempts or config.get("agent.retries", 3)
@@ -1084,6 +1119,7 @@ return function(env)
 				local socketHeaders = http.headersFor({ url = url, headers = headers, body = payload,
 					identity = registry.identityFor(record), identityRequired = registry.requiresClaude(record), timeout = requestTimeout(request) })
 				local streamBody, wsErr = ws.stream({
+					inference = inference, onRetry = request.onRetry,
 					url = record.wsUrl,
 					path = urls.requestTarget(url),
 					headers = socketHeaders,
@@ -1105,6 +1141,7 @@ return function(env)
 			-- Setup fallback and explicit refusals spend the original budget. A slow
 			-- socket connection cannot silently grant another full HTTP timeout.
 			local res, err = http.send({
+				inference = inference,
 				requiresAccess = true,
 				onDispatch = function() accounting.dispatch(currentKey, headers) end,
 				relay = web,
@@ -1235,6 +1272,15 @@ return function(env)
 		end
 
 		if not res or not res.ok then
+			-- Keep admission cancellation terminal through all internal retry paths.
+			-- Only lost catalog eligibility gets guidance; Stop and access retain theirs.
+			if err == "aborted" and publicEligibilityLost and owns() and registry.compatibilityKey(record) == requestScope
+				and not (request.aborted and request.aborted()) and clock.ms() < deadline and not config.accessProblem() then
+				local vault = config.vaultStatus()
+				if not vault.locked and not vault.busy then
+					return nil, "OpenCode public Chat eligibility expired or changed before dispatch. Fetch the model list and choose a free Chat model, or add your own API key.", res
+				end
+			end
 			if registry.compatibilityKey(record) == requestScope then M.learnContextWindow(record, res) end
 			local message = M.errorText(res, err)
 			registry.markFail(record, message)

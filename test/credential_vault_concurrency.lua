@@ -36,7 +36,6 @@ local function setup()
 		keyIds = { "11111111-1111-4111-8111-111111111111" }, keyMode = "single", selectedKey = 1,
 	} } }
 	snapshot.ui.tutorial.seen, snapshot.ui.communityInvite.disabled = true, true
-	snapshot.agent.autoFreeRouting = false
 	f.config.data = snapshot
 	assert(f.config.saveNow(true))
 	return f

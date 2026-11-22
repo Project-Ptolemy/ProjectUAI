@@ -42,7 +42,7 @@ local function seed(plaintext, sessionOnly)
 	local f = F.new(); local config, util = f.env.require("runtime/config"), f.env.require("runtime/util")
 	local data = util.deepCopy(config.defaults)
 	data.ui.tutorial.seen, data.ui.communityInvite.disabled = true, true
-	data.agent.autoFreeRouting, data.bridge.autoDiscover = false, false
+	data.bridge.autoDiscover = false
 	data.security.rememberCredentials = not sessionOnly
 	data.providers = { active = "required-fixture", list = { {
 		id = "required-fixture", label = "Required fixture", preset = "custom", api = "openai", authStyle = "bearer",
@@ -202,7 +202,7 @@ case("missing filesystem and public no-key providers cannot avoid password setup
 		and not handle.config.vaultStatus().ready)
 	local public = handle.providers.blank("kilo")
 	check("public provider routing still requires the password", type(handle.providers.protocolProblem(public)) == "string")
-	check("included free access cannot change providers before setup", handle.env.require("provider/free").use() == nil
+	check("provider setup cannot bypass required access", handle.providers.save(public) == false
 		and handle.config.vaultStatus().ready == false)
 	healthy(h); handle.destroy()
 end)

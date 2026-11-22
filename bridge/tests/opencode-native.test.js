@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createOpenCode, official, findBinary, responseBody, promptInput, toolDefinitions } = require('../opencode');
+const { createOpenCode, official, nativeHeadersAllowed, findBinary, responseBody, promptInput, toolDefinitions } = require('../opencode');
 const { createInference } = require('../inference');
 const { sleep } = require('./helpers/bridge');
 
@@ -24,6 +24,12 @@ test('native server discovery confines process, Basic auth and temporary files',
   assert.equal(backend.capability().state, 'starting');
   const models = await backend.models(); assert.equal(models.data[0].id, 'fixture-free');
   assert.equal(models.data.length, 1, 'only verified zero-price models use the public native connection');
+  assert.equal(backend.accepts(url, JSON.stringify(input('public')), { Authorization: 'Bearer public' }), true);
+  for (const headers of [{ Authorization: 'Bearer fixture-personal-key' }, { 'x-api-key': 'fixture-private' },
+    { Authorization: 'Bearer public', 'X-Org-Id': 'fixture-workspace' }, { Cookie: 'fixture-cookie' }]) {
+    assert.equal(backend.accepts(url, JSON.stringify(input('credential precedence')), headers), false,
+      'native free access must not discard provider or workspace credentials');
+  }
   assert.equal(backend.accepts(url, JSON.stringify({ model: 'fixture-paid' })), false);
   for (const base of ['https://opencode.ai/inference/go/v1', 'https://opencode.ai/zen/go/v1']) {
     for (const route of ['/chat/completions', '/responses']) {
@@ -52,6 +58,43 @@ test('disabled native tunnel never starts even with a configured binary', async 
   assert.match(backend.capability().message, /turned off/);
   await assert.rejects(backend.models(), /turned off/);
   assert.equal(backend.accepts(url, JSON.stringify(input('ignored'))), false);
+});
+
+test('a ready free CLI leaves personal provider credentials on the original HTTPS request', { concurrency: false }, async t => {
+  const { backend, events } = native(t);
+  await backend.models();
+  const https = require('node:https'), { EventEmitter } = require('node:events'), { Readable } = require('node:stream');
+  const calls = [];
+  t.mock.method(https, 'request', (target, options, callback) => {
+    const call = { url: target.href, options }; calls.push(call);
+    const outbound = new EventEmitter();
+    outbound.setTimeout = () => outbound;
+    outbound.destroy = () => outbound;
+    outbound.end = body => {
+      call.body = body;
+      queueMicrotask(() => {
+        outbound.emit('finish');
+        const response = Readable.from(['{"choices":[{"message":{"content":"PONG"}}]}']);
+        response.statusCode = 200; response.headers = { 'content-type': 'application/json' }; callback(response);
+      });
+    };
+    return outbound;
+  });
+  const relay = createInference({ opencode: backend }); t.after(() => relay.close());
+  const headers = { Authorization: 'Bearer fixture-personal-key', 'x-org-id': 'fixture-workspace', 'X-Fixture': 'retained' };
+  const body = JSON.stringify(input('Reply PONG.'));
+  const submitted = { id: 'personal-key-precedence', instance: relay.instance, url, body, headers };
+  relay.start(submitted);
+  await sleep(10);
+  assert.equal(relay.get(submitted.id).state, 'completed');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, url);
+  assert.equal(calls[0].body, body);
+  for (const [name, value] of Object.entries(headers)) assert.equal(calls[0].options.headers[name], value);
+  assert.equal(typeof calls[0].options.ciphers, 'string');
+  assert.ok(!events().some(event => event.type === 'session'), 'the CLI did not create or replay an inference session');
+  relay.start(submitted); await sleep(10);
+  assert.equal(calls.length, 1, 'the existing accepted receipt prevents a second API send');
 });
 
 test('incompatible installed API fails before creating a session', async t => {
@@ -101,7 +144,8 @@ test('native inference retains one job, translates tool handoff and cleans sessi
   await backend.start();
   const relay = createInference({ opencode: backend, publish: frame => frames.push(frame) }); t.after(() => relay.close());
   const body = { ...input('USE_TOOL'), tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object', properties: { value: { type: 'string' } } } } }] };
-  const request = { id: 'native_tool_handoff', instance: relay.instance, url, sessionId: 'roblox_fixture', body: JSON.stringify(body), headers: { authorization: 'Bearer should-not-reach-native' } };
+  const request = { id: 'native_tool_handoff', instance: relay.instance, url, sessionId: 'roblox_fixture', body: JSON.stringify(body), headers: { authorization: 'Bearer public' } };
+  assert.equal(backend.accepts(url, request.body, request.headers), true, 'the public fixture qualifies for native handoff before dispatch');
   relay.start(request); relay.start(request);
   for (let i = 0; i < 300 && relay.get(request.id).state === 'running'; i++) await sleep(10);
   const result = relay.get(request.id); assert.equal(result.state, 'completed', result.error);
@@ -114,7 +158,7 @@ test('native inference retains one job, translates tool handoff and cleans sessi
   const rules = events().find(e => e.type === 'session').permissions;
   assert.deepEqual(rules, [{ action: '*', resource: '*', effect: 'ask' }, { action: 'uai_lookup', resource: '*', effect: 'allow' }]);
   assert.ok(frames.some(e => e.kind === 'inference:delta' && e.text === 'Checking Roblox.'));
-  assert.doesNotMatch(JSON.stringify(events()), /should-not-reach-native|Bearer|Basic/);
+  assert.doesNotMatch(JSON.stringify(events()), /Bearer|Basic/);
 });
 
 test('native stop interrupts the owned session and never dispatches again', async t => {
@@ -314,7 +358,7 @@ test('native handoff waits for every streamed tool, indexes previews, and fails 
 
 test('only official routes and external native binaries qualify', async () => {
   for (const route of [url, 'https://opencode.ai/inference/v1/responses', 'https://opencode.ai/inference/openai/v1/chat/completions']) assert.equal(official(route), true);
-  for (const route of ['https://opencode.ai.evil.invalid/zen/v1/chat/completions', 'http://opencode.ai/zen/v1/chat/completions', 'https://opencode.ai/other/chat/completions', 'https://user:secret@opencode.ai/zen/v1/chat/completions', 'https://puai-proxy.davidzk.tech/opencode/v1/chat/completions', 'https://opencode.ai/inference/go/v1/chat/completions', 'https://opencode.ai/zen/go/v1/responses']) assert.equal(official(route), false);
+  for (const route of ['https://opencode.ai.evil.invalid/zen/v1/chat/completions', 'http://opencode.ai/zen/v1/chat/completions', 'https://opencode.ai/other/chat/completions', 'https://user:secret@opencode.ai/zen/v1/chat/completions', 'https://puai-proxy.davidzk.tech/opencode/v1/chat/completions', 'https://opencode.ai/inference/go/v1/chat/completions', 'https://opencode.ai/zen/go/v1/responses', url + '?', url + '#', url + '?tenant=fixture', url + '#fixture']) assert.equal(official(route), false);
   assert.equal(findBinary({ UAI_OPENCODE_DISABLED: '1', UAI_OPENCODE_BINARY: process.execPath }), null);
   assert.equal(findBinary({ UAI_OPENCODE_BINARY: 'relative.exe' }), null);
   const unavailable = createOpenCode({ binary: null });
@@ -325,7 +369,18 @@ test('only official routes and external native binaries qualify', async () => {
   assert.equal(response.status, 'incomplete'); assert.equal(response.output[0].content[0].text, 'Done');
 });
 
-test('image bytes use native attachments and legacy desktop declarations do not become UAI tools', () => {
+test('native routing admits only the official public token and preserves personal auth for HTTPS', () => {
+  for (const headers of [undefined, {}, { Authorization: 'Bearer public' }, { authorization: 'Bearer public', Accept: '*/*' }])
+    assert.equal(nativeHeadersAllowed(headers), true);
+  for (const headers of [null, [], 'invalid', { Authorization: 'Bearer fixture-private' }, { authorization: 'public' },
+    { Authorization: 'Bearer public', authorization: 'Bearer fixture-private' }, { 'Proxy-Authorization': 'fixture' },
+    { 'X-Api-Key': 'fixture' }, { 'x-access-token': 'fixture' }, { 'X-Secret': 'fixture' },
+    { Authentication: 'fixture' }, { 'X-Credential': 'fixture' },
+    { 'X-Org-Id': 'fixture' }, { 'openai-organization': 'fixture' }, { cookie: 'fixture' }])
+    assert.equal(nativeHeadersAllowed(headers), false);
+});
+
+test('image bytes use native attachments and genuine native-name UAI tools are preserved', () => {
   const uri = 'data:image/png;base64,aGVsbG8=';
   for (const content of [[{ type: 'image_url', image_url: { url: uri } }], [{ type: 'input_image', image_url: uri }]]) {
     const prompt = promptInput({ messages: [{ role: 'user', content }] });
@@ -333,7 +388,32 @@ test('image bytes use native attachments and legacy desktop declarations do not 
   }
   assert.throws(() => promptInput({ messages: [{ content: [{ type: 'input_image', image_url: 'file:///secret.txt' }] }] }), /reattach/);
   const declared = toolDefinitions({ tools: [{ type: 'function', function: { name: 'bash' } }, { type: 'function', function: { name: 'file_read' } }] });
-  assert.deepEqual(declared.map(tool => tool.name), ['file_read']);
+  assert.deepEqual(declared.map(tool => tool.name), ['bash', 'file_read']);
+});
+
+test('all actual Lua compatibility schemas are filtered while real colliding tools remain', t => {
+  const { spawnSync } = require('node:child_process');
+  const result = spawnSync('luajit', [path.join(__dirname, 'fixtures', 'opencode-tools.lua')], {
+    cwd: path.resolve(__dirname, '../..'), windowsHide: true, encoding: 'utf8', timeout: 10000, maxBuffer: 65536,
+  });
+  if (result.error?.code === 'ENOENT') { t.skip('LuaJIT is unavailable; source-produced schema check runs with the offline client harness'); return; }
+  assert.equal(result.status, 0, 'the credential-free source fixture exports successfully');
+  const current = JSON.parse(result.stdout);
+  const names = ['bash', 'read', 'edit', 'glob', 'grep', 'list', 'shell'];
+  assert.deepEqual(current.map(tool => tool.function.name), names);
+  assert.deepEqual(toolDefinitions({ tools: current }), []);
+  const descriptions = ['Execute bash command', 'Read file', 'Edit file', 'Find files', 'Search pattern', 'List files', 'Execute shell command'];
+  const historical = current.map((tool, index) => ({ ...tool, function: { ...tool.function, description: descriptions[index] } }));
+  assert.deepEqual(toolDefinitions({ tools: historical }), []);
+  for (const declarations of [current, historical]) {
+    const translated = declarations.map(tool => ({ type: 'function', ...tool.function }));
+    assert.deepEqual(toolDefinitions({ tools: translated }), [], 'Responses placeholders share the exact filter');
+    const genuine = declarations.map(tool => ({ ...tool, function: { ...tool.function, description: 'A real Project UAI remote tool',
+      parameters: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] } } }));
+    assert.deepEqual(toolDefinitions({ tools: [...declarations, ...genuine] }).map(tool => tool.name), names);
+  }
+  assert.deepEqual(toolDefinitions({ tools: [{ type: 'function', function: { name: 'constructor' } }] }).map(tool => tool.name), ['constructor']);
+  assert.throws(() => toolDefinitions({ tools: [null] }), /unique UAI function tools/);
 });
 
 test('native usage includes cache and reasoning in both wire totals', () => {

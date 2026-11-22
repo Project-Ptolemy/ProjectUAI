@@ -15,7 +15,8 @@ test('reserved Cline addresses never use outbound HTTP when unsupported or misco
     url.replace('uai-tunnel.invalid', 'uai-tunnel.invalid.')].entries()) {
     assert.throws(() => inference.start({ id: 'cline-invalid-' + index, instance: inference.instance, url: candidate, body }), /does not support/);
   }
-  assert.throws(() => inference.start({ id: 'cline-credential', instance: inference.instance, url, body, headers: { Authorization: 'fixture' } }), /authentication to None/);
+  for (const name of ['Authorization', 'Authentication', 'Secret', 'X-Secret', 'Credential', 'X-Credential', 'Org', 'X-Org-Id', 'OpenAI-Organization'])
+    assert.throws(() => inference.start({ id: 'cline-credential-' + name, instance: inference.instance, url, body, headers: { [name]: 'fixture' } }), /authentication to None/);
 });
 
 test('Cline refusal stays terminal without direct fallback or duplicate dispatch', async t => {

@@ -194,6 +194,37 @@ case("named keys retain their identity when replaced, selected and removed", fun
 	f.healthy(); f.close()
 end)
 
+case("a retired key selection requires the full connection review after keys are applied", function()
+	local f = F.ui(390, 700)
+	f.registry = f.env.require("provider/registry")
+	local record = f.registry.blank("custom")
+	record.label, record.baseUrl, record.model = "Reviewed personal account", "https://keys.fixture/v1", "fixture-model"
+	record.apiKey, record.models = "fixture-personal-1111\nfixture-backup-2222", { "fixture-model" }
+	record.keyNames, record.keyPaused = { "Personal", "Backup" }, { false, false }
+	record.keyIds = { "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222" }
+	record.credentialsOmitted = true
+	assert(f.registry.save(record))
+	local ui = f.env.require("ui/panels/providers")
+	ui.manageKeys(record); f.h.settle(0.3)
+	check("retained keys are visible behind a connection review notice", f.h.byName("KeyRestorationRequired").Text:find("selected key", 1, true)
+		and f.h.byName("APIKeyLabel_1").Text == "Personal" and f.h.byName("APIKeyLabel_2").Text == "Backup")
+	click(f, "Segment_single"); click(f, "UseKey_2"); click(f, "ApplyKeys")
+	local updated = assert(f.registry.get(record.id))
+	check("keys-only Apply preserves the admission guard and explicit selection", updated.credentialsOmitted == true
+		and updated.keyMode == "single" and updated.selectedKey == 2 and updated.keyIds[2] == record.keyIds[2]
+		and not f.env.require("provider/availability").describe(updated).ready)
+	ui.editor(updated, function(id) f.saved = f.registry.get(id) end); f.h.settle(0.3)
+	check("the full editor asks to review the surviving key selection", f.h.byName("RestoreProviderCredentials").Text:find("selected key", 1, true))
+	click(f, "SaveProvider")
+	check("reviewed Save admits only the chosen surviving credential", f.saved and f.saved.credentialsOmitted == nil
+		and f.saved.keyMode == "single" and f.saved.selectedKey == 2 and f.saved.apiKey == record.apiKey
+		and f.saved.keyNames[1] == "Personal" and f.saved.keyIds[2] == record.keyIds[2]
+		and f.env.require("provider/availability").describe(f.saved).ready
+		and f.registry.nextKey(f.saved) == "fixture-backup-2222" and f.registry.nextKey(f.saved) == "fixture-backup-2222")
+	check("review controls send no provider requests", f.h.http.requestCount == 0)
+	f.healthy(); f.close()
+end)
+
 case("removing the selected key visibly returns to rotation", function()
 	local f = fixture("fixture-first-1111\nfixture-second-2222\nfixture-third-3333", false,
 		{ keyNames = { "Personal", "Work", "Backup" }, keyMode = "single", selectedKey = 2 })

@@ -2,7 +2,7 @@
 
 Build a script interface with Project UAI UI LIB, add UAI to a host script, or
 connect your own library window to UAI's conversations and tools. This guide
-documents **embedding SDK 1.1.0** in **Project UAI 4.0.0**, alongside
+documents **embedding SDK 1.1.0** in **Project UAI 4.1.1**, alongside
 **UI LIB 1.6.0**. SDK metadata is exposed through `uai.sdk`; UI LIB remains a
 separate bundle with its own version and lifetime.
 
@@ -14,7 +14,7 @@ future prompts and saves keys using reversible byte encoding.
 stay hidden, but the loader can construct entry UI. Host integrations still own
 their scopes and cleanup; inspect returned admission status before sending work.
 See the [release notes](../CHANGELOG.md)
-and [4.0.0 verification record](TESTING_4.0.0.md).
+and [4.1.1 verification record](TESTING_4.1.1.md).
 
 Start with [the complete workbench example](../examples/embedding/README.md) for
 working code. Use [the UI library reference](UI_LIBRARY.md) for every control,
@@ -23,8 +23,9 @@ how those pieces fit into an application, including the runtime APIs that the
 standalone UI library does not provide.
 
 New clients do not provision a provider. Show `uai.show("providers")` to let the
-user choose one before submitting work. Project UAI Free is an optional preset;
-personal HCNSEC is separate. The SDK example offers `configureProvider()` and
+user choose one before submitting work. Upgrades remove retired community
+access and retain personal connections through [provider migration](providers/migration.md).
+The SDK example offers `configureProvider()` and
 the workbench reflects setup/provider changes without discarding its draft.
 
 - [Choose an integration](#choose-an-integration)

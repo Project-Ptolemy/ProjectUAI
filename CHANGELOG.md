@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.1.1 - Provider retirement, Zen fixes and request limits
+
+November 22, 2026. Client, bridge package and Windows desktop: **4.1.1**.
+UI LIB remains **1.6.0**, embedding SDK **1.1.0**, Android companion **3.7.2**.
+
+- Add a global requests-per-minute setting and optional limits for individual
+  providers. Shared inference attempts wait for available capacity, with visible
+  waiting feedback, cancellation and the caller's original deadline preserved.
+- Open What's New automatically once per client release after startup and
+  credential access. Saved release state prevents repeat popups on later executions.
+- Remove Project UAI Free and HCNSEC presets, bundled community credentials,
+  access schedules, automatic free-routing probes and their native/browser controls.
+- Migrate old configurations and imports: remove community-only records and
+  references, strip retired shared keys using one-way fingerprints, and retain
+  personal HCNSEC connections as custom endpoints with aligned key metadata.
+- Preserve encrypted credential recovery and the existing password/storage gate.
+  If no enabled provider remains, retain chat drafts and direct users to setup.
+- Support direct free OpenCode Zen Chat API authentication without a personal
+  key; preserve personal-key API routing even when an installed CLI is available.
+- Discover free Chat eligibility from the official model catalog instead of a
+  hardcoded public-model whitelist. Verify fresh scoped metadata before sending;
+  decision-only models and incomplete or priced rows cannot become public Chat.
+- Scope Zen compatibility, preserve model-specific protocols, and retain real
+  UAI tools during optional CLI handoff. Go/custom settings and request ownership remain effective.
+- Redact Zen's `oc_sk_` keys in diagnostic text as well as credential fields.
+- Refresh provider guides, onboarding, downloads and the matching release artifacts.
+
+See [release notes](docs/RELEASE_4_1_1.md) and
+[provider migration](docs/providers/migration.md).
+
 ## 4.0.5 - Steadier agents, faster conversations
 
 November 15, 2026. Client, bridge package and Windows desktop: **4.0.5**.

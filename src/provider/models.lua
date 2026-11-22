@@ -20,7 +20,6 @@ return function(env)
 	local modelCatalog = env.require("provider/model_catalog")
 	local cloudflareCatalog = env.require("provider/cloudflare_catalog")
 	local modelId = env.require("provider/model_id")
-	local communityKey = env.require("provider/community_key")
 	local support = env.require("runtime/support")
 	local providerKeys = env.require("runtime/provider_keys")
 	local config = env.require("runtime/config")
@@ -75,13 +74,11 @@ return function(env)
 	local function scopeFor(record)
 		local scope = { baseUrl = registry.normaliseBaseUrl(record.baseUrl), api = record.api or "openai",
 			apiKey = record.apiKey, authStyle = record.authStyle, headers = record.headers or {}, query = record.query or {},
+			wsUrl = record.wsUrl, params = record.params, credentialsOmitted = record.credentialsOmitted,
+			credentialStorageError = record.credentialStorageError, storedCredentials = record.storedCredentials ~= nil,
 			keyMode = providerKeys.mode(record), selectedKey = providerKeys.mode(record) == "single" and providerKeys.selected(record) or nil,
 			keyPaused = providerKeys.pauseFlags(record),
 			claudeUa = record.claudeUa }
-		if registry.isOpencodeZen(record) then
-			scope.opencode = env.require("net/bridge").opencodeStatus()
-			scope.bridge = env.require("net/bridge_connection").get()
-		end
 		if registry.isCline(record) then
 			local status = env.require("net/bridge").clineStatus()
 			-- Signing in can finish during an explicit refresh. Transient status
@@ -92,10 +89,12 @@ return function(env)
 		end
 		return util.deepCopy(scope)
 	end
-	local function same(a, b)
+	local function same(a, b, depth)
+		depth = (depth or 0) + 1
+		if depth > 32 then return false end
 		if type(a) ~= type(b) then return false end
 		if type(a) ~= "table" then return a == b end
-		for key, value in pairs(a) do if not same(value, b[key]) then return false end end
+		for key, value in pairs(a) do if not same(value, b[key], depth) then return false end end
 		for key in pairs(b) do if a[key] == nil then return false end end
 		return true
 	end
@@ -113,15 +112,16 @@ return function(env)
 		return M.cached(record) or {}
 	end
 
-	-- A catalog label is not permission to use the model. Zen documents Big
-	-- Pickle as free despite its unsuffixed id; only apply that alias on Zen.
-	-- Other ids use a distinct "free" token rather than matching "freedom".
+	-- Zen prices come from its official catalog, independently of public auth.
+	-- Other providers retain their existing name labels, without auth implications.
 	function M.isFree(record, id)
-		if communityKey.isApplied(record) then return true end
 		if registry.isCline(record) then return env.require("net/bridge").clineHasModel(id) == true end
 		if registry.isOpencodeGo(record) then return false end
+		if registry.isOpencodeZen(record) then
+			local info = env.require("provider/opencode_public").info(record, id)
+			return info ~= nil and info.free == true
+		end
 		local name = tostring(id or ""):lower()
-		if registry.isOpencodeZen(record) and name == "big-pickle" then return true end
 		return name:find("%f[%a]free%f[%A]") ~= nil
 	end
 
@@ -238,6 +238,7 @@ return function(env)
 		local function fetch()
 			return http.send({
 				requiresAccess = true,
+				relayUnlimited = false,
 				url = url,
 				method = "GET",
 				headers = headers,
@@ -251,10 +252,11 @@ return function(env)
 			})
 		end
 		local res, err, decoded, decodeError
-		local cli = registry.isCline(snapshot) and "cline" or scope.opencode and scope.opencode.available == true and "opencode"
+		-- Zen's API catalog carries protocol and price facts that the normalized
+		-- CLI id list omits. Discover the API independently of optional CLI state.
+		local cli = registry.isCline(snapshot) and "cline"
 		if cli then
-			if cli == "cline" then decoded, err = env.require("net/bridge").clineModels(opts)
-			else decoded, err = env.require("net/bridge").opencodeModels(opts) end
+			decoded, err = env.require("net/bridge").clineModels(opts)
 			if decoded then res = { ok = true, status = 200 } end
 		else
 			res, err = fetch()
@@ -312,7 +314,7 @@ return function(env)
 		end
 		pending[key] = nil
 		if not res or not res.ok or type(decoded) ~= "table" or decoded.error ~= nil then
-			if cli then return {}, support.error(err or (cli == "cline" and "Could not read Cline's free model list." or "Could not read the OpenCode CLI model list.")) end
+			if cli then return {}, support.error(err or "Could not read Cline's free model list.") end
 			local note = "could not read the model list"
 			if kilo and res and res.ok and decodeError then note = kiloDecodeProblem(res) end
 			if res and res.status == 404 then note = "this endpoint has no /models route -- add a model by hand" end
@@ -336,6 +338,7 @@ return function(env)
 		-- The documented shape is { data = { { id = ... } } }. Some servers answer
 		-- with a bare array, and Ollama answers with { models = { { name = ... } } }.
 		local rows = decoded.data or decoded.models or decoded
+		if not cli then env.require("provider/opencode_public").observe(record, url, decoded) end
 		local found, seen, excluded, invalid = {}, {}, 0, 0
 		if type(rows) == "table" then
 			for index, row in ipairs(rows) do
@@ -382,7 +385,7 @@ return function(env)
 		M.cache[key] = { at = clock.ms(), models = found, scope = scope }
 		M.changed:fire(record.id, found)
 		local note = string.format("%d model%s from %s", #found, #found == 1 and "" or "s",
-			cli == "cline" and "Cline through Project UAI Bridge" or cli and "OpenCode CLI through Project UAI Bridge" or urls.display(url))
+			cli and "Cline through Project UAI Bridge" or urls.display(url))
 		if partial then note = note .. "; catalog page limit reached, additional IDs may be entered manually" end
 		if excluded > 0 then note = note .. string.format("; %d non-chat entries hidden", excluded) end
 		if invalid > 0 then note = note .. string.format("; %d invalid model ids hidden", invalid) end
@@ -391,6 +394,7 @@ return function(env)
 	end
 
 	function M.invalidate(providerId)
+		env.require("provider/opencode_public").invalidate(providerId)
 		if providerId then
 			local key = type(providerId) == "table" and keyFor(providerId) or providerId
 			M.cache[key], pending[key] = nil, nil

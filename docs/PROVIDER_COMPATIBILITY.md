@@ -1,6 +1,6 @@
 # Provider compatibility and WebSockets
 
-Applies to **4.0.0**, November 14, 2026.
+Applies to **4.1.1**, November 22, 2026.
 
 UAI implements **Chat Completions**, **Anthropic Messages** and **Google Gemini**,
 plus a dedicated **Responses** path for five verified direct OpenAI IDs and
@@ -16,14 +16,14 @@ coverage.
 ## Provider setup and model discovery
 
 Initial use requires password setup or the explicit **Continue without encryption**
-choice before inference or discovery, including public no-key and included free
+choice before inference or discovery, including public no-key and free
 routes. With a vault, every execution requires unlock, including `ui = false`
 embedding. A saved unprotected-storage choice skips future password prompts and
 stores keys with reversible byte encoding. The gate preserves existing credentials
 for verified migration; see [API key security](API_KEY_SECURITY.md).
 
-The [individual setup guides](providers/README.md) cover separate Project UAI Free
-and HCNSEC access, local/custom endpoints, key management and model discovery,
+The [individual setup guides](providers/README.md) cover provider migration,
+local/custom endpoints, key management and model discovery,
 along with Vercel AI Gateway,
 Perplexity Orchestrator, FriendliAI Model APIs, Venice, Nscale, Arcee AI and
 AI/ML API. Each guide names the exact preset, account/key requirements, catalog
@@ -142,8 +142,7 @@ Prices are estimates in USD per million text tokens. Documented cache rates and
 long-context tiers apply to usage estimates. Special service tiers, request fees,
 image/audio charges, taxes and account discounts are outside these estimates.
 Unknown endpoint prices remain unknown, and a free route never sets the price of
-its paid counterpart. Included Project UAI Free access is zero cost; a personal
-HCNSEC key does not establish a known price.
+its paid counterpart. A personal key does not establish a known price.
 
 Reviewed primary corrections live in `tools/data/model_official.json` and win
 only for their exact provider/model IDs. They do not infer snapshot names or
@@ -376,8 +375,6 @@ service does not expose it or the key cannot list models, manual ids remain usab
 
 | Preset | Base path / host | Protocol | Default auth |
 | --- | --- | --- | --- |
-| Project UAI Free | `api.hcnsec.cn/v1` | Chat Completions | Distributed community Bearer credential |
-| HCNSEC | `api.hcnsec.cn/v1` | Chat Completions | Personal Bearer key |
 | OpenAI | `api.openai.com/v1` | Responses for the five documented direct GPT-6 IDs; other models retain Chat | Bearer |
 | AgentRouter | `agentrouter.org/v1` | GPT: Responses; others: selected protocol | x-api-key |
 | Anthropic Messages | `api.anthropic.com/v1` | Messages | x-api-key |
@@ -404,106 +401,74 @@ before a key exists. The tier is access, not capability: a free route and a paid
 one use the same adapters, and a successful model list never proves that an
 account, subscription or tool-calling model is available. A hybrid service — one
 with both a free and a paid half — is recommended and labelled with the free half
-rather than called paid: OpenCode Zen names its free desktop-CLI models,
+rather than called paid: OpenCode Zen names its free Chat API models,
 OpenRouter names its free model ids, and OpenCode Go separates its subscription
-from the free CLI catalog. Project UAI Free is labelled Included because its key
-is distributed with the client.
+from the free CLI catalog.
 
 ## Connection and response behavior
 
-### Project UAI Free
+### Retired community provider
 
-New users and configurations with no provider start with an empty provider list.
-Choose **Providers > Add a provider > Project UAI Free**, then save, to opt in to
-community access and its verified `auto` router. No personal key or model entry
-is required. Browsing the library does not install a provider. Empty imports,
-resets and later starts do not recreate a removed provider.
+Release 4.1.1 removes Project UAI Free and the HCNSEC preset. The client contains
+no shared credential, schedule gate or automatic free-routing probes. Migration
+removes community-only records and references, strips recognized historical
+community keys using one-way fingerprints, and converts personal HCNSEC records
+to custom endpoints with their configuration retained.
 
-**HCNSEC** is a separate personal-key preset, with no community credential or
-default model. Existing personal keys and custom names stay intact. Legacy
-community records on the official endpoint move to the separate
-`projectuai-free` preset while retaining selection, pauses and custom names.
-Changing a Free draft to a personal/custom preset removes its public keys;
-adding a personal key switches that draft to HCNSEC and retains only personal
-keys. See [provider migration](providers/migration.md).
+Load, save, replacement and import apply the same policy after credential decoding
+or authenticated vault unlock. Migration performs no network requests and never
+configures a replacement provider. If no enabled provider remains, Chat and Quick
+Chat retain their drafts and direct the user to provider setup. See
+[provider migration](providers/migration.md).
 
-Included community access is scheduled **daily from 20:00 to 12:00 the following
-midday, fixed UTC+8 (Beijing/Singapore)**. The client's local timezone and daylight
-saving do not change these hours. Outside the schedule, UAI explains the next
-opening and skips new included-access inference, model discovery and background
-probes. Choose another provider or return at 20:00 UTC+8. You can still save the
-free provider; personal HCNSEC keys do not use this community schedule. An already
-accepted inference may finish after 12:00. These checks provide client guidance;
-the service controls actual availability and must enforce any server access limits.
+### OpenCode direct API, desktop and mobile
 
-**Settings → Agent → Automatic free routing** is enabled by default and optional.
-Turn it off to stop background measurements and retain the selected provider model
-for future requests. An accepted request finishes on its existing route. When UAI
-selects a measured model, a conversation notice names it and gives this setting path.
-The provider may still perform its own routing when its selected model is `auto`.
+Choose **OpenCode Zen**, **Chat completions**, and an exact supported free Chat
+model from discovery. The 4.1.1 client can authenticate those reviewed models
+with OpenCode's published public token; no personal key or connected bridge is
+required to prepare a direct request. Your own Zen key takes precedence and is
+required for paid API access. Paused/pinned keys, credential-storage guards and
+explicit custom authentication remain effective. Query, socket or mismatched
+model overrides do not silently switch to public access.
 
-During scheduled hours, with automatic free routing enabled, `auto` selected and
-the default Chat settings, UAI measures models in the background when you open the
-model picker or send an agent request. It discovers
-the live catalog, checks a small tool call and its result replay, and prefers the
-fastest verified candidate whose two responses each finished within ten seconds.
-The picker shows the latest synthetic probe time. The first request can use the
-provider's `auto` while measurements run; opening the picker warms selection
-without sending your conversation. Two workers check at most 32 advertised IDs;
-measurements last ten minutes and expire when connection/auth settings change.
+The direct workaround preserves the historically verified desktop identity,
+stable session aliases, wildcard Accept header, seven compatibility declarations
+and truthful system `<env>` context containing `Working directory: Roblox runtime`.
+These declarations authorize no host execution. The reusable
+[`bridge/opencode-transport.js`](../bridge/opencode-transport.js) module supplies
+the scoped cipher-suite offer for standalone HTTPS clients; it needs no bridge
+server, CLI or Bun installation and retains certificate validation. The desktop
+bridge uses the same profile for its direct API requests. A personal Zen key keeps
+the request on that API route even when the optional CLI is available.
 
-The selected model must have a known context window large enough for the prepared
-request and reply. Images, unknown context limits and explicit provider body,
-query or socket settings keep their existing route. Selecting a model by name or
-using a personal key keeps that choice fixed. A slow or failed real response
-removes that candidate for later selections; it never launches a duplicate of
-the current prompt. The saved selector remains `auto`, and scoped API limit
-lessons still persist. Free choices have green rounded borders in model menus.
+The [November 22 matrix](OPENCODE_4_1_1_VALIDATION.md) records each current free
+model's text, tool and result-replay outcome with public and test-key authentication.
+Ordinary HTTPS has different eligibility from the scoped profile. An executor
+whose HTTP implementation cannot offer that profile may still receive HTTP 429
+`FreeUsageLimitError`; a single working model does not establish other models or
+device transports. Current free Chat IDs stay on Chat even if older learned
+settings selected Responses. Historical Responses models retain their appropriate
+protocol; unsupported decision models are not claimed as Chat assistants.
 
-**Ten seconds is a selection target, not a guarantee for a real request.** Longer
-prompts, tool catalogs, reasoning and shared load can take longer. Native probes
-use the active direct/relay lane and contain only a synthetic connectivity tool;
-they never execute it or include conversation data. See
-[the measured HCNSEC results](FREE_ROUTING_VALIDATION.md).
-Shared capacity changes, so requests may be fast, slow, rate limited or unavailable.
-Help, availability updates and community news: https://discord.gg/9xYyyYuKap.
-
-### OpenCode desktop and mobile
-
-The desktop workaround uses the historically verified desktop User-Agent/client
-identity, timestamp-based session headers and wildcard Accept header. Required
-compatibility tool declarations remain present on direct and bridge routes, and
-explicit custom headers stay effective. Historical `FreeTierError` and explicit
-protocol refusals retain the Chat/Responses fallback where applicable.
-
-OpenCode can refuse direct API-key requests with HTTP 429 `FreeUsageLimitError`
-even while the installed CLI works for the same account. Current Zen Chat and
-Responses requests include truthful Roblox `<env>` context with `Working directory:`
-in their system/instructions metadata. On November 2, 2026, that context restored
-DeepSeek Flash API-key text, a synthetic UAI tool call, and result replay through
-standalone Bun with the existing desktop headers and seven declarations. Ordinary
-Node HTTPS also returned 200 after offering the same cipher-suite list with
-production bridge headers. The current desktop bridge supplies this scoped TLS
-profile before the first direct Zen Chat/Responses request; it requires no CLI
-or Bun installation and preserves certificate validation. Use the current client
-and bridge for the verified API-key route. Executor and Android transport behavior
-remain unverified. UAI reports a remaining
-explicit refusal without repeating the same route, rotating keys, or trying
-the Responses protocol. Ordinary temporary 429 responses retain their retries.
-See [the current investigation](OPENCODE_API_KEY_INVESTIGATION.md).
+A complete explicit free-usage refusal preserves its status and detail and ends
+that attempt without same-route backoff, key rotation or a protocol retry.
+Ordinary temporary 429 replies retain their normal retries. Older transport
+evidence is in the [November 2 investigation](OPENCODE_API_KEY_INVESTIGATION.md)
+and [October 15 validation](OPENCODE_3.2_VALIDATION.md).
 
 The desktop bridge adds an optional installed OpenCode CLI server path for its
 verified free-model catalog. Install OpenCode separately; Project UAI does not
 package its binary. See [desktop setup](../desktop/README.md) and
 [live model verification](OPENCODE_3.2_VALIDATION.md). The bridge owns authenticated
-loopback access, temporary sessions and tool handoff to Roblox. CLI model discovery
-uses its authenticated bridge capability; without that capability normal direct
-model discovery remains available. Missing CLI and models outside its public catalog
-retain the existing direct HTTP route.
+loopback access, temporary sessions and tool handoff to Roblox. Client model
+discovery reads the official Zen API catalog even when an installed CLI is
+available. The CLI retains its separate authenticated free-model catalog for
+optional handoff. Missing CLI and models outside that catalog retain the existing
+direct HTTP route.
 
-**Mobile OpenCode requires the UAI Relay app from Discord**: install and start the
-app, then connect it in UAI. Project UAI Free remains an alternative for a
-mobile-compatible provider. A mobile free-tier
+For a mobile relayed request, install and start the **UAI Relay app from Discord**,
+then connect it in UAI. Native executor and Android transport require separate
+device verification. A mobile free-tier
 refusal does not retry Responses or a proxy. Share errors and get updates in
 [Discord](https://discord.gg/9xYyyYuKap).
 

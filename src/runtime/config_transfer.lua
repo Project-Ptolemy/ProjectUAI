@@ -6,6 +6,7 @@ return function(env)
 	local config = env.require("runtime/config")
 	local clock = env.require("runtime/clock")
 	local keyPolicy = env.require("runtime/provider_keys")
+	local ratePolicy = env.require("runtime/inference_rate_policy")
 	local credentials = env.require("runtime/credentials")
 	local vault = env.require("runtime/credential_vault")
 	local M = { FORMAT = "project-uai-config", VERSION = 1 }
@@ -89,6 +90,8 @@ return function(env)
 			if type(record[key]) ~= "string" then return false, path .. "." .. key .. " must be text" end
 		end
 		if util.trim(record.id) == "" then return false, path .. ".id must not be empty" end
+		local rateProblem = ratePolicy.problem(record.requestsPerMinute, true)
+		if rateProblem then return false, path .. ".requestsPerMinute: " .. rateProblem end
 		ok, err = keyPolicy.validate(record)
 		if not ok then return false, path .. "." .. err end
 		for _, key in ipairs({ "preset", "authStyle", "api", "wsUrl", "note", "requires", "opencodeSession" }) do
@@ -96,26 +99,10 @@ return function(env)
 				return false, path .. "." .. key .. " must be text"
 			end
 		end
-		for _, key in ipairs({ "stream", "claudeUa", "enabled", "credentialsOmitted", "communityCredential" }) do
+		for _, key in ipairs({ "stream", "claudeUa", "enabled", "credentialsOmitted" }) do
 			if record[key] ~= nil and type(record[key]) ~= "boolean" then
 				return false, path .. "." .. key .. " must be a boolean"
 			end
-		end
-		if record.communityKeyState ~= nil then
-			local state = record.communityKeyState
-			ok, err = object(state, path .. ".communityKeyState")
-			if not ok then return false, err end
-			if record.communityCredential ~= true or record.apiKey ~= "" or type(state.revision) ~= "string" or state.revision == "" then
-				return false, path .. ".communityKeyState requires a versioned included-access reference"
-			end
-			local reference = { apiKey = "included-reference" }
-			local allowed = { revision = true, keyNames = true, keyIds = true, keyPaused = true, keyMode = true, selectedKey = true }
-			for field, value in pairs(state) do
-				if not allowed[field] then return false, path .. ".communityKeyState has an unsupported field" end
-				if field ~= "revision" then reference[field] = value end
-			end
-			ok, err = keyPolicy.validate(reference)
-			if not ok then return false, path .. ".communityKeyState: " .. err end
 		end
 		if record.order ~= nil and type(record.order) ~= "number" then return false, path .. ".order must be a number" end
 		ok, err = array(record.models, path .. ".models", stringValue)
@@ -170,6 +157,8 @@ return function(env)
 		local ok, err = jsonValue(snapshot, "config", {}, 0)
 		if not ok then return nil, err end
 		if type(snapshot) ~= "table" then return nil, "Configuration must be an object" end
+		local rateProblem = ratePolicy.configProblem(snapshot)
+		if rateProblem then return nil, rateProblem end
 		if snapshot.credentialVault ~= nil then return nil, "Unlock the encrypted configuration for review before applying it." end
 		snapshot = credentials.restore(snapshot)
 		for _, record in pairs(type(snapshot.providers) == "table" and type(snapshot.providers.list) == "table" and snapshot.providers.list or {}) do
@@ -187,6 +176,7 @@ return function(env)
 		local merged = withDefaults(config.defaults, snapshot)
 		-- Accept older exports without resurrecting the retired motion setting.
 		merged.ui.reduceMotion = nil
+		merged.agent.autoFreeRouting = nil
 		merged.bridge.requestTimeout, merged.bridge.enabled, merged.bridge.port, merged.bridge.token = nil, nil, nil, nil
 		local p = merged.providers
 		ok, err = array(p.list, "config.providers.list", provider)

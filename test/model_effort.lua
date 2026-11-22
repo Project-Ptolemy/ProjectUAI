@@ -145,7 +145,7 @@ case("closing the picker releases its settings subscriptions", function()
 	f.healthy(); f.close()
 end)
 
-case("Agent routing switch persists and updates an open picker", function()
+case("custom Auto remains an exact model ID without local routing", function()
 	local f = F.ui(900, 650)
 	local env, h = f.env, f.h
 	local config, providers = env.require("runtime/config"), env.require("provider/registry")
@@ -153,41 +153,29 @@ case("Agent routing switch persists and updates an open picker", function()
 	record.label, record.baseUrl, record.authStyle = "Routing UI fixture", "https://routing.fixture/v1", "none"
 	record.model, record.models = "auto", { "auto", "fixture-model" }
 	assert(providers.save(record)); providers.setActive(record.id)
-	f.loaded["provider/free_route"] = {
-		changed = env.require("runtime/signal").new("routing UI fixture"), refresh = function() end,
-		eligible = function() return config.get("agent.autoFreeRouting", true) ~= false end,
-		status = function() return { supported = true, enabled = config.get("agent.autoFreeRouting", true) ~= false, ready = true, ms = 2500 } end,
-	}
 	local panes = env.require("ui/settingspanes")
 	assert(panes.render("agent", f.host)); h.settle(0.1)
-	local row = assert(h.byName("AutomaticFreeRouting"))
-	local switch = assert(row:FindFirstChildOfClass("TextButton"))
-	check("routing is enabled in the initial settings", config.get("agent.autoFreeRouting") == true and switch:FindFirstChild("Knob", true).Position.X.Scale == 1)
+	check("retired routing controls are absent", h.byName("AutomaticFreeRouting") == nil)
 	local picker = env.require("ui/panels/modelpicker").open(); h.settle(0.1)
 	local model = assert(h.byName("Model_auto"))
-	local function label(text)
-		for _, node in ipairs(model:GetDescendants()) do if node:IsA("TextLabel") and node.Text == text then return true end end
-		return false
-	end
-	check("enabled Auto describes measured selection", label("Auto (fastest verified)"))
-	h.click(switch); h.settle(0.1)
-	check("disabling writes only the preference", config.get("agent.autoFreeRouting") == false and providers.active().model == "auto")
-	check("open picker stops advertising local selection", h.byName("Model_auto") == model and label("Auto (provider routing)") and label("Free | Automatic routing off"))
+	check("Auto is shown as the provider's exact ID", h.byName("ModelName", model).Text == "auto")
+	check("Auto receives no invented free or measured status", not h.textOf(model):find("Free", 1, true)
+		and not h.textOf(model):find("probe", 1, true))
 	assert(config.saveNow()); config.load(); h.settle(0.1)
-	check("disabled preference survives configuration reload", config.get("agent.autoFreeRouting") == false and providers.active().model == "auto")
-	h.click(switch); h.settle(0.1)
-	check("reenabling restores local selection without changing Auto", config.get("agent.autoFreeRouting") == true and label("Auto (fastest verified)") and providers.active().model == "auto")
+	check("configuration reload preserves the exact selection", providers.active().model == "auto"
+		and h.byName("ModelName", h.byName("Model_auto")).Text == "auto")
+	check("opening and reloading Auto never probes a provider", h.http.requestCount == 0)
 	picker.close(); h.settle(0.2); f.healthy(); f.close()
 end)
 
-case("routed model notices remain visible after native transcript replay", function()
+case("historical model notices remain visible after native transcript replay", function()
 	local f = F.ui(900, 650)
 	local session = f.env.require("agent/session").newThread()
 	local view = f.env.require("ui/chat/view").new(f.host)
 	view.attach(session); f.h.settle(0.2)
-	local text = "Automatic free routing selected verified-free-model. Turn it off in Settings → Agent → Automatic free routing."
-	session.emit("model:route", { model = "verified-free-model", provider = "HCNSEC", text = text }); f.h.settle(0.2)
-	check("live routing notice names the choice and disable setting", f.h.textOf(view.scroll.instance):find(text, 1, true) ~= nil)
+	local text = "Selected model: saved-model."
+	session.emit("model:route", { model = "saved-model" }); f.h.settle(0.2)
+	check("a legacy model notice names its saved choice", f.h.textOf(view.scroll.instance):find(text, 1, true) ~= nil)
 	view.refresh(); f.h.settle(0.3)
 	check("routing notice survives replay", f.h.textOf(view.scroll.instance):find(text, 1, true) ~= nil)
 	f.healthy(); view.destroy(); f.close()

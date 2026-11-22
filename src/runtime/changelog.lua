@@ -19,6 +19,34 @@ return function(env)
 	local CATEGORY_ORDER = { "added", "improved", "fixed" }
 	local ENTRIES = {
 		{
+			version = "4.1.1",
+			revision = "2026-11-22-provider-retirement-zen-and-request-limits",
+			date = "November 22, 2026",
+			title = "Provider retirement, Zen fixes and request limits",
+			highlights = "Retired community access migrates automatically. Set global and provider request limits. OpenCode Zen verifies free Chat models from the official catalog and retains direct API compatibility.",
+			sections = {
+				{ category = "added", label = "Request limits", items = {
+					"Set Requests per minute in Settings > Behaviour > Model requests, or an individual provider's connection settings. Values such as 1, 2 and 10 limit inference attempts; 0 leaves that limit off.",
+					"Concurrent conversations share the global allowance. Requests wait for capacity with visible status, while Stop, unload and explicit caller deadlines remain effective.",
+				} },
+				{ category = "improved", label = "Release notes", items = {
+					"What's New opens automatically once for each client release after startup and credential access. Later executions of the same version keep it closed.",
+				} },
+				{ category = "improved", label = "Provider retirement", items = {
+					"Removed Project UAI Free and HCNSEC from the provider library, along with community keys, access-hour banners and automatic free routing.",
+					"Older community connections and exports migrate automatically. Personal HCNSEC accounts become custom endpoints; unrelated providers, conversations and workspace files remain available.",
+					"If no enabled provider remains, choose another service in Providers. Chat and Quick Chat keep their drafts until setup is complete.",
+				} },
+				{ category = "fixed", label = "OpenCode Zen", items = {
+					"Supported free Chat models use OpenCode's public API token without a connected bridge or installed CLI. Your own Zen key keeps its direct API route; paid models retain their key requirement.",
+					"Free Chat eligibility comes from fresh official catalog metadata instead of a fixed model whitelist. Decision-only models, priced tiers and unknown metadata cannot silently become public Chat access.",
+					"Preserve the desktop identity, truthful context and compatibility declarations on Zen's supported routes. Direct access depends on the model and HTTP host; Go, custom endpoint and explicit URL settings remain effective.",
+					"Keep current free Chat models on Chat and preserve real UAI tools during optional CLI handoff. Logs redact Zen keys in diagnostic text.",
+					"Direct HTTPS and the installed CLI keep request ownership, cancellation and tool handoff to Roblox. Explicit refusals and uncertain outcomes never authorize replay.",
+				} },
+			},
+		},
+		{
 			version = "4.0.5",
 			revision = "2026-11-15-stability-panels-and-personas",
 			date = "November 15, 2026",
@@ -1613,8 +1641,24 @@ return function(env)
 	-- Newest first, as shipped above. Sorted rather than trusted so an edit in
 	-- the middle cannot silently reorder the modal.
 	M.ENTRIES = ENTRIES
+	local function versionParts(value)
+		if type(value) ~= "string" or #value > 64 then return nil end
+		local major, minor, patch = value:match("^(%d+)%.(%d+)%.(%d+)$")
+		if not major then return nil end
+		local out = { tonumber(major), tonumber(minor), tonumber(patch) }
+		for _, part in ipairs(out) do if not part or part == math.huge then return nil end end
+		return out
+	end
+	local function compareVersions(a, b)
+		local left, right = versionParts(a), versionParts(b)
+		if not left or not right then return nil end
+		for index = 1, 3 do
+			if left[index] ~= right[index] then return left[index] > right[index] and 1 or -1 end
+		end
+		return 0
+	end
 
-	function M.all()
+	function M.all(maxVersion)
 		local out = {}
 		for _, entry in ipairs(ENTRIES) do
 			local sections = {}
@@ -1652,12 +1696,50 @@ return function(env)
 				sections = sections,
 			}
 		end
-		table.sort(out, function(a, b) return a.version > b.version end)
+		table.sort(out, function(a, b)
+			local compared = compareVersions(a.version, b.version)
+			if compared ~= nil then return compared > 0 end
+			if versionParts(a.version) then return true end
+			if versionParts(b.version) then return false end
+			return tostring(a.version) > tostring(b.version)
+		end)
+		if versionParts(maxVersion) then
+			local bounded = {}
+			for _, entry in ipairs(out) do
+				local compared = compareVersions(entry.version, maxVersion)
+				if compared and compared <= 0 then bounded[#bounded + 1] = entry end
+			end
+			return bounded
+		end
 		return out
 	end
 
 	function M.latest()
 		return M.all()[1]
+	end
+
+	-- Automatic notices belong to this client version, even if a notes edit
+	-- accidentally includes a newer release. Unknown versions have no notice.
+	function M.current()
+		local running = env.info and env.info.version
+		if not versionParts(running) then return nil end
+		for _, entry in ipairs(M.all()) do if entry.version == running then return entry end end
+		return nil
+	end
+
+	function M.shouldShowAutomatically()
+		local current = M.current()
+		if not current then return false end
+		local shown = config.get("ui.changelogAutoShownVersion", "0.0.0")
+		local compared = compareVersions(current.version, shown)
+		return compared == nil or compared > 0
+	end
+
+	function M.markShown()
+		local current = M.current()
+		if not current or not M.shouldShowAutomatically() then return false end
+		config.set("ui.changelogAutoShownVersion", current.version)
+		return true
 	end
 
 	function M.isUnread()
@@ -1667,8 +1749,11 @@ return function(env)
 		return latest.revision ~= nil and config.get("ui.lastSeenChangelog", "") ~= latest.version .. ":" .. latest.revision
 	end
 
-	function M.markRead()
-		local latest = M.latest()
+	function M.markRead(version)
+		local latest
+		if version ~= nil then
+			for _, entry in ipairs(M.all()) do if entry.version == version then latest = entry; break end end
+		else latest = M.latest() end
 		if not latest then return false end
 		config.set("ui.lastSeenVersion", latest.version)
 		config.set("ui.lastSeenChangelog", latest.version .. ":" .. (latest.revision or ""))

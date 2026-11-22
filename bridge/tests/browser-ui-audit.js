@@ -259,13 +259,22 @@ function contrast(foreground, background) {
       'https://puai-proxy.davidzk.tech:444/agentrouter/v1', 'https://opencode.ai.evil.invalid/zen/v1']) {
       await endpoint.fill(value); assert.equal(await disclosure.isVisible(), false, value);
     }
-    for (const value of ['https://opencode.ai/zen/v1', 'https://opencode.ai/inference/v1/responses',
+    for (const value of ['https://opencode.ai/zen/v1', 'https://opencode.ai/inference/openai/v1/chat/completions',
       'https://puai-proxy.davidzk.tech/opencode/v1', 'https://puai-free-gateway.renern.workers.dev/opencode/v1']) {
       await endpoint.fill(value);
-      assert.match(await disclosure.textContent(), /Project UAI Desktop Bridge.*verified free API-key route.*Direct executor access depends on the host transport.*installed OpenCode CLI.*UAI Relay app/s);
+      assert.match(await disclosure.textContent(), /verifies Chat support and zero prices across every tier.*Confirmed free Chat models need no personal key.*host transport.*CLI through UAI Desktop is optional/s);
+      assert.match(await disclosure.textContent(), /unknown, priced and decision-only.*ten minutes.*restart/s);
+      assert.match(await disclosure.textContent(), /Direct free Chat API access.*Ordinary Node\.js and Windows Schannel.*Hy4 Flash Free/s);
       assert.doesNotMatch(await disclosure.textContent(), /can retry|90,000|API keys pass/);
       assert.equal(await disclosure.locator('a').getAttribute('href'), 'https://discord.gg/9xYyyYuKap');
     }
+    for (const value of ['https://opencode.ai/inference/v1/responses', 'https://opencode.ai/custom/v1',
+      'http://opencode.ai/zen/v1', 'https://opencode.ai/zen/v1?token=custom', 'https://opencode.ai./zen/v1']) {
+      await endpoint.fill(value);
+      assert.match(await disclosure.textContent(), /authentication required by this OpenCode endpoint/);
+      assert.doesNotMatch(await disclosure.textContent(), /Hy4 Flash Free|Confirmed free Chat models need no personal key/);
+    }
+    await endpoint.fill('https://opencode.ai/zen/v1');
     await page.setViewportSize({ width: 390, height: 844 });
     await disclosure.scrollIntoViewIfNeeded(); await screenshot('bridge-320-opencode-disclosure');
     for (const value of ['https://opencode.ai/inference/go/v1', 'https://opencode.ai/zen/go/v1',

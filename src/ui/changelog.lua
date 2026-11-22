@@ -17,8 +17,12 @@ return function(env)
 	local overlay = env.require("ui/overlay")
 	local changelog = env.require("runtime/changelog")
 	local clipboard = env.require("runtime/clipboard")
+	local clock = env.require("runtime/clock")
+	local config = env.require("runtime/config")
 
 	local M = {}
+	local cancelAutomatic
+	local OPEN_DELAY = 1.2
 
 	-- Category -> tone. The theme's tone system already owns the palette, so
 	-- the badges match every other coloured chip in the client for free.
@@ -28,7 +32,9 @@ return function(env)
 		fixed = "warn",
 	}
 
-	function M.show()
+	function M.show(options)
+		local current = options and options.automatic and changelog.current() or nil
+		if options and options.automatic and not current then return nil end
 		local modal = overlay.modal({
 			title = "What's new",
 			description = "Every release this client has shipped, newest first.",
@@ -38,12 +44,8 @@ return function(env)
 		})
 		if not modal then return nil end
 
-		-- Opening the list is what marks it read; the marker on the menu row
-		-- exists so a returning user knows to do exactly this.
-		changelog.markRead()
-
-		local releases = changelog.all()
-		local latestVersion = changelog.latest() and changelog.latest().version
+		local releases = changelog.all(current and current.version)
+		local latestVersion = releases[1] and releases[1].version
 		local cards = {}
 		local count = P.text(modal.content, { name = "ReleaseSearchCount", text = "", role = "caption",
 			auto = "Y", wrap = true, color = theme.color.textSecondary, layoutOrder = -1 })
@@ -259,7 +261,45 @@ return function(env)
 			size = "sm",
 			onClick = function() modal.close() end,
 		})
+		-- Consume the pending release prompt after its contents are built.
+		-- Manual access also avoids a redundant automatic open afterward.
+		changelog.markRead(current and current.version)
+		changelog.markShown()
 		return modal
+	end
+
+	-- App startup starts this owned watch after all bootstrap work has finished.
+	-- Hidden embeddings retain the notice until their normal window is shown.
+	function M.oncePerRelease(app)
+		if cancelAutomatic then cancelAutomatic() end
+		if not changelog.shouldShowAutomatically() or not app or not app.screen then return function() end end
+		local alive, pending, destroyed = true, nil, nil
+		local function cancel()
+			alive = false
+			if pending then pcall(task.cancel, pending); pending = nil end
+			if destroyed then destroyed:Disconnect(); destroyed = nil end
+			if cancelAutomatic == cancel then cancelAutomatic = nil end
+		end
+		local attempt
+		attempt = function()
+			pending = nil
+			if not alive then return end
+			if not changelog.shouldShowAutomatically() or app.disposed or not app.screen.Parent then cancel(); return end
+			local ok, focused = pcall(function() return env.uis:GetFocusedTextBox() end)
+			if app.startupReady ~= true or app.screen.Enabled == false or not app.window or not app.window.visible
+				or config.accessProblem() or config.vaultStatus().busy or #overlay.open > 0
+				or not ok or focused or env.require("agent/session").busyCount() > 0 then
+				pending = clock.delay(OPEN_DELAY, attempt)
+				return
+			end
+			local modal = M.show({ automatic = true })
+			if modal then cancel()
+			else pending = clock.delay(OPEN_DELAY, attempt) end
+		end
+		cancelAutomatic = cancel
+		destroyed = app.screen.Destroying:Connect(cancel)
+		pending = clock.delay(OPEN_DELAY, attempt)
+		return cancel
 	end
 
 	-- The menu row's label, with the unread marker when the running version

@@ -9,10 +9,9 @@ return function(env)
 		local problem = config.accessProblem()
 		if problem then return nil, problem end
 		if type(record) ~= "table" then return nil, "Choose a saved connection first." end
-		if record.preset == "projectuai-free" then return nil, "Add optional community access from the provider library." end
 		local draft = registry.blank(record.preset)
 		local cleanUrl = env.require("runtime/credentials").cleanUrl
-		for _, name in ipairs({ "api", "authStyle", "stream", "claudeUa" }) do draft[name] = record[name] end
+		for _, name in ipairs({ "api", "authStyle", "stream", "claudeUa", "requestsPerMinute" }) do draft[name] = record[name] end
 		draft.label = util.ellipsis(tostring(record.label or "Connection") .. " copy", 100)
 		draft.baseUrl, draft.wsUrl = cleanUrl(record.baseUrl), cleanUrl(record.wsUrl)
 		draft.model, draft.models = record.model, util.deepCopy(record.models or {})
@@ -20,7 +19,6 @@ return function(env)
 		-- copy retains only fresh preset defaults and explicit public fields.
 		draft.apiKey, draft.keyNames, draft.keyPaused, draft.keyIds = "", {}, {}, {}
 		draft.keyMode, draft.selectedKey, draft.id = "rotate", 1, ""
-		draft.communityCredential, draft.communityKeyState = nil, nil
 		return draft
 	end
 	function M.hasLearned(record)

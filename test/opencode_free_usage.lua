@@ -1,6 +1,7 @@
 -- Complete OpenCode free-access refusals stop replay; generic limits still retry.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("OpenCode free API usage")
 local check, case = suite.check, suite.case
 local refusalMessage = "Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going: https://opencode.ai/go"
@@ -42,8 +43,9 @@ local function fixture(protocol, pool)
 	local f = F.new(); local registry = f.env.require("provider/registry")
 	f.record = registry.blank("zen")
 	f.record.id, f.record.label = "opencode-usage-fixture", "OpenCode usage fixture"
-	f.record.model = protocol == "responses" and "muse-spark-1.3-contributor-free" or "deepseek-v4.1-flash-free"
+	f.record.model = protocol == "responses" and "fixture-response-model" or "deepseek-v4.1-flash-free"
 	f.record.models, f.record.apiKey = { f.record.model }, pool and "fixture-one\nfixture-two" or "fixture-one"
+	if protocol == "responses" then Z.responses(f, f.record) end
 	f.seen, f.retries = {}, 0
 	function f.observe(entry)
 		f.seen[#f.seen + 1] = { url = entry.url, key = f.env.require("net/headers").get(entry.headers, "Authorization") }
@@ -79,7 +81,8 @@ for _, protocol in ipairs({ "chat", "responses" }) do
 			check("current key is not cooled or replaced", f.seen[1].key == "Bearer fixture-one"
 				and next(f.env.require("provider/registry").keyCooldowns(f.record) or {}) == nil)
 			check("tunnel advice survives both adapters", why:find("installed OpenCode tunnel", 1, true))
-			check("bridge API-key advice survives both adapters", why:find("Desktop Bridge for API-key access", 1, true))
+			check("direct API and transport advice survive both adapters", why:find("Direct free Chat API access", 1, true)
+				and why:find("compatible API-key transport", 1, true))
 			check("refusal does not teach a protocol switch", not f.env.require("provider/responses").remembered(f.record))
 			f.healthy(); f.close()
 		end)

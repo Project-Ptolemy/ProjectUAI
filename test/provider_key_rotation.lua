@@ -1,6 +1,7 @@
 -- Observe actual synthetic request headers; no real credentials or network.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("Provider key rotation")
 local check, case = suite.check, suite.case
 local function fixture(protocol, proxy)
@@ -31,6 +32,7 @@ local function fixture(protocol, proxy)
 		f.seen[#f.seen + 1] = auth:gsub("^Bearer ", "")
 	end
 	function f.complete()
+		if protocol == "responses" then Z.responses(f, f.record) end
 		local result, why = f.run(function()
 			return f.env.require("provider/chat").complete(f.record, {
 				messages = { { role = "user", content = "hello" } }, stream = false, attempts = 1,

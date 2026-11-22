@@ -151,7 +151,7 @@ case("OpenCode desktop keeps its direct workaround without the retired proxy", f
 	end
 	local result, why = f.complete()
 	check("direct Chat and Responses retained", not result and f.h.http.requestCount == 2)
-	check("desktop and mobile guidance", has(why, "Project UAI Desktop Bridge") and has(why, "API-key access")
+	check("direct API and mobile guidance", has(why, "Direct free Chat API access") and has(why, "API-key transport")
 		and has(why, "UAI Relay app") and has(why, "https://discord.gg/9xYyyYuKap"))
 	check("saved URL stays official", f.registry.get(record.id).baseUrl == "https://opencode.ai/zen/v1")
 	f.healthy(); f.close()
@@ -169,7 +169,8 @@ case("OpenCode mobile refuses once with the supported alternative", function()
 		if entry.url:find("opencode.ai", 1, true) then provider = provider + 1 end
 	end
 	check("no mobile retry or proxy", not result and provider == 1)
-	check("alternative and help are visible", has(why, "UAI Relay app") and has(why, "Project UAI Free") and has(why, "https://discord.gg/9xYyyYuKap"))
+	check("supported guidance and help are visible", has(why, "UAI Relay app") and has(why, "Direct free Chat API access")
+		and not has(why, "Project UAI Free") and has(why, "https://discord.gg/9xYyyYuKap"))
 	f.healthy(); f.close()
 end)
 

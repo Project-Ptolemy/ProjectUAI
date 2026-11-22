@@ -131,7 +131,8 @@ def validate_html(base):
     check(doc.ids["toolSearch"].attrs.get("aria-keyshortcuts") == "/", "Catalog shortcut must be discoverable")
     check(doc.ids["catalogLink"].text.strip().endswith("#tools"), "Share link must target the catalog")
     check("hidden" in doc.ids["catalogShare"].attrs, "Inactive share controls must stay hidden without JavaScript")
-    check("not added automatically" in source and "HCNSEC" in source, "Provider onboarding must describe opt-in separate routes")
+    check("not added automatically" in source and "Choose a provider" in source, "Provider onboarding must explain explicit provider setup")
+    check("Project UAI Free" not in source and "HCNSEC" not in source, "Retired providers must not be advertised")
     check("docs/GETTING_STARTED.md" in source and "docs/OBSIDIAN.md" in source, "Task-focused setup links are missing")
     tools = [node.attrs["data-tool-name"] for node in doc.elements if "data-tool-name" in node.attrs]
     groups = [node.attrs["data-group"] for node in doc.elements if node.has_class("tool-group")]

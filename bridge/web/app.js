@@ -4,6 +4,7 @@ const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className
 const button=(text,fn,cls,key)=>{const n=el('button',cls,text);n.type='button';n.onclick=fn;if(key)n.dataset.focusKey=key;return n;};
 function icon(name){const n=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS(n.namespaceURI,'use');n.classList.add('icon');n.setAttribute('aria-hidden','true');use.setAttribute('href','icons.svg#'+name);n.append(use);return n;}
 const uuid=()=>crypto.randomUUID();
+const providerTestStarts=new Set(),providerTestCancels=new Set();
 function stored(storage,key){try{return window[storage].getItem(key);}catch{return null;}}
 const fromHash=location.hash.match(/(?:#|&)t=([a-f0-9]{64})(?:$|&)/i);
 let requestedSettings=['mcp','obsidian'].includes(new URLSearchParams(location.search).get('settings'))?new URLSearchParams(location.search).get('settings'):null;
@@ -458,7 +459,7 @@ function failureInfo(event,raw,tool=false){
   if(tool)return {title:/timeout|timed out/i.test(text)||event.error==='timeout'?'This step took too long':'This step could not finish',message:toolErrorText(event,text),tone:'error'};
   if(/invalid\s*executor.?request|companion could not read the executor|request encoding|invalid gzip request/i.test(text))return {title:'Update UAI Relay to continue',message:'Update the UAI Relay app and reload the UAI script. Keep your current pairing.',action:'connection',tone:'warning'};
   if(/(?:bridge|relay)[\s\S]{0,120}(?:token|unauthorized|authentication|authorization)|(?:token|unauthorized|authentication|authorization)[\s\S]{0,80}(?:bridge|relay)|token no longer works/i.test(text))return {title:'Check your bridge connection',message:'The bridge did not accept this connection. Open Connection to check the current pairing details.',action:'connection',tone:'warning'};
-  if(/FreeUsageLimitError|free usage limit reached\. free models work in opencode|OpenCode refused free API usage/i.test(text))return {title:'OpenCode free API access refused',message:'OpenCode refused this direct free-model request. Update the UAI client and Project UAI Desktop Bridge for API-key access, or use the installed OpenCode tunnel through the bridge. Changing keys may not restore access.',action:'providers',tone:'warning'};
+  if(/FreeUsageLimitError|free usage limit reached\. free models work in opencode|OpenCode refused free API usage/i.test(text))return {title:'OpenCode free API access refused',message:'OpenCode refused this direct free-model request. Use the current UAI client and a supported free Chat model. Direct free Chat API access depends on the host transport; Project UAI Desktop Bridge supplies compatible API-key transport. The installed OpenCode tunnel is optional. Changing keys may not restore access.',action:'providers',tone:'warning'};
   if(status===429||/rate.?limit|too many requests/i.test(text))return {title:'Request limit reached',message:'The provider is limiting requests. Wait a moment before trying again.',tone:'warning'};
   if(status===401||status===403||/invalid.{0,12}(?:api.?key|token)|authentication/i.test(text))return {title:'Check your provider access',message:'The request was not authorized. Check the selected provider’s API key and account access.',action:'providers',tone:'warning'};
   if(/timeout|timed out|deadline/i.test(text))return {title:'The request took too long',message:'The provider or connection stopped waiting for a response. You can review your message before trying again.',tone:'warning'};
@@ -568,7 +569,7 @@ function renderEvent(e,controlsCurrent=true){
     }
     case 'cleared':events=[];renderer.reset();tools.clear();resetResponses();if(window.UAI&&UAI.pictures)UAI.pictures.clearSession(sessionId);$('transcript').replaceChildren();welcome();break;
     case 'provider:switch':append(el('div','note','Switched provider to '+e.to));break;
-    case 'model:route':append(el('div','note',e.text||('Automatic free routing selected '+e.model+'. Turn it off in Settings → Agent → Automatic free routing.')));break;
+    case 'model:route':append(el('div','note',e.text||('Selected model: '+e.model+'.')));break;
     case 'request:retry':append(el('div','note',`Retrying ${e.provider||'provider'} · ${e.reason||''}`));break;
     case 'subagent:start':appendActivity(el('div','note activity-note','Subagent · '+(e.task||e.label||'')));break;
     case 'subagent:done':appendActivity(el('div','note activity-note','Subagent finished · '+(e.label||'')));break;
@@ -941,9 +942,15 @@ function buildPanel(root){root.replaceChildren();
     root.append(el('p','panel-description','Manage your connections, check their health, and choose which provider powers your conversation.'));
     for(const p of state.providers||[]){const c=card(root),active=state.activeProvider===p.id;c.classList.add('provider-card');c.dataset.active=String(active);
       const header=el('div','provider-heading');header.append(el('h2',null,p.label),el('span','pill',active?'Active provider':p.enabled===false?'Disabled':'Available'));c.append(header,el('p','provider-url',p.baseUrl||'No endpoint configured'));
-      const model=el('div','provider-model');model.append(el('span','eyebrow','CURRENT MODEL'),el('strong',null,p.model||'No model selected'));if(isFreeModel(p,p.model)){model.classList.add('is-free');model.append(el('span','free-label','Free'));}c.append(model);if(freeRouteText(p))c.append(el('p','free-route',freeRouteText(p)));
+      const model=el('div','provider-model');model.append(el('span','eyebrow','CURRENT MODEL'),el('strong',null,p.model||'No model selected'));if(isFreeModel(p,p.model)){model.classList.add('is-free');model.append(el('span','free-label','Free'));}c.append(model);
       const row=el('div','provider-actions'),health=el('span','provider-health',`${p.health?.ok||0} successful · ${p.health?.fail||0} failed`),use=button(active?'Active':'Use',()=>action('provider',{id:p.id}),active?'selected':'outline','provider:'+p.id+':use');use.setAttribute('aria-pressed',String(active));use.disabled=!connected;
-      row.append(health,el('span','spacer'),button('Test connection',async()=>{try{const result=await command('provider:test',{id:p.id});toast(result.text+' · '+result.ms+' ms');}catch(error){toast(error.message);}},null,'provider:'+p.id+':test'),use,button('Edit',()=>providerEditor(p),'outline','provider:'+p.id+':edit'));c.append(row);if(p.health?.lastError)c.append(el('p','provider-error',p.health.lastError));}
+      const test=p.connectionTest,testActive=test&&['running','waiting','cancelling'].includes(test.state),starting=providerTestStarts.has(p.id);
+      const check=button('Test connection',()=>startProviderTest(p),null,'provider:'+p.id+':test');check.disabled=!connected||!!testActive||starting;
+      row.append(health,el('span','spacer'),check,use,button('Edit',()=>providerEditor(p),'outline','provider:'+p.id+':edit'));
+      if(testActive){const cancel=button('Cancel test',()=>cancelProviderTest(p,test),'outline','provider:'+p.id+':cancel-test');cancel.disabled=!connected||test.state==='cancelling'||providerTestCancels.has(test.id);row.append(cancel);}
+      c.append(row);
+      if(test||starting){const cancelling=test&&(test.state==='cancelling'||providerTestCancels.has(test.id)),text=starting&&!testActive?'Starting connection test…':cancelling?'Cancelling connection test':test.text||'Testing connection';const status=el('p',test?.state==='failed'?'provider-error provider-test-status':'field-help provider-test-status',text+(test?.state==='succeeded'&&Number.isFinite(test.ms)?' · '+test.ms+' ms':''));status.setAttribute('aria-live','polite');c.append(status);}
+      if(p.health?.lastError)c.append(el('p','provider-error',p.health.lastError));}
   }
   else if(page==='tools'){const filter=el('input');filter.type='search';filter.placeholder='Search tools';filter.setAttribute('aria-label','Search tools');filter.value=toolFilter;filter.oninput=()=>{toolFilter=filter.value;renderToolCards(list);};heading(root,'Tools',filter);root.append(el('p','panel-description','Explore the actions available in your game. Review permissions or run a tool directly.'));const list=el('div','tool-grid');root.append(list);renderToolCards(list);}
   else if(page==='agents'){heading(root,'Subagents');root.append(el('p','panel-description','Follow delegated work, review results, and stop a task when you need to.'));for(const a of state.subagents||[]){const c=card(root);c.classList.add('agent-card');const head=el('div','item-heading');head.append(el('h3',null,a.label||a.id),el('span','pill',agentStatus(a)));c.append(head,el('p','agent-task-excerpt',a.currentTask||a.task));const facts=[a.provider,a.model,agentElapsed(a.elapsedMs??a.ms)];c.append(el('small','agent-card-meta',facts.filter(Boolean).join(' · ')));const actions=el('div','agent-card-actions');actions.append(button('Preview',()=>agentDetails(a.id),'outline','agent:'+a.id+':preview'));if(['running','queued'].includes(a.status))actions.append(button('Stop',()=>action('subagent:stop',{id:a.id}),'danger outline'));c.append(actions);}}
@@ -1026,6 +1033,24 @@ function runTool(name,initial){
     };
   },{description:'Review the parameters before running this tool. Your workspace permissions apply.',size:'wide'});
 }
+async function startProviderTest(provider){
+  const existing=state.providers?.find(item=>item.id===provider.id)?.connectionTest;
+  if(providerTestStarts.has(provider.id)||existing&&['running','waiting','cancelling'].includes(existing.state))return;providerTestStarts.add(provider.id);requestPanelRefresh();
+  const owner=instance,testId=uuid();
+  try{const result=await command('provider:test',{id:provider.id,testId});if(owner!==instance)return;if(result?.id!==testId){if(result?.text)toast(result.text+(Number.isFinite(result.ms)?' · '+result.ms+' ms':''));return;}const current=state.providers?.find(item=>item.id===provider.id),retained=current?.connectionTest;
+    // Live metadata may already describe this Test or a later Test from another browser.
+    if(current&&(!retained||retained.id!==testId&&!['running','waiting','cancelling'].includes(retained.state)&&Number.isFinite(retained.startedAt)&&Number.isFinite(result.startedAt)&&retained.startedAt<result.startedAt))current.connectionTest=result;
+  }
+  catch(error){if(owner===instance)toast(error.message);}
+  finally{if(owner===instance){providerTestStarts.delete(provider.id);requestPanelRefresh();}}
+}
+async function cancelProviderTest(provider,test){
+  if(providerTestCancels.has(test.id))return;providerTestCancels.add(test.id);requestPanelRefresh();
+  const owner=instance;
+  try{await command('provider:test:cancel',{id:provider.id,testId:test.id});}
+  catch(error){if(owner===instance)toast(error.message);}
+  finally{if(owner===instance){providerTestCancels.delete(test.id);requestPanelRefresh();}}
+}
 function providerEditor(provider){modal(provider?'Edit provider':'Add provider',root=>{
   const form=el('form','dialog-form');form.id='modalForm';root.append(form);
   const connection=el('section','dialog-section');connection.append(el('h3',null,'Connection'));form.append(connection);
@@ -1041,6 +1066,9 @@ function providerEditor(provider){modal(provider?'Edit provider':'Add provider',
   const key=field(credentials,provider?.hasKey?'API key (blank keeps current key)':'API key','','password');key.autocomplete='new-password';key.spellcheck=false;key.autocapitalize='off';
   const model=field(credentials,'Model',provider?.model||'');model.spellcheck=false;model.placeholder='Exact model ID from your provider';
   credentials.append(el('small','field-help','Use an exact model ID. Saved providers can discover their available models in the model picker.'));
+  const limits=el('section','dialog-section');limits.append(el('h3',null,'Request limits'));form.append(limits);
+  const rate=field(limits,'Requests per minute',provider?.requestsPerMinute??0,'number');rate.min=0;rate.max=1000000;rate.step=1;rate.inputMode='numeric';
+  limits.append(el('small','field-help','0 adds no provider cap. All keys in this provider share the cap. The global cap also applies. Inference attempts, including retries, count. Stop cancels while waiting.'));
   const disclosure=el('p','provider-disclosure');form.append(disclosure);
   function describeEndpoint(){
     // Match the registry's normalized routes without URL path canonicalization.
@@ -1054,24 +1082,25 @@ function providerEditor(provider){modal(provider?'Edit provider':'Add provider',
     const retired=standard&&['puai-proxy.davidzk.tech','puai-free-gateway.renern.workers.dev'].includes(host)&&/^\/opencode(?:\/|$)/i.test(path);
     const openCode=host==='opencode.ai'||retired;
     const go=standard&&scheme==='https'&&host==='opencode.ai'&&['/inference/go/v1','/zen/go/v1'].includes(base);
+    const chatBase=path.replace(/\/(?:chat\/completions|models)$/,'');
+    const zen=standard&&scheme==='https'&&parsed?.[2].toLowerCase()==='opencode.ai'&&!/[?#]/.test(input)&&['/zen/v1','/inference/v1','/inference/openai/v1'].includes(chatBase);
     disclosure.hidden=!proxy&&!vendor&&!openCode;
-    disclosure.textContent=go?'This is the OpenCode Go subscription endpoint. Use your Go API key here. Go requests use this endpoint directly, including in Cowork.':openCode?(retired?'This OpenCode proxy route has retired. ':'')+'Use the current UAI client and Project UAI Desktop Bridge for the verified free API-key route. Direct executor access depends on the host transport. Free models can also use an installed OpenCode CLI through Cowork. Mobile OpenCode requires the UAI Relay app from Discord.':proxy?'This AgentRouter endpoint uses the Project UAI proxy. Requests and API keys pass through it, with a shared limit of 90,000 requests per day. The Base URL remains editable.':vendor?'If AgentRouter explicitly refuses the client identity, UAI can retry through the Project UAI proxy. Requests and API keys then pass through that proxy, which has a shared daily limit of 90,000 requests.':'';
+    disclosure.textContent=go?'This is the OpenCode Go subscription endpoint. Use your Go API key here. Go requests use this endpoint directly, including in Cowork.':zen||retired?(retired?'This OpenCode proxy route has retired. Use the official Zen endpoint. ':'')+'UAI verifies Chat support and zero prices across every tier in the current official catalog before supplying public authentication. Confirmed free Chat models need no personal key. Model names and free suffixes do not establish access; unknown, priced and decision-only models keep their requirements. Verification expires after ten minutes and repeats before inference after restart. Direct free Chat API access uses UAI request compatibility and depends on the host transport. Ordinary Node.js and Windows Schannel requests are confirmed for Hy4 Flash Free; other reviewed free Chat models require compatible transport. Your own Zen key takes precedence and is required for paid API models. The installed OpenCode CLI through UAI Desktop is optional.':openCode?'Use the authentication required by this OpenCode endpoint. Supported public free Chat access applies to official HTTPS Zen routes.':proxy?'This AgentRouter endpoint uses the Project UAI proxy. Requests and API keys pass through it, with a shared limit of 90,000 requests per day. The Base URL remains editable.':vendor?'If AgentRouter explicitly refuses the client identity, UAI can retry through the Project UAI proxy. Requests and API keys then pass through that proxy, which has a shared daily limit of 90,000 requests.':'';
     if(!disclosure.hidden)deadlineHelp(disclosure);
   }
   preset.onchange=()=>{const p=state.presets?.find(p=>p.id===preset.value);if(p){label.value=p.label||'';url.value=p.baseUrl||'';apiStyle.value=p.api||'openai';auth.value=p.authStyle||defaultAuth();}describeEndpoint();};url.oninput=describeEndpoint;describeEndpoint();
-  form.onsubmit=event=>{event.preventDefault();const value={id:provider?.id,preset:preset.value,label:label.value.trim(),baseUrl:url.value.trim(),api:apiStyle.value,authStyle:auth.value,model:model.value.trim()};if(key.value)value.apiKey=key.value;modalCommand('provider:save',{provider:value});};
+  form.onsubmit=event=>{event.preventDefault();const value={id:provider?.id,preset:preset.value,label:label.value.trim(),baseUrl:url.value.trim(),api:apiStyle.value,authStyle:auth.value,model:model.value.trim(),requestsPerMinute:Number(rate.value||0)};if(key.value)value.apiKey=key.value;modalCommand('provider:save',{provider:value});};
   if(provider){const del=button('Delete',()=>{},'danger outline');armButton(del,'Confirm delete?',()=>modalCommand('provider:remove',{id:provider.id}));modalActions(del);}
   const save=el('button','primary','Save');save.type='submit';save.setAttribute('form',form.getAttribute('id'));modalActions(el('span','spacer'),modalCancel(),save);
 },{description:'Connect the provider you want to use in this workspace.',size:'wide'});}
 function isFreeModel(provider,id){
   if(!id)return false;
   if(Array.isArray(provider?.freeModels))return provider.freeModels.includes(id);
-  if(provider?.free===true&&id===provider.model)return true;
   const metadata=provider?.modelInfo?.[id]||provider?.modelMetadata?.[id];
   if(metadata?.free===true)return true;
-  return /(?:^|[-_:/])free(?:$|[-_:/])|^big-pickle$/i.test(id);
+  if(provider?.preset==='zen'||provider?.preset==='opencode-go'||/^(?:https?:\/\/)?opencode\.ai(?::\d+)?(?:\/|$)/i.test(provider?.baseUrl||''))return false;
+  return /(?:^|[-_:/])free(?:$|[-_:/])/i.test(id);
 }
-function freeRouteText(provider){const route=provider?.freeRoute;if(!route)return '';if(route.supported&&route.enabled===false)return 'Automatic free routing is off. Requests keep provider Auto. Change this in Settings → Agent → Automatic free routing.';if(route.running)return 'Checking available models for a faster response…';if(route.ready&&route.model)return 'Auto route: '+route.model+(Number.isFinite(route.ms)?' · '+(route.ms/1000).toFixed(1)+' s probe':'');return '';}
 function tokenCount(value){if(!Number.isFinite(value)||value<0)return 'Unknown';return value>=1000000?(value/1000000).toFixed(value%1000000===0?0:1)+'M':value>=1000?(value/1000).toFixed(value%1000===0?0:1)+'K':Math.round(value).toLocaleString();}
 function contextSnapshot(){const value=state.context;if(!value||!Number.isFinite(value.usedTokens)||value.usedTokens<0||value.sessionId&&value.sessionId!==sessionId)return null;return value;}
 function contextRatio(value){return value?.windowTokens>0?value.usedTokens/value.windowTokens:null;}
@@ -1102,7 +1131,6 @@ function models(){modal('Models & reasoning',root=>{
   const provider=select(filters,'Provider',(state.providers||[]).map(p=>[p.id,p.label]),state.activeProvider),search=field(filters,'Search models','');search.type='search';search.placeholder='Search by model name';search.autofocus=true;
   provider.parentElement.classList.add('model-provider');search.parentElement.classList.add('model-search');filters.prepend(search.parentElement);
   const meta=el('div','model-meta'),count=el('span','muted'),freeLabel=el('label','row'),free=el('input');free.type='checkbox';freeLabel.append(free,document.createTextNode('Free only'));meta.append(count,freeLabel);root.append(meta);
-  const routeStatus=el('p','free-route');root.append(routeStatus);
   const workspace=el('div','model-workspace'),results=el('div','model-results'),list=el('div','model-list'),empty=el('div','model-empty'),detail=el('section','model-detail');results.append(list,empty);workspace.append(results,detail);root.append(workspace);
   const selectedEyebrow=el('span','eyebrow','CURRENT CHOICE'),selectedName=el('h3'),selectedProvider=el('p','model-detail-provider'),capabilities=el('div','model-capabilities');detail.append(selectedEyebrow,selectedName,selectedProvider,capabilities);
   const reasoning=el('div','model-reasoning'),reasoningTitle=el('h4',null,'Reasoning effort'),efforts=el('div','effort-options'),reasoningHelp=el('p','field-help');efforts.setAttribute('role','group');efforts.setAttribute('aria-label','Reasoning effort');reasoning.append(reasoningTitle,efforts,reasoningHelp);detail.append(reasoning);
@@ -1142,7 +1170,6 @@ function models(){modal('Models & reasoning',root=>{
     syncProviders();
     const p=state.providers?.find(p=>p.id===provider.value),query=search.value.toLowerCase(),models=Array.isArray(p?.models)?p.models:[];
     const ids=[...new Set(models.filter(id=>typeof id==='string'&&id.trim()))].filter(id=>id.toLowerCase().includes(query)&&(!free.checked||isFreeModel(p,id)));
-    routeStatus.textContent=freeRouteText(p);routeStatus.hidden=!routeStatus.textContent;
     const signature=JSON.stringify([p?.id,p?.model,connected,!!modalContext?.pending,!!modalContext?.uncertain,query,free.checked,ids.map(id=>{const info=p?.modelInfo?.[id]||{};return[id,isFreeModel(p,id),info.contextWindow,info.reasoning,info.maxOutputTokens];})]);
     if(signature===listSignature){paintDetail(p);return;}listSignature=signature;
     count.textContent=ids.length+' model'+(ids.length===1?'':'s');empty.hidden=!!ids.length;empty.textContent=!state.providers?.length?'Add a provider to choose a model.':search.value||free.checked?'No models match these filters.':'No models available yet. Refresh the list, or enter an exact model ID in your provider settings.';
@@ -1310,7 +1337,7 @@ const SETTING_CHOICES={
   'iy.mode':['off','hidden','visible'],'agent.effort':['low','medium','high','xhigh','max']
 };
 const SETTING_RANGES={'ui.fontScale':[.85,1.4,.05],'agent.temperature':[0,2,.1],'agent.toolConcurrency':[1,8,1],
-  'agent.maxTurns':[1,1000,1],'agent.toolTimeout':[1,86400,1],'agent.requestTimeout':[1,86400,1],'agent.retries':[1,10,1],
+  'agent.maxTurns':[1,1000,1],'agent.toolTimeout':[1,86400,1],'agent.requestTimeout':[1,86400,1],'agent.retries':[1,10,1],'agent.requestsPerMinute':[0,1000000,1],
   'agent.contextTokens':[1000,2000000,1],'agent.contextFraction':[.3,.95,.05],'agent.maxTokens':[1,1000000,1]};
 function openSettings(initial='general'){
   modal('Settings',root=>{
@@ -1359,10 +1386,10 @@ function openSettings(initial='general'){
 }
 function renderSettingFields(details,section,values){
     for(const [key,value]of Object.entries(values)){
-      if(['lastSeenVersion','lastSeenChangelog','panel'].includes(key)||(section==='ui'&&key==='reduceMotion')||(section==='bridge'&&key==='requestTimeout')||typeof value==='object')continue;
-      const path=section+'.'+key,row=el('label','setting'),caption=el('span',null,path==='agent.autoFreeRouting'?'Automatic free routing':key.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())),status=el('small','save-status');status.setAttribute('aria-live','polite');
-      if(path==='agent.autoFreeRouting')caption.append(el('small','field-help','Choose a recently verified model when Project UAI Free uses Auto. Add this optional route from the Providers library. HCNSEC uses its own connection and key. Off keeps provider Auto and stops new local routing probes; an active request continues.'));
+      if(['lastSeenVersion','lastSeenChangelog','changelogAutoShownVersion','panel'].includes(key)||(section==='ui'&&key==='reduceMotion')||(section==='bridge'&&key==='requestTimeout')||(section==='agent'&&key==='autoFreeRouting')||typeof value==='object')continue;
+      const path=section+'.'+key,row=el('label','setting'),caption=el('span',null,path==='agent.requestsPerMinute'?'Requests per minute':key.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())),status=el('small','save-status');status.setAttribute('aria-live','polite');
       caption.append(status);row.append(caption);
+      if(path==='agent.requestsPerMinute')caption.append(el('small','field-help','0 is unlimited. All conversations and subagents share this cap. Inference attempts, including retries, count. Provider caps also apply. Stop cancels while waiting.'));
       let input;
       if(typeof value==='boolean'){input=el('input');input.type='checkbox';input.checked=value;}
       else if(path==='agent.persona'){
@@ -1641,6 +1668,7 @@ async function enter(){
   if(hello.protocol!==2)throw Error('Update the bridge files, then restart the bridge to connect.');
   if(instance&&hello.instance!==instance){
     cancelSnapshotReplay();recoveringTranscript=false;UAI.pictures.reset();renderer.reset();events=[];eventBytes=0;tools.clear();state={};$('transcript').replaceChildren();
+    providerTestStarts.clear();providerTestCancels.clear();
     if(sendOperation){sendOperation.lost=true;setPhase('uncertain');persistOperation();}
   }
   instance=hello.instance;connected=!!hello.connected;bridgeUpdate=hello.update||{};kiloStatus=hello.capabilities?.kilo||{};clineStatus=hello.capabilities?.cline||{};openCodeStatus=hello.capabilities?.opencode||{};link='online';

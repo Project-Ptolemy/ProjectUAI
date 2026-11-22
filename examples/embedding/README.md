@@ -9,7 +9,7 @@ requests and teardown.
 
 Read [Embedding Project UAI](../../docs/EMBEDDING.md) for the runtime reference and
 [UI_LIBRARY.md](../../docs/UI_LIBRARY.md) for the UI API. The example targets
-Project UAI 3.7.2 with embedding SDK 1.0.0 and UI LIB 1.5.0.
+Project UAI 4.1.1 with embedding SDK 1.1.0 and UI LIB 1.6.0.
 
 ## SDK example
 
@@ -33,8 +33,8 @@ providers, and permissions. An enabled vault asks for its password each time;
 the explicit **Continue without encryption** choice saves reversibly encoded,
 unprotected keys and skips future prompts. After access is granted,
 `integration.configureProvider()` opens the native app for provider setup. New
-clients start with no provider; optional Project UAI Free and personal-key HCNSEC
-are distinct library choices. `ask` returns a setup reason before starting a request
+clients start with no provider; [provider migration](../../docs/providers/migration.md)
+removes retired community access during upgrades. `ask` returns a setup reason before starting a request
 when no provider is configured.
 The SDK can also save user-supplied provider
 settings through the [provider API](../../docs/EMBEDDING.md#provider-api).

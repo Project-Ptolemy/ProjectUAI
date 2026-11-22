@@ -591,7 +591,7 @@ case("cold vault boot gates every UI entry point and allows explicit Exit", func
 		local h = require("env").new({ context = { ui = ui } })
 		local function find(name) return h.byName(name, h.coreGui) end
 		h.files["UAI/config.json"] = h.json.encode({ security = { rememberCredentials = true },
-			ui = { tutorial = { seen = true }, communityInvite = { disabled = true } }, agent = { autoFreeRouting = false },
+			ui = { tutorial = { seen = true }, communityInvite = { disabled = true } },
 			providers = { list = {}, active = "" }, credentialVault = { version = 1, cipher = "aes-256-siv",
 				kdf = "pbkdf2-hmac-sha256", iterations = 600000, salt = "uai-vault-v1:00000000-0000-4000-8000-000000000001", data = string.rep("0", 32) } })
 		local handle = assert(h.boot("dist/uai.lua")); h.settle(0.5)

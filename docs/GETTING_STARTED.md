@@ -19,14 +19,14 @@ or use a custom endpoint. Choosing a card prepares a draft; **Save** applies it.
 
 | Choice | What to supply |
 | --- | --- |
-| Project UAI Free | Select the optional preset; its shared credential is managed by UAI. Available daily 20:00–12:00 UTC+8. |
-| HCNSEC | Your personal HCNSEC API key and a model available to that account. |
-| Other hosted providers | The service's API key, compatible endpoint and model. |
+| Hosted provider | The service's API key, compatible endpoint and model. |
+| Free route | The access required by that provider; quotas and model availability depend on the service. |
 | Local server | A reachable server URL and model; authentication depends on that server. |
 
-Project UAI Free and HCNSEC are separate presets. New, reset and empty imported
-configurations do not automatically add Free. Existing providers remain configured.
-See [provider guides](providers/README.md) for service-specific steps.
+New, reset and empty imported configurations start without a provider. Release
+4.1.1 removes retired community access and migrates personal HCNSEC connections
+to custom endpoints. See [provider migration](providers/migration.md) for upgrades
+and [provider guides](providers/README.md) for service-specific steps.
 
 Fetch models when supported, or enter an exact model ID. Select the provider and
 model above the composer. A discovery failure does not prove that manual inference

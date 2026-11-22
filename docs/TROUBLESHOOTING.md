@@ -6,8 +6,8 @@ occurred. Check the result before repeating an action with side effects.
 
 | Problem | Next step |
 | --- | --- |
-| No provider is configured | Open Providers and add a preset. Free is optional and HCNSEC requires your own key. |
-| Free is outside its access hours | Return during 20:00–12:00 UTC+8 or choose another provider. Existing accepted replies are allowed to finish. |
+| No provider is configured | Open Providers, add a service, supply its required access and select a model. |
+| A community connection was removed after upgrading | Release 4.1.1 retires shared access. Choose another service; [migration](providers/migration.md) preserves personal connections. |
 | Model list is empty | Check URL/authentication, then fetch again or enter an exact supported model ID. |
 | All API keys are paused | Open Manage API keys and activate an entry, or change the selected single key. |
 | Unauthorized response | Check the account/key at its provider and confirm the preset and endpoint. |

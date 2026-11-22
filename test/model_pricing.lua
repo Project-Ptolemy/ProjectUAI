@@ -159,27 +159,15 @@ case("introductory estimates expire at the UTC boundary without erasing capabili
 	f.healthy(); f.close()
 end)
 
-case("included Free access is zero but personal HCNSEC prices are unknown", function()
+case("custom gateways never inherit bundled pricing or free model claims", function()
 	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("projectuai-free"); local pricing = f.env.require("agent/pricing")
-	check("included resolved model is free", pricing.priceFor("agnes-3.0-flash", record)[1] == 0)
-	check("included named paid model still costs the user zero", pricing.priceFor("gpt-6.1-sol", record)[2] == 0)
-	record.headers = { aUtHoRiZaTiOn = "Bearer personal-fixture-key" }
-	check("an auth-header override is not included access", pricing.priceFor("gpt-6.1-sol", record) == nil
-		and not f.env.require("provider/models").isFree(record, "gpt-6.1-sol"))
-	record.headers = { ["x-api-key"] = "personal-fixture-key" }
-	check("a second personal auth header is not included access", pricing.priceFor("gpt-6.1-sol", record) == nil)
-	record.headers = { Authorization = "Bearer " .. record.apiKey }
-	check("an identical explicit included header remains free", pricing.priceFor("gpt-6.1-sol", record)[1] == 0)
-	record.headers = {}
-	record.apiKey = "personal-fixture-key"
-	check("personal key does not inherit included access", pricing.priceFor("gpt-6.1-sol", record) == nil)
-	record.authStyle = "none"
-	record.headers = { authorization = "Bearer personal-fixture-key", ["Api-Key"] = "personal-fixture-key", ["X-Custom"] = "keep" }
-	assert(f.env.require("provider/community_key").apply(record))
-	check("explicit included action selects bearer and removes auth overrides", record.authStyle == "bearer"
-		and record.headers.authorization == nil and record.headers["Api-Key"] == nil and record.headers["X-Custom"] == "keep"
-		and pricing.priceFor("gpt-6.1-sol", record)[1] == 0)
+	local record = registry.blank("custom"); local pricing = f.env.require("agent/pricing")
+	record.baseUrl, record.apiKey = "https://gateway.fixture/v1", "personal-fixture-key"
+	check("an unknown custom gateway has no assumed prices", pricing.priceFor("agnes-3.0-flash", record) == nil
+		and pricing.priceFor("gpt-6.1-sol", record) == nil)
+	check("a personal model has no inherited free badge", not f.env.require("provider/models").isFree(record, "gpt-6.1-sol"))
+	record.headers = { Authorization = "Bearer personal-fixture-key" }
+	check("explicit personal headers do not establish free pricing", pricing.priceFor("gpt-6.1-sol", record) == nil)
 	f.healthy(); f.close()
 end)
 

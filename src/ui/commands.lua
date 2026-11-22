@@ -15,7 +15,7 @@ return function(env)
 		claude_code = "identity user agent headers version",
 		cowork = "bridge connection address token runtime browser",
 		import_export = "copy configuration import export private transfer review",
-		agent = "reasoning effort temperature context compaction budgets timeout free routing",
+		agent = "reasoning effort temperature context compaction budgets timeout requests per minute rpm rate cap",
 		permissions = "allow ask read only rules tool access",
 		desktop_general = "updates desktop auto start discover",
 		developer = "MCP debugging diagnostics",

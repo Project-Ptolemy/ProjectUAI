@@ -24,13 +24,13 @@ local function call(f, name)
 	return f.registry.dispatch({ id = "fixture-call", name = name, arguments = "{}" }, f.session.toolContext())
 end
 
-case("free, anonymous and private providers cannot bypass password admission", function()
+case("anonymous and private providers cannot bypass password admission", function()
 	local f = fixture()
-	local free = f.providers.blank("projectuai-free")
+	local public = f.providers.blank("kilo")
 	local private = f.providers.blank("custom")
 	private.baseUrl, private.model, private.apiKey = "https://private.fixture/v1", "fixture-model", "synthetic-private-key"
 	f.denied = true
-	for _, record in ipairs({ f.record, free, private }) do
+	for _, record in ipairs({ f.record, public, private }) do
 		local reply, why = f.run(function()
 			return f.env.require("provider/chat").complete(record, { messages = { { role = "user", content = "hello" } }, attempts = 1 })
 		end)
@@ -38,15 +38,10 @@ case("free, anonymous and private providers cannot bypass password admission", f
 		local models, note = f.run(function() return f.env.require("provider/models").discover(record, { force = true }) end)
 		check("model discovery requires the same access", #models == 0 and note:find(MESSAGE, 1, true))
 	end
-	local route = f.env.require("provider/free_route")
-	route.refresh(free); f.h.sched.advance(0.2)
-	check("included free probes remain unavailable", not route.eligible(free) and not route.status(free).available)
 	check("refused admissions send no HTTP requests", f.h.http.requestCount == 0)
 	local original = f.record.model
 	check("gated model and provider edits cannot mutate live records", not f.providers.setModel(f.record.id, "blocked-model")
 		and not f.providers.remove(f.record.id) and f.record.model == original and f.providers.get(f.record.id) == f.record)
-	check("Free provisioning cannot create or select an unsaved provider", not f.env.require("provider/free").use()
-		and f.env.require("provider/free").ensure() == f.record and #f.providers.list() == 1)
 	f.healthy(); f.close()
 end)
 

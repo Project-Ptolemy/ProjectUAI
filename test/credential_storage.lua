@@ -236,21 +236,6 @@ case("default exports strip all connection credentials and imports keep local st
 	f.healthy(); f.close()
 end)
 
-case("public included access survives storage and credential-free transfer", function()
-	local f = F.new(); local config = f.env.require("runtime/config"); config.load()
-	local registry = f.env.require("provider/registry")
-	local community = f.env.require("provider/community_key")
-	local free = registry.blank("projectuai-free"); saveProvider(registry, free)
-	assert(config.saveNow()); config.load()
-	check("public credential is available after cold restart", community.isApplied(registry.list()[1]))
-	local transfer = f.env.require("runtime/config_transfer")
-	local preview = assert(transfer.preview(assert(transfer.export())))
-	check("export contains public reference without a key", preview.config.providers.list[1].apiKey == "" and preview.config.providers.list[1].communityCredential)
-	assert(transfer.apply(preview))
-	check("public reference restores included access", community.isApplied(registry.list()[1]))
-	f.healthy(); f.close()
-end)
-
 case("URL cleaning handles imported noncanonical authorities", function()
 	local f = F.new(); local credentials = f.env.require("runtime/credentials")
 	for _, pair in ipairs({
@@ -274,25 +259,6 @@ case("global-header-only authentication cannot become an anonymous request after
 	check("global authentication omission blocks requests until connection review", loaded.credentialsOmitted == true
 		and registry.protocolProblem(loaded):find("not saved", 1, true))
 	check("global authentication is absent on disk", not f.h.files["UAI/config.json"]:find("identity-only-secret", 1, true))
-	f.healthy(); f.close()
-end)
-
-case("included references at nonofficial endpoints never dispatch anonymously", function()
-	local f = F.new(); local config = f.env.require("runtime/config"); config.load()
-	local registry = f.env.require("provider/registry")
-	local record = registry.blank("projectuai-free")
-	record.baseUrl = "https://custom.fixture/v1"
-	-- Simulate an older saved record; current setup rejects this combination.
-	saveProvider(registry, record, { force = true })
-	assert(config.setRememberCredentials(true))
-	config.load()
-	local loaded = registry.list()[1]
-	check("a nonofficial reference cannot restore or send an empty key", loaded.apiKey == "" and loaded.communityCredential == true
-		and registry.protocolProblem(loaded):find("official", 1, true))
-	assert(f.env.require("runtime/provider_keys").add(loaded, "personal-custom-key"))
-	loaded.preset = "custom"
-	saveProvider(registry, loaded, { credentialsRestored = true })
-	check("explicit personal credentials clear an unusable reference", not loaded.communityCredential and registry.protocolProblem(loaded) == nil)
 	f.healthy(); f.close()
 end)
 

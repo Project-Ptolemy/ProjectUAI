@@ -1,9 +1,10 @@
-# Managed Free latency routing
+# Historical managed Free latency routing
 
-Current setup is opt-in: add **Project UAI Free** from the Providers library and
-save it before using this routing. HCNSEC personal accounts have their own
-provider and never enable these community probes. Empty startup, import and reset
-configurations remain empty. See the [setup guide](providers/projectuai-free.md).
+**Retired in 4.1.1.** Project UAI Free, the HCNSEC preset, distributed community
+credentials and automatic free-routing probes have been removed. This document
+preserves the October 17 investigation; its setup instructions and old test
+commands describe that release. See [provider migration](providers/migration.md)
+for current upgrades and imports.
 
 The measurements and test counts below describe their dated runs. They are not
 current availability guarantees or evidence for a later release.

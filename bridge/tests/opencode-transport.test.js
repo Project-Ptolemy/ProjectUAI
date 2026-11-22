@@ -83,6 +83,8 @@ test('OpenCode TLS options qualify only exact HTTPS Zen inference routes', () =>
     'https://evil.test@opencode.ai/zen/v1/chat/completions',
     'https://user:password@opencode.ai/zen/v1/chat/completions',
     'https://opencode.ai/zen/v1/chat/completions?key=fixture',
+    'https://opencode.ai/zen/v1/chat/completions?',
+    'https://opencode.ai/zen/v1/chat/completions#',
     'https://opencode.ai/inference/v1/responses#fragment',
     'https://opencode.ai/inference/go/v1/chat/completions',
     'https://opencode.ai/inference/go/v1/responses',
@@ -173,7 +175,7 @@ test('Go and unrelated providers retain ordinary HTTPS options', { concurrency: 
   }
 });
 
-test('the installed OpenCode CLI keeps priority and a native failure cannot switch to direct HTTP', { concurrency: false }, async t => {
+test('the installed OpenCode CLI keeps public-access priority and a native failure cannot switch to direct HTTP', { concurrency: false }, async t => {
   for (const failure of [false, true]) await t.test(failure ? 'native-failure' : 'native-success', { concurrency: false }, async st => {
     st.mock.method(https, 'request', () => assert.fail('native OpenCode request escaped to direct HTTPS'));
     const calls = [];
@@ -182,7 +184,8 @@ test('the installed OpenCode CLI keeps priority and a native failure cannot swit
       request: async input => { calls.push(input); if (failure) throw Error('Fixture native refusal'); return { status: 200, headers: {}, body: '{"native":true}' }; },
     }, kilo: { accepts: () => assert.fail('native OpenCode routing reached Kilo') } });
     st.after(() => relay.close());
-    const input = { id: 'opencode-native-priority-' + failure, instance: relay.instance, url: chatURL, body, headers: inputHeaders };
+    const input = { id: 'opencode-native-priority-' + failure, instance: relay.instance, url: chatURL, body,
+      headers: { Authorization: 'Bearer public', 'Content-Type': 'application/json', Accept: '*/*' } };
     relay.start(input);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, chatURL);

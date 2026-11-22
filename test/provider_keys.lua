@@ -98,15 +98,4 @@ case("aliases are trimmed single-line UTF-8 and never limit the number of creden
 	f.healthy(); f.close()
 end)
 
-case("included access clears personal aliases and request policy", function()
-	local f = F.new(); local registry = f.env.require("provider/registry")
-	local record = registry.blank("projectuai-free")
-	record.apiKey, record.keyNames, record.keyMode, record.selectedKey = "alpha\nbeta", { "Personal", "Backup" }, "single", 2
-	assert(f.env.require("provider/community_key").apply(record))
-	local keys = f.env.require("runtime/provider_keys")
-	check("included access owns one unnamed key with default rotation", #keys.entries(record) == 1 and keys.entries(record)[1].name == ""
-		and keys.mode(record) == "rotate" and keys.selected(record) == 1 and keys.validate(record))
-	f.healthy(); f.close()
-end)
-
 suite.finish()

@@ -20,7 +20,7 @@ end
 local hostContext = ...
 local replacementConfig, replacementVault
 
-local VERSION = "4.0.5"
+local VERSION = "4.1.1"
 local FOLDER = "UAI"
 local BUILD = type(__UAI_BUILD) == "string" and __UAI_BUILD or VERSION
 
@@ -319,7 +319,6 @@ local function start()
 	-- headers they were created with, so the repository move has to be carried into
 	-- existing installs here rather than only into records created from now on.
 	env.require("provider/registry").migrate()
-	env.require("provider/free").start()
 
 	-- The workspace migration, before anything that reads files/: the file tools,
 	-- the paste fallbacks, the attach menu. For a returning user with older files
@@ -558,6 +557,7 @@ local function start()
 		env.require("runtime/dispose").add(boot.destroy, "Startup card")
 	end
 	log.info("boot", "ready")
+	app.finishStartup()
 	return handle
 end
 

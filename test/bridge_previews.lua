@@ -156,12 +156,15 @@ case("every bridge provider adapter forwards live fragments without replaying it
 	end
 end)
 
-case("connected inference survives the native time budget while polling the original job", function()
+case("connected default inference survives the configured native time budget while polling the original job", function()
 	local f = fixture(); local finished, received = false, 0
+	local config = f.env.require("runtime/config")
+	config.set("agent.requestUnlimited", false)
+	config.set("agent.requestTimeout", 1)
 	f.onPoll = function() return finished and f.complete() or f.running(page(0, 1, { frame(1, "Still working") })) end
-	f.start(nil, function() received = received + 1 end, { messages = { { role = "user", content = "Read fixture" } }, timeout = 1 })
+	f.start(nil, function() received = received + 1 end)
 	f.h.sched.advance(310)
-	check("native timeout does not end accepted Cowork inference", not f.result and not f.err and received == 1 and f.posts == 1 and f.deletes == 0)
+	check("configured native timeout does not end accepted Cowork inference", not f.result and not f.err and received == 1 and f.posts == 1 and f.deletes == 0)
 	finished = true; f.h.sched.advance(2)
 	check("the long-lived original job returns its final answer", f.result and f.result.content == "Final answer" and f.posts == 1)
 	f.done()

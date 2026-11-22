@@ -1,6 +1,7 @@
 -- Source-level companion lifecycle regressions; no Android device or provider.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("Mobile companion deadlines")
 local case, check = suite.case, suite.check
 
@@ -103,9 +104,10 @@ for _, lane in ipairs({ "chat", "responses", "messages", "gemini" }) do
 	case(lane .. " default companion request survives 300 seconds and poll loss", function()
 		local f = fixture(); check("app pairs", f.scan())
 		local record = f.env.require("provider/registry").blank(lane == "responses" and "zen" or lane == "gemini" and "google" or "custom")
-		record.id, record.model, record.apiKey = "mobile", lane == "responses" and "muse-spark-fixture" or "fixture-model", "fixture"
+		record.id, record.model, record.apiKey = "mobile", lane == "responses" and "fixture-response-model" or "fixture-model", "fixture"
 		if lane == "messages" then record.api = "anthropic" end
 		if record.baseUrl == "" then record.baseUrl = "https://provider.fixture/v1" end
+		if lane == "responses" then Z.responses(f, record) end
 		f.onPoll = function(id, job)
 			if f.polls == 1 then return f.running(id, 34.5) end
 			if f.h.sched.now - job.at < 302 then return f.running(id) end
@@ -145,9 +147,10 @@ for _, lane in ipairs({ "chat", "responses", "messages", "gemini" }) do
 	case(lane .. " preserves an explicit absolute provider deadline", function()
 		local f = fixture(); check("app pairs", f.scan())
 		local record = f.env.require("provider/registry").blank(lane == "responses" and "zen" or lane == "gemini" and "google" or "custom")
-		record.id, record.model, record.apiKey = "mobile", lane == "responses" and "muse-spark-fixture" or "fixture-model", "fixture"
+		record.id, record.model, record.apiKey = "mobile", lane == "responses" and "fixture-response-model" or "fixture-model", "fixture"
 		if lane == "messages" then record.api = "anthropic" end
 		if record.baseUrl == "" then record.baseUrl = "https://provider.fixture/v1" end
+		if lane == "responses" then Z.responses(f, record) end
 		local deadline = f.env.require("runtime/clock").ms() + 1000
 		local result, why = f.run(function() return f.env.require("provider/chat").complete(record, {
 			messages = { { role = "user", content = "hello" } }, timeout = 100, deadlineMs = deadline,
@@ -173,11 +176,20 @@ end)
 
 case("single-attempt HTTP preserves default unlimited negotiation", function()
 	local f = fixture(); check("app pairs", f.scan())
+	local transport, decisions = f.env.require("net/transport"), {}
+	local unlimited = transport.unlimited
+	transport.unlimited = function(request, endpoint)
+		local result = unlimited(request, endpoint)
+		if #decisions < 4 then decisions[#decisions + 1] = result end
+		return result
+	end
 	f.onPoll = function(id) return f.completed(id, { ok = true }) end
 	local response = f.run(function() return f.env.require("net/http").request({
 		url = "https://provider.fixture/v1/chat/completions", method = "POST", body = "{}", relay = true,
 	}) end, 3)
-	check("single attempt sends the negotiated policy", response and response.ok and f.inputs[1].timeout == 0)
+	check("single attempt sends the negotiated policy (response=" .. tostring(response and response.ok)
+		.. ", timeout=" .. tostring(f.inputs[1] and f.inputs[1].timeout) .. ", first=" .. tostring(decisions[1])
+		.. ", second=" .. tostring(decisions[2]) .. ")", response and response.ok and f.inputs[1].timeout == 0)
 	f.healthy(); f.close()
 end)
 

@@ -20,6 +20,7 @@ return function(env)
 	local budgets = env.require("net/deadline")
 	local retryAfter = env.require("net/retry_after")
 	local support = env.require("runtime/support")
+	local rate = env.require("runtime/inference_rate")
 
 	local HISTORY_LIMIT = 60
 	local MAX_BODY, MAX_WORKERS, MAX_RELAY_WORKERS = 8 * 1024 * 1024, 8, 16
@@ -254,13 +255,21 @@ return function(env)
 		}
 	end
 
-	local function send(url, method, headers, body, timeout, profile, onDispatch)
+	local function send(url, method, headers, body, timeout, profile, onDispatch, permit)
 		local options = { Url = url, Method = method, Headers = headers }
 		if body and body ~= "" and method ~= "GET" and method ~= "HEAD" then
 			options.Body = body
 		end
 
 		local request = profile and profile.request or caps.fn.request
+		local function dispatch()
+			if permit then
+				local committed, problem, kind = permit.commit()
+				if not committed then return false, problem, kind end
+			end
+			if onDispatch then pcall(onDispatch) end
+			return true
+		end
 		if request then
 			-- Set only on this path: RequestAsync accepts a fixed set of keys. Not every
 			-- executor honours it either, which is why an attempt that runs long is also
@@ -271,7 +280,8 @@ return function(env)
 				if timeout and timeout > 0 then options.Timeout = math.max(1, math.ceil(timeout)) end
 			end
 			if profile and profile.omitEmptyHeaders and next(headers) == nil then options.Headers = nil end
-			if onDispatch then pcall(onDispatch) end
+			local committed, problem, kind = dispatch()
+			if not committed then return nil, problem, kind end
 			local ok, res = pcall(guard.run, request, options)
 			if not ok then return nil, tostring(res), "transport" end
 			if type(res) ~= "table" then return nil, "empty executor response", "response" end
@@ -279,7 +289,8 @@ return function(env)
 		end
 
 		if caps.http == "none" then return nil, caps.reason("http"), "terminal" end
-		if onDispatch then pcall(onDispatch) end
+		local committed, problem, kind = dispatch()
+		if not committed then return nil, problem, kind end
 		local ok, res = pcall(guard.run, function() return env.hs:RequestAsync(options) end)
 		if not ok then return nil, tostring(res), "transport" end
 		if type(res) ~= "table" then return nil, "empty HttpService response", "response" end
@@ -289,7 +300,7 @@ return function(env)
 	-- One attempt. Returns res (with .ok), or nil, error, elapsed milliseconds and
 	-- a fixed failure kind. Only a completed native throw is a transport failure;
 	-- received/invalid responses and terminal waits cannot authorize alias fallback.
-	function M.request(spec)
+	local function requestAttempt(spec)
 		local access = accessProblem(spec)
 		if access then return nil, access, 0, "terminal" end
 		local url = tostring(spec.url or "")
@@ -339,6 +350,7 @@ return function(env)
 			deadline = math.huge
 			for name in pairs(headers) do if name:lower() == "x-stainless-timeout" then headers[name] = nil end end
 		end
+		deadline = rate.deadline(spec.inference, deadline)
 		if deadline <= started then return nil, "deadline: request budget expired", 0, "terminal" end
 		-- A relay waiter owns no native connection between status polls. Counting
 		-- it here as well as its short nested requests used to exhaust all eight
@@ -349,9 +361,19 @@ return function(env)
 		if owner ~= nil and (relayed or type(owner) ~= "table") then
 			return nil, "invalid native HTTP owner", 0, "terminal"
 		end
+		local permit = spec.ratePermit
 		if relayed then
 			if relayWorkers >= MAX_RELAY_WORKERS then return nil, "capacity: local relay request limit reached", 0, "terminal" end
 		else
+			if spec.inference and not permit then
+				local problem
+				permit, problem = rate.acquire(spec.inference, { deadlineMs = deadline,
+					aborted = function() return aborted(spec) or accessProblem(spec) ~= nil end,
+					ready = function() return not (owner and owner.pending) and not (lane and nativeLanes[lane]) and workers < MAX_WORKERS end,
+					onRetry = spec.onRetry })
+				if not permit then return nil, accessProblem(spec) or problem, clock.since(started), "terminal" end
+				spec.ratePermit = permit
+			end
 			-- A short poll deadline ends its Lua wait, not the native request. Keep
 			-- subsequent exchanges for that relay job behind the unfinished call.
 			-- Otherwise an unlimited job can fill every slot with abandoned polls.
@@ -377,7 +399,15 @@ return function(env)
 		if owner then owner.pending = pending end
 		if lane then nativeLanes[lane] = pending end
 		if relayed then relayWorkers = relayWorkers + 1 else workers = workers + 1 end
-		clock.spawn(function()
+		local function releaseSlot()
+			if pending.slotReleased then return end
+			pending.slotReleased = true
+			if relayed then relayWorkers = math.max(0, relayWorkers - 1) else workers = math.max(0, workers - 1) end
+			if owner and owner.pending == pending then owner.pending = nil end
+			if lane and nativeLanes[lane] == pending then nativeLanes[lane] = nil end
+		end
+		local spawned = pcall(clock.spawn, function()
+			pending.workerStarted = true
 			local ok, response, problem, failureKind = pcall(function()
 				-- Scheduling can outlive the caller. Recheck before dispatch while
 				-- leaving the reserved slot owned until this worker actually settles.
@@ -395,11 +425,9 @@ return function(env)
 					relaySpec.aborted = function() return not pending.accepting or aborted(spec) end
 					return env.require("net/relay").request(relaySpec, headers, M.request)
 				end
-				return send(url, method, headers, spec.body, remaining / 1000, profile, spec.onDispatch)
+				return send(url, method, headers, spec.body, remaining / 1000, profile, spec.onDispatch, permit)
 			end)
-			if relayed then relayWorkers = math.max(0, relayWorkers - 1) else workers = math.max(0, workers - 1) end
-			if owner and owner.pending == pending then owner.pending = nil end
-			if lane and nativeLanes[lane] == pending then nativeLanes[lane] = nil end
+			releaseSlot()
 			if pending.accepting then
 				-- A successful call normally returns nil for its error. An and/or
 				-- fallback would turn that nil into a failure beside every HTTP 200.
@@ -408,6 +436,11 @@ return function(env)
 				pending.done = true
 			end
 		end)
+		if not spawned then
+			pending.accepting = false
+			if not pending.workerStarted then releaseSlot() end
+			return nil, "malformed: native HTTP worker could not start", clock.since(started), "terminal"
+		end
 		while not pending.done and not aborted(spec) and clock.ms() < deadline do clock.wait(0.05) end
 		pending.accepting = false
 		local res, err, failureKind = pending.res, pending.err, pending.failureKind
@@ -418,6 +451,7 @@ return function(env)
 		if res and (type(res.body) ~= "string" or #res.body > MAX_BODY) then
 			res, err, failureKind = nil, "response_limit: response exceeds its text budget", "response"
 		end
+		if failureKind == "rate" then return nil, err, clock.since(started), "rate" end
 		if err then err = log.redact(util.ellipsis(tostring(err), 1000)) end
 		local elapsed = clock.since(started)
 
@@ -477,6 +511,29 @@ return function(env)
 				util.formatDuration(elapsed)))
 		end
 		return res
+	end
+
+	function M.request(spec)
+		local copy = util.copy(spec)
+		local borrowed = copy.ratePermit ~= nil
+		local started = clock.ms()
+		local deadline = budgets.at(copy.timeout, copy.deadlineMs, started)
+		if copy.relay and env.require("net/transport").unlimited(copy) then
+			deadline = math.huge
+			-- Retain the negotiated policy before adding the private deadline.
+			copy.relayUnlimited = true
+		end
+		copy.deadlineMs = rate.deadline(copy.inference, deadline)
+		while true do
+			-- Preparation failures and abandoned workers release every unused permit.
+			-- A completed dispatch cannot be refunded by Stop or a native timeout.
+			local called, res, problem, elapsed, kind = pcall(requestAttempt, copy)
+			if copy.ratePermit then copy.ratePermit.release(); copy.ratePermit = nil end
+			if not called then return nil, "malformed: HTTP request preparation failed", clock.since(started), "terminal" end
+			if kind ~= "rate" or borrowed then return res, problem, elapsed, kind end
+			if aborted(copy) then return nil, "aborted", clock.since(started), "terminal" end
+			if clock.ms() >= copy.deadlineMs then return nil, "deadline: request budget expired before dispatch", clock.since(started), "terminal" end
+		end
 	end
 
 	-- Server delays and GMT dates share the same bounded, cancellable wait.
@@ -571,6 +628,7 @@ return function(env)
 		local deadline = budgets.at(spec.timeout, spec.deadlineMs)
 		local relayUnlimited = spec.relay and env.require("net/transport").unlimited(spec)
 		if relayUnlimited then deadline = math.huge end
+		deadline = rate.deadline(spec.inference, deadline)
 		local lastRes, lastErr
 		for attempt = 1, attempts do
 			if aborted(spec) then return nil, "aborted" end

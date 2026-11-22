@@ -4,8 +4,7 @@
 -- carry a model list: the only authority on which models an endpoint serves is the
 -- endpoint, so models come from GET /v1/models or from the user typing one in. A
 -- hardcoded list goes stale, and offering a model the provider does not have wastes
--- a turn on a 404 that looks like a bug. Project UAI Free is the managed exception:
--- its provider-supported `auto` router was verified with discovery and tool calls.
+-- a turn on a 404 that looks like a bug.
 --
 -- Every preset also carries what the provider gallery needs to describe it before a
 -- key exists: a tier, a two-sentence description, an access line, and search tags.
@@ -14,18 +13,15 @@
 -- long-form setup guidance the editor shows after a card is chosen.
 --
 -- Tiers mean one thing each:
---   free  -- a first request can be made without paying (included key, free quota,
+--   free  -- a first request can be made without paying (free quota,
 --            free tier or no key at all). "Free" is about starting, not about an
 --            unlimited service, so the access line always says which it is.
 --   paid  -- needs credit, a subscription or a top-up before the endpoint answers.
 --   local -- a server the user runs; no vendor account is involved.
--- `free = true` is a separate flag and belongs only to Project UAI Free, because it
--- is what installs the distributed community key.
 return function(env)
 	local M = {}
 
-	-- Included access is an explicit library choice. Quick picks are independent
-	-- from the gallery and never install an included provider on first run.
+	-- Quick picks are independent from the gallery; provider setup is explicit.
 	M.tiers = {
 		{
 			id = "free",
@@ -55,26 +51,6 @@ return function(env)
 	M.presets = {
 		-- Free to start -------------------------------------------------------
 		{
-			id = "projectuai-free",
-			label = "Project UAI Free",
-			tier = "free",
-			order = 1,
-			description = "Optional community access, daily 20:00-12:00 UTC+8 (Beijing/Singapore). No account, payment or personal key.",
-			cost = "Included \194\183 no key needed",
-			tags = { "free", "included", "auto", "community", "hcnsec" },
-			baseUrl = "https://api.hcnsec.cn/v1",
-			authStyle = "bearer",
-			keyHint = "Community access only. Choose the separate HCNSEC provider for a personal key.",
-			docs = "https://discord.gg/9xYyyYuKap",
-			free = true,
-			defaultModel = "auto",
-			note = "Optional access for the Project UAI community. No account, payment or personal API key is needed. Add this provider from the library and save to opt in. Available daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Outside these hours, choose another provider or return at 20:00 UTC+8. Auto prefers recently verified tool-capable models; response times and shared capacity vary. Personal HCNSEC accounts use the separate HCNSEC provider. Help and availability updates: https://discord.gg/9xYyyYuKap",
-			noteHighlight = "No account, payment or personal API key is needed.",
-			badge = "Included",
-			badgeTone = "good",
-			highlight = true,
-		},
-		{
 			id = "agentrouter",
 			label = "AgentRouter",
 			tier = "free",
@@ -103,20 +79,19 @@ return function(env)
 			label = "OpenCode Zen",
 			tier = "free",
 			order = 3,
-			description = "OpenCode's curated relay: free models through the desktop CLI, paid models with a Zen key. Hybrid, not a paid-only service.",
-			cost = "Free models via desktop CLI \194\183 paid key",
+			description = "Direct free Chat API with compatible host transport and an optional desktop CLI route; paid models use your own Zen key.",
+			cost = "Free Chat API \194\183 paid key",
 			tags = { "opencode", "zen", "cli", "free-models" },
 			baseUrl = "https://opencode.ai/zen/v1",
 			authStyle = "bearer",
-			keyHint = "API key from opencode.ai/zen",
+			keyHint = "Current official catalog metadata verifies free Chat access. Your own Zen key takes precedence and is required for paid models.",
 			docs = "https://opencode.ai/zen",
 			-- Keep the existing OpenCode request compatibility headers, scoped to the
 			-- official host, without mixing in the Claude Code identity.
 			claudeUa = false,
-			-- Desktop retains direct request compatibility; the installed CLI is an
-			-- additional route through the desktop bridge, never a bundled binary.
-			note = "Use the current UAI client and Project UAI Desktop Bridge for the verified free API-key route. Direct executor access depends on the host transport. The bridge also supports a separately installed OpenCode CLI for free models; models fetched from the connected CLI need no personal key. Mobile OpenCode requires the UAI Relay app from Discord; install and start the app, then connect it in UAI. Direct and paid Zen API access use your own key. Help and updates: https://discord.gg/9xYyyYuKap",
-			noteHighlight = "Mobile OpenCode requires the UAI Relay app from Discord",
+			-- The free API route is independent from the optional installed CLI.
+			note = "Select Chat completions and fetch the current official catalog. UAI verifies Chat support and zero prices across every listed tier before supplying public authentication. Confirmed free Chat models need no personal key. A model name or free suffix does not establish access; unknown, priced and decision-only models keep their requirements. Catalog verification expires after ten minutes and runs again before inference after restart. Direct free Chat API access uses UAI request compatibility and depends on the host's HTTP transport. Ordinary Node.js and Windows Schannel requests are confirmed for Hy4 Flash Free; other reviewed free Chat models require compatible transport. A connected Desktop Bridge or UAI Relay app can hold the API connection. An installed OpenCode CLI is optional and uses a separate sign-in and free-model catalog. Your own Zen key takes precedence and is required for paid API models. For mobile executors with short request limits, start the UAI Relay app from Discord before using a relayed request. Help and updates: https://discord.gg/9xYyyYuKap",
+			noteHighlight = "Confirmed free Chat models need no personal key.",
 			featured = true,
 			featuredOrder = 3,
 			badge = "Free models",
@@ -378,22 +353,6 @@ return function(env)
 		},
 
 		-- Paid ----------------------------------------------------------------
-		{
-			id = "hcnsec",
-			label = "HCNSEC",
-			tier = "paid",
-			order = 45,
-			description = "Use your own HCNSEC account and API key. Models and charges depend on that account.",
-			cost = "Personal account and API key",
-			tags = { "hcnsec", "personal", "gateway", "account" },
-			baseUrl = "https://api.hcnsec.cn/v1",
-			authStyle = "bearer",
-			keyHint = "Your personal HCNSEC API key",
-			docs = "https://api.hcnsec.cn",
-			note = "Enter your personal HCNSEC key and fetch the models available to your account, or enter an exact model ID. Account quotas, availability and pricing come from HCNSEC. This provider has no Project UAI community credential or daily community schedule. Optional Project UAI Free access is a separate provider in the library.",
-			badge = "Personal key",
-			badgeTone = "neutral",
-		},
 		{
 			id = "openai",
 			label = "OpenAI",

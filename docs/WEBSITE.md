@@ -36,11 +36,11 @@ disclosures. Clipboard denial selects the visible text for manual copying.
 Keep these fallback paths and the keyboard navigation when changing layouts.
 
 Public onboarding should match the actual client: provider setup is opt-in,
-Project UAI Free and HCNSEC are separate library entries, and a hidden SDK window
+retired community providers are not advertised, and a hidden SDK window
 still requires the device's credential-storage setup or unlock.
 
-The 4.0.0 website source uses `releases/tag/v4.0.0`. Its Windows download is
-`releases/download/v4.0.0/UAI-Bridge-4.0.0-win-x64.exe`; Android retains the
+The 4.1.1 website source uses `releases/tag/v4.1.1`. Its Windows download is
+`releases/download/v4.1.1/UAI-Bridge-4.1.1-win-x64.exe`; Android retains the
 independently versioned 3.7.2 companion asset at
 `releases/download/relay-v3.7.2/UAI-Relay-3.7.2.apk`. Update the release link,
 download URL, visible version and browser expectation together. Before publishing the

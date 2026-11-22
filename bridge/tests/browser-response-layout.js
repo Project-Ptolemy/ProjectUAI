@@ -196,8 +196,10 @@ const { startBridge } = require('./helpers/bridge');
       assert.equal(await card.locator('.error-details pre').textContent(), message, 'classification preserves the diagnostic');
       assert.equal(await card.locator('.error-details').getAttribute('open'), null);
       if (title === 'OpenCode free API access refused') {
-        assert.match(await card.locator('.error-message').textContent(), /Desktop Bridge for API-key access/);
-        assert.match(await card.locator('.error-message').textContent(), /installed OpenCode tunnel/);
+        assert.match(await card.locator('.error-message').textContent(), /current UAI client and a supported free Chat model/);
+        assert.match(await card.locator('.error-message').textContent(), /Direct free Chat API access depends on the host transport/);
+        assert.match(await card.locator('.error-message').textContent(), /Desktop Bridge supplies compatible API-key transport/);
+        assert.match(await card.locator('.error-message').textContent(), /installed OpenCode tunnel is optional/);
         assert.match(await card.locator('.error-message').textContent(), /Changing keys may not restore access/);
         assert.doesNotMatch(await card.locator('.error-message').textContent(), /wait a moment/i);
       }

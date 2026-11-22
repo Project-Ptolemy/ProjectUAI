@@ -149,22 +149,21 @@ case("invalid saves reveal the error at the start of the form", function()
 	f.healthy(); f.close()
 end)
 
-case("included setup keeps the model before optional guidance and connection overrides", function()
+case("no-key setup keeps model selection before guidance and connection overrides", function()
 	local f = F.ui(390, 700)
 	local registry = f.env.require("provider/registry")
-	f.env.require("ui/panels/providers").editor(registry.blank("projectuai-free"))
+	f.env.require("ui/panels/providers").editor(registry.blank("kilo"))
 	f.h.settle(0.2)
 	local model = f.h.byName("ActiveModel")
-	check("included access is shown once without asking to reapply it", f.h.byName("AccessSummary").Visible
-		and not f.h.byName("CommunityKey").Visible)
+	check("no-key access remains explicit", f.h.byName("KeyState").Text == "No API key required"
+		and f.h.byName("CommunityKey") == nil)
 	check("the model comes before connection overrides and expanded help", f.h.byName("ModelSetupGroup").LayoutOrder < f.h.byName("ConnectionSetupGroup").LayoutOrder
 		and f.h.byName("ProviderGuide").Visible)
 	check("the full provider guidance and setup link remain available", f.h.byName("ProviderGuide").Visible
-		and f.h.byName("KeyLinkUrl").Text == "https://discord.gg/9xYyyYuKap"
-		and f.h.textOf(f.h.byName("ProviderGuide")):find("separate HCNSEC provider", 1, true) ~= nil)
+		and f.h.byName("KeyLinkUrl").Text == f.env.require("provider/catalog").get("kilo").docs)
 	click(f, "ProviderGuideToggle")
 	check("collapsing help never replaces the selected model or persists the draft", not f.h.byName("ProviderGuide").Visible and f.h.byName("ActiveModel") == model
-		and f.h.textOf(model) == "auto" and registry.count() == 0 and f.h.http.requestCount == 0)
+		and f.h.textOf(model) == "Choose a model" and registry.count() == 0 and f.h.http.requestCount == 0)
 	f.healthy(); f.close()
 end)
 

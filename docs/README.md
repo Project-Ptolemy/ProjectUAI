@@ -38,7 +38,7 @@ Start with [Getting started](GETTING_STARTED.md). The root
   [embedding examples](../examples/embedding/README.md).
 - [Development workflow](DEVELOPMENT.md), [contract](../SPEC.md),
   [native host checks](CODE_WORKSPACE_TESTING.md), and [diagnostics](DIAGNOSTICS.md).
-- [4.0.0 release](RELEASE_4_0_0.md), [Changelog](../CHANGELOG.md) and [4.0.0 verification](TESTING_4.0.0.md).
+- [4.1.1 release](RELEASE_4_1_1.md), [Changelog](../CHANGELOG.md) and [4.1.1 verification](TESTING_4.1.1.md).
 
 Files named `TESTING_*`, `AUDIT_*`, or `INVESTIGATION_*` record a particular
 investigation or release. Use the current task guides for setup instructions.

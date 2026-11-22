@@ -11,6 +11,7 @@ local envMock = require("env")
 local json = require("json")
 local authenticate = require("password_fixture")
 local desktop = require("automatic_bridge_fixture")
+local zenCatalog = require("opencode_catalog_fixture")
 
 local suite = { passed = 0, failed = 0, scenarios = 0, failures = {} }
 local filters, nativeOnly = {}, false
@@ -142,19 +143,20 @@ end
 
 -- Boots a client with one provider configured and a scripted HTTP handler.
 --
--- Every scenario but the tour's own would otherwise be interrupted by the
--- introduction a beat into its boot. The gate is seeded before the client reads
--- its settings, because the open is scheduled from mount; a scenario that is
--- about the tour asks for it with { tutorial = true }.
-local function suppressTour(harness)
-	harness.files["UAI/config.json"] = json.encode({ version = 1, ui = { tutorial = { seen = true } } })
+-- Ordinary scenarios keep startup notices out of their controls. Dedicated
+-- changelog_release.lua exercises real once-per-release startup behavior;
+-- introduction scenarios request their own first run with { tutorial = true }.
+local function suppressTour(harness, tutorial)
+	harness.files["UAI/config.json"] = json.encode({ version = 1, ui = {
+		tutorial = { seen = tutorial ~= true }, changelogAutoShownVersion = "999.0.0",
+	} })
 end
 
 local function bootWith(opts)
 	opts = opts or {}
 	local harness = envMock.new({ executor = opts.executor })
 	harness.http.handler = opts.handler
-	if not opts.tutorial then suppressTour(harness) end
+	suppressTour(harness, opts.tutorial)
 	local handle, err = harness.boot()
 	if not handle then error("boot failed: " .. tostring(err), 0) end
 	harness.settle(1)
@@ -233,7 +235,7 @@ scenario("boot mounts the interface", function()
 	local text = harness.textOf(screen)
 	contains("the sidebar offers a new conversation", text, "New conversation")
 	contains("and names the place the client is in", text, "Mock Place")
-	contains("setup offers the optional Free provider", text, "Project UAI Free")
+	contains("setup guides users to Providers", text, "Providers")
 	check("first run does not create a provider", #handle.providers.list(), 0)
 	check("first run leaves provider selection empty", handle.providers.active(), nil)
 
@@ -3026,7 +3028,7 @@ scenario("an over-large reply ceiling is lowered to what the model allows", func
 		native.errors()[1] and native.errors()[1].traceback or nil)
 end)
 
--- HCNSEC states its output bound in its host language: "field MaxTokens invalid,
+-- A gateway states its output bound in its host language: "field MaxTokens invalid,
 -- should be in [1, 65536]". The repair dispatch compares plain lowercase text, so
 -- the camel hump has to be put back before "max_tokens" is found -- otherwise no
 -- repair fires, no cap is learned, and every later turn refuses the same way.
@@ -5973,9 +5975,14 @@ scenario("Zen detection and free labels do not imply account access", function()
 			registry.opencodeHeaders({ baseUrl = base })["x-opencode-session"], nil)
 	end
 	local zen = { baseUrl = "https://opencode.ai/zen/v1" }
-	truthy("Big Pickle is labelled free on Zen", models.isFree(zen, "big-pickle"))
+	falsy("a model name alone cannot establish free Zen pricing", models.isFree(zen, "big-pickle"))
+	zenCatalog.observe({ env = handle.env }, zen, {
+		zenCatalog.row("big-pickle"), zenCatalog.row("mimo-v2.6-flash-free"),
+	})
+	truthy("Big Pickle uses explicit free Zen catalog pricing", models.isFree(zen, "big-pickle"))
 	falsy("the alias is scoped to Zen", models.isFree({ baseUrl = "https://example.test/v1" }, "big-pickle"))
-	truthy("recognises a free model suffix", models.isFree(zen, "mimo-v2.5-free"))
+	truthy("another model uses its own zero-price catalog row", models.isFree(zen, "mimo-v2.6-flash-free"))
+	falsy("an unknown free suffix supplies no catalog evidence", models.isFree(zen, "fixture-free"))
 	falsy("does not label freedom as free", models.isFree(zen, "freedom-model"))
 	local errorText = openai.errorText({ status = 403, body = json.encode({ error = {
 		type = "FreeTierError",
@@ -6289,13 +6296,12 @@ scenario("a first-run client discovers optional providers without installing the
 	check("viewing recommendations preserves empty selection", handle.providers.active(), nil)
 	check("viewing recommendations adds no providers", handle.providers.count(), 0)
 
-	-- The library offers Free explicitly and retains the other routes' guidance.
+	-- The library retains the supported routes and their setup guidance.
 	harness.click(harness.byName("StartBrowse"))
 	harness.settle(1)
 	local catalog = handle.env.require("provider/catalog")
 	local preset = catalog.get("agentrouter")
-	check("optional community access leads the library", catalog.byTier("free")[1].id, "projectuai-free")
-	check("AgentRouter follows it", catalog.byTier("free")[2].id, "agentrouter")
+	check("AgentRouter leads the supported recommendations", catalog.byTier("free")[1].id, "agentrouter")
 	check("with its registration address", preset.docs, "https://agentrouter.org/register?aff=4pqF")
 	truthy("the gallery describes it", harness.byName("ChoiceDescription", harness.byName("Choice_agentrouter")) ~= nil)
 	check("the gallery does not recommend a model", preset.note:find("Recommended model", 1, true), nil)
@@ -6307,34 +6313,21 @@ scenario("a first-run client discovers optional providers without installing the
 	harness.press("Escape")
 	harness.settle(1)
 
-	-- The free preset keeps its own endpoint and community docs.
-	local free = catalog.get("projectuai-free")
-	check("the free preset points at the api host", free.baseUrl, "https://api.hcnsec.cn/v1")
-	check("with the community as its docs", free.docs, "https://discord.gg/9xYyyYuKap")
-	falsy("community access stays out of the featured quick picks", free.featured)
-	falsy("personal HCNSEC does not contain community authentication", catalog.get("hcnsec").free)
+	falsy("retired community preset is absent", catalog.get("projectuai-free"))
+	falsy("retired personal preset is absent", catalog.get("hcnsec"))
 
 	-- OpenCode Zen keeps its guidance and is recommended as a hybrid.
 	local zen = catalog.get("zen")
 	check("OpenCode Zen is recommended", zen.tier, "free")
 	check("and labelled by what is free", catalog.badge(zen), "Free models")
-	check("pointing at the Zen relay", zen.baseUrl, "https://opencode.ai/zen/v1")
-	contains("OpenCode describes the verified desktop bridge route", zen.note,
-		"Project UAI Desktop Bridge for the verified free API-key route")
+	check("pointing at the official Zen API", zen.baseUrl, "https://opencode.ai/zen/v1")
+	contains("OpenCode explains direct free Chat access", zen.note,
+		"Confirmed free Chat models need no personal key")
 	contains("OpenCode qualifies direct executor access by transport", zen.note,
-		"Direct executor access depends on the host transport")
+		"depends on the host's HTTP transport")
 	contains("OpenCode keeps a separate installed CLI route", zen.note,
-		"separately installed OpenCode CLI for free models")
-	contains("OpenCode highlights its mobile relay requirement", zen.noteHighlight, "UAI Relay app")
-
-	harness.click(harness.byName("StartBrowse")); harness.settle(1)
-	harness.click(harness.byName("Choice_projectuai-free")); harness.settle(1)
-	check("choosing Free opens an unsaved draft", handle.providers.count(), 0)
-	contains("Free setup explains the supported auto model", harness.textOf(harness.byName("ActiveModel")), "auto")
-	harness.click(harness.byName("SaveProvider")); harness.settle(1)
-	local optedIn = handle.providers.active()
-	check("explicit save opts into community access", optedIn and optedIn.label, "Project UAI Free")
-	check("the saved Free route uses its supported auto model", optedIn and optedIn.model, "auto")
+		"An installed OpenCode CLI is optional and uses a separate sign-in and free-model catalog")
+	contains("OpenCode highlights the optional key", zen.noteHighlight, "no personal key")
 
 	local custom = handle.providers.blank("custom")
 	custom.label, custom.baseUrl = "My provider", "https://harness.test/v1"
@@ -7466,7 +7459,7 @@ scenario("the what's new modal renders every release on wide and narrow viewport
 	contains("and the improved ones", text, "Improved")
 	contains("and the fixed ones", text, "Fixed")
 	local latest = changelog.latest()
-	check("the release candidate is the latest entry", latest.version, "4.0.5")
+	check("the release candidate is the latest entry", latest.version, "4.1.1")
 	local latestCard = harness.byName("Release_" .. latest.version, modal.content)
 	truthy("the latest release has its own card", latestCard ~= nil)
 	local latestText = harness.textOf(latestCard)

@@ -4,12 +4,8 @@ return function(env)
 	local util = env.require("runtime/util")
 	local codec = env.require("runtime/credential_codec")
 	local vault = env.require("runtime/credential_vault")
-	local community = env.require("runtime/community_credential")
-	local publicKey = community.key
+	local retirement = env.require("runtime/provider_retirement")
 	local M = {}
-	local function included(value)
-		return value == publicKey or community.isRetired(value)
-	end
 	local SECRET_FIELDS = {
 		key = true, apikey = true, apikeys = true, token = true, accesstoken = true,
 		refreshtoken = true, idtoken = true, password = true, secret = true,
@@ -20,7 +16,10 @@ return function(env)
 	}
 	local PROVIDER_FIELDS = { "apiKey", "keyNames", "keyIds", "keyPaused", "keyMode", "selectedKey",
 		"headers", "query", "params", "baseUrl", "wsUrl", "health", "repairs", "repairScope", "maxTokensCap",
-		"toolsCap", "opencodeSession", "credentialsOmitted", "communityKeyState" }
+		"toolsCap", "opencodeSession", "credentialsOmitted" }
+	-- Read old vaults/byte envelopes before dropping their obsolete reference.
+	local LEGACY_PROVIDER_FIELDS = util.deepCopy(PROVIDER_FIELDS)
+	LEGACY_PROVIDER_FIELDS[#LEGACY_PROVIDER_FIELDS + 1] = "communityKeyState"
 	local FIELD_TYPES = { apiKey = "string", baseUrl = "string", wsUrl = "string", repairScope = "string",
 		opencodeSession = "string", keyMode = "string", selectedKey = "number", credentialsOmitted = "boolean",
 		keyNames = "table", keyIds = "table", keyPaused = "table", headers = "table", query = "table", params = "table",
@@ -69,7 +68,7 @@ return function(env)
 	local function provider(record)
 		if type(record) ~= "table" then return record end
 		local out = scrub(record, "provider")
-		local omitted = (util.trim(record.apiKey) ~= "" and not included(record.apiKey))
+		local omitted = util.trim(record.apiKey) ~= ""
 			or M.cleanUrl(record.baseUrl) ~= record.baseUrl or M.cleanUrl(record.wsUrl) ~= record.wsUrl
 		for _, field in ipairs({ "headers", "query", "params" }) do
 			if type(record[field]) == "table" and next(record[field]) ~= nil then omitted = true end
@@ -77,8 +76,7 @@ return function(env)
 		-- Custom body fields can carry authentication under arbitrary names.
 		out.headers, out.query, out.params = {}, {}, {}
 		out.apiKey = ""
-		out.communityCredential = included(record.apiKey) or record.communityCredential == true or nil
-		if record.apiKey ~= nil and record.apiKey ~= "" and not included(record.apiKey) then out.communityCredential = nil end
+		out.communityCredential, out.communityKeyState = nil, nil
 		out.credentialsOmitted = omitted or record.credentialsOmitted == true or nil
 		out.keyRotation = nil
 		-- Compatibility lessons duplicate the complete URL, including query
@@ -117,7 +115,7 @@ return function(env)
 		local records = type(snapshot.providers) == "table" and snapshot.providers.list
 		for _, record in pairs(type(records) == "table" and records or {}) do
 			if type(record) == "table" then
-				if util.trim(record.apiKey) ~= "" and not included(record.apiKey) then return true end
+				if util.trim(record.apiKey) ~= "" then return true end
 				for _, field in ipairs({ "headers", "query", "params" }) do
 					if type(record[field]) == "table" and next(record[field]) ~= nil then return true end
 				end
@@ -173,10 +171,16 @@ return function(env)
 		out.credentialVaultLocked = not persisted or nil
 		out.security = type(out.security) == "table" and out.security or {}
 		out.security.rememberCredentials = true
+		local original = {}
+		for _, record in pairs(records(snapshot)) do if type(record) == "table" and record.id then original[record.id] = record end end
 		for _, record in pairs(records(out)) do
 			if type(record) == "table" then
 				record.storedCredentials = nil
 				record.credentialVaultLocked = not persisted or nil
+				-- This old public reference must survive until its matching vault
+				-- payload has authenticated; it never reconstructs a credential.
+				local source = original[record.id]
+				record.communityCredential = source and source.communityCredential == true or nil
 			end
 		end
 		if type(out.identity) == "table" then
@@ -191,7 +195,8 @@ return function(env)
 		return values
 	end
 	function M.sealVault(snapshot, envelope, key)
-		local source = M.referenceCommunity(M.withoutVault(snapshot))
+		local source = M.withoutVault(snapshot)
+		retirement.apply(source)
 		local payload = { version = 1, providers = {}, identity = {} }
 		local ids = {}
 		for _, record in ipairs(records(source)) do
@@ -211,7 +216,6 @@ return function(env)
 		local encrypted, why = vault.seal(envelope, key, payload)
 		if not encrypted then return nil, why end
 		local out = projectProviders(source)
-		for _, record in ipairs(records(out)) do record.communityKeyState = nil end
 		out.credentialVault, out.credentialVaultLocked = encrypted, nil
 		out.security = type(out.security) == "table" and out.security or {}
 		out.security.rememberCredentials = true
@@ -226,7 +230,7 @@ return function(env)
 		for index, entry in pairs(payload.providers) do
 			if type(index) ~= "number" or index % 1 ~= 0 or index < 1 or index > #payload.providers
 				or type(entry) ~= "table" or type(entry.id) ~= "string" or entry.id == "" or byId[entry.id]
-				or not validPayload({ kind = "provider", fields = entry.fields }, "provider", PROVIDER_FIELDS) then return nil, vault.error end
+				or not validPayload({ kind = "provider", fields = entry.fields }, "provider", LEGACY_PROVIDER_FIELDS) then return nil, vault.error end
 			for name in pairs(entry) do if name ~= "id" and name ~= "fields" then return nil, vault.error end end
 			byId[entry.id], count = entry.fields, count + 1
 		end
@@ -235,7 +239,7 @@ return function(env)
 		for _, record in ipairs(records(out)) do
 			if type(record) ~= "table" or not byId[record.id] or seen[record.id] then return nil, vault.error end
 			seen[record.id] = true
-			for _, field in ipairs(PROVIDER_FIELDS) do record[field] = util.deepCopy(byId[record.id][field]) end
+			for _, field in ipairs(LEGACY_PROVIDER_FIELDS) do record[field] = util.deepCopy(byId[record.id][field]) end
 			record.storedCredentials, record.credentialStorageError = nil, nil
 		end
 		if #records(out) ~= count then return nil, vault.error end
@@ -252,14 +256,27 @@ return function(env)
 	function M.applyVault(target, source)
 		local byId = {}
 		for _, record in ipairs(records(source)) do byId[record.id] = record end
+		local removed = {}
 		for _, record in ipairs(records(target)) do
 			local other = byId[record.id]
 			if other then
-				for _, field in ipairs(PROVIDER_FIELDS) do record[field] = util.deepCopy(other[field]) end
+				for _, field in ipairs(LEGACY_PROVIDER_FIELDS) do record[field] = util.deepCopy(other[field]) end
 				record.communityCredential = other.communityCredential
 				record.storedCredentials, record.credentialStorageError = other.storedCredentials, other.credentialStorageError
 				record.credentialVaultLocked = other.credentialVaultLocked
 				record.keyRotation = nil
+			else removed[record.id] = true
+			end
+		end
+		-- Authenticated migrations can remove IDs from the protected payload.
+		-- Reconcile those removals while retaining each surviving live table.
+		if next(removed) then
+			local list = records(target)
+			for index = #list, 1, -1 do if removed[list[index].id] then table.remove(list, index) end end
+			if removed[target.providers.active] then target.providers.active = source.providers.active or "" end
+			for _, field in ipairs({ "modelFavorites", "recentModels" }) do
+				local buckets = type(target.ui) == "table" and target.ui[field]
+				if type(buckets) == "table" then for id in pairs(removed) do buckets[id] = nil end end
 			end
 		end
 		target.identity = type(target.identity) == "table" and target.identity or {}
@@ -276,9 +293,10 @@ return function(env)
 		if type(out) ~= "table" then return out end
 		if out.credentialVault ~= nil then return M.lockedVault(out) end
 		for _, record in pairs(records(out)) do
-			if type(record) == "table" then readEnvelope(record, "provider", PROVIDER_FIELDS) end
+			if type(record) == "table" then readEnvelope(record, "provider", LEGACY_PROVIDER_FIELDS) end
 		end
 		if type(out.identity) == "table" then readEnvelope(out.identity, "identity", { "extraHeaders", "credentialsOmitted" }) end
+		retirement.apply(out)
 		return out
 	end
 
@@ -289,7 +307,7 @@ return function(env)
 	end
 
 	local function projection(snapshot, remember)
-		local out = M.referenceCommunity(M.restore(snapshot))
+		local out = M.restore(snapshot)
 		if not remember then return projectProviders(out) end
 		for index, record in pairs(records(out)) do
 			if type(record) == "table" then
@@ -299,7 +317,6 @@ return function(env)
 					if not envelope then return nil, why end
 				end
 				local visible = provider(record)
-				visible.communityKeyState = nil
 				visible.storedCredentials = envelope
 				records(out)[index] = visible
 			end
@@ -335,34 +352,17 @@ return function(env)
 		return projection(snapshot, true)
 	end
 
-	-- Included access is reconstructed from the bundle, even in remembered mode
-	-- or an explicit private transfer. There is no reason to duplicate its key.
-	function M.referenceCommunity(snapshot)
-		local out = util.deepCopy(snapshot)
-		for _, record in pairs(type(out.providers) == "table" and type(out.providers.list) == "table" and out.providers.list or {}) do
-			if type(record) == "table" and included(record.apiKey) then
-				local key = record.apiKey
-				local state = { revision = community.revision }
-				for _, field in ipairs({ "keyNames", "keyIds", "keyPaused", "keyMode", "selectedKey" }) do
-					state[field] = util.deepCopy(record[field])
-				end
-				if community.isRetired(key) then state.keyIds = nil end
-				record.communityKeyState = state
-				record.apiKey, record.communityCredential = "", true
-				record.keyRotation, record.keyNames, record.keyIds, record.keyPaused = nil, nil, nil, nil
-				record.keyMode, record.selectedKey = "rotate", 1
-				for name, value in pairs(type(record.headers) == "table" and record.headers or {}) do
-					if value == key or value == "Bearer " .. key then record.headers[name] = nil end
-				end
-			end
-		end
-		return out
-	end
-
 	-- This is a settings copy, not a promise that user-authored text is public.
 	-- In particular, memory, instructions and labels still need personal review.
 	function M.sanitise(snapshot)
-		local out = projectProviders(util.deepCopy(snapshot))
+		local out = M.withoutVault(snapshot)
+		if snapshot.credentialVault ~= nil then
+			for _, record in pairs(records(out)) do
+				if type(record) == "table" then record.credentialsOmitted = true end
+			end
+		end
+		retirement.apply(out)
+		out = projectProviders(out)
 		out = scrub(out, "")
 		for _, record in pairs(type(out.providers) == "table" and type(out.providers.list) == "table" and out.providers.list or {}) do
 			if type(record) == "table" then record.apiKey, record.communityKeyState, record.storedCredentials = "", nil, nil end

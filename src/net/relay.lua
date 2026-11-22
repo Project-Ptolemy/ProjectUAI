@@ -9,6 +9,7 @@ return function(env)
 	local dispose = env.require("runtime/dispose")
 	local transport = env.require("net/transport")
 	local relayLink = env.require("net/relay_link")
+	local rate = env.require("runtime/inference_rate")
 	local alive, pending = true, {}
 	local M = {}
 
@@ -47,26 +48,45 @@ return function(env)
 			clock.ms() + math.max(1, math.min(300, tonumber(spec.timeout) or 120)) * 1000)
 		local unlimited = transport.unlimited(spec, endpoint)
 		if unlimited then deadline = math.huge end
+		deadline = rate.deadline(spec.inference, deadline)
 		local nativeOwner = {}
-		local ended, counted
+		local ended, counted, prepareSubmission, admissionProblem
 		local function short(method, path, body, exchangeDeadline)
-			local stop = math.min(deadline, exchangeDeadline or deadline)
-			if clock.ms() >= stop then return nil, "deadline: relay request budget expired" end
-			return call({ url = base .. path, method = method, body = body,
-				-- Before the first submission, a hello or slot wait must not let a
-				-- newly challenged client start inference. Receipt recovery belongs
-				-- to the already dispatched job and must remain observable.
-				requiresAccess = not counted,
-				onDispatch = method == "POST" and path == "/api/inference" and function()
-					-- Submission receipt recovery reuses this inference ID. Polls and
-					-- repeated POSTs are never additional provider requests.
-					if counted then return end
-					counted = true
-					if spec.onDispatch then pcall(spec.onDispatch) end
-				end or nil,
-				headers = { Authorization = "Bearer " .. token }, identity = "none", silent = true,
-				waitForSlot = true, timeout = math.min(5, (stop - clock.ms()) / 1000), deadlineMs = stop,
-				aborted = ended, executorProfile = executorProfile, nativeOwner = nativeOwner })
+			while true do
+				local firstSubmission = method == "POST" and path == "/api/inference" and not counted
+				local permit
+				if firstSubmission and spec.inference then
+					permit, admissionProblem = rate.acquire(spec.inference, { deadlineMs = deadline,
+						aborted = function() return ended() or config.accessProblem() ~= nil end, onRetry = spec.onRetry })
+					if not permit then return nil, admissionProblem, 0, "terminal" end
+				end
+				local stop = math.min(deadline, exchangeDeadline or deadline)
+				if clock.ms() >= stop then
+					if permit then permit.release() end
+					return nil, "deadline: relay request budget expired"
+				end
+				local called, response, problem, elapsed, kind = pcall(function()
+					if firstSubmission and prepareSubmission then body = prepareSubmission() end
+					return call({ url = base .. path, method = method, body = body,
+						ratePermit = permit, inference = firstSubmission and spec.inference or nil,
+						-- A challenged client cannot start a new inference. Receipt
+						-- recovery belongs to the already accepted job and stays visible.
+						requiresAccess = not counted,
+						onDispatch = method == "POST" and path == "/api/inference" and function()
+							if counted then return end
+							counted = true
+							if spec.onDispatch then pcall(spec.onDispatch) end
+						end or nil,
+						headers = { Authorization = "Bearer " .. token }, identity = "none", silent = true,
+						waitForSlot = true, timeout = math.min(5, (stop - clock.ms()) / 1000), deadlineMs = stop,
+						aborted = ended, executorProfile = executorProfile, nativeOwner = nativeOwner })
+				end)
+				if permit then permit.release() end
+				if not called then return nil, "malformed: relay submission preparation failed", 0, "terminal" end
+				if kind ~= "rate" then return response, problem, elapsed, kind end
+				-- A changed cap cancelled an unused permit. Rejoin the full provider
+				-- budget before starting another short local network exchange.
+			end
 		end
 		local cancelled = false
 		local function cancel()
@@ -180,14 +200,20 @@ return function(env)
 		if clock.ms() >= deadline then return failure("Relay request deadline reached before submission.") end
 		local input = { id = id, instance = info.instance, url = spec.url, headers = headers,
 			body = spec.body, sessionId = spec.sessionId }
-		if target == "companion" then
-			local inference = type(info.capabilities) == "table" and info.capabilities.inference
-			local acceptsUnlimited = type(inference) == "table" and inference.schema == 1 and inference.unlimited == true
-			-- Kotlin's protocol uses integer seconds. Fractional remaining budgets
-			-- previously produced invalid JSON requests before inference could start.
-			input.timeout = unlimited and acceptsUnlimited and 0 or math.max(1, math.ceil(math.min(timeout, (deadline - clock.ms()) / 1000)))
+		local payload
+		prepareSubmission = function()
+			if target == "companion" then
+				local inference = type(info.capabilities) == "table" and info.capabilities.inference
+				local acceptsUnlimited = type(inference) == "table" and inference.schema == 1 and inference.unlimited == true
+				-- Only the local network exchange starts its short timeout after rate
+				-- admission. The provider still receives the original remaining budget.
+				input.timeout = unlimited and deadline == math.huge and acceptsUnlimited and 0
+					or math.max(1, math.ceil(math.min(timeout, (deadline - clock.ms()) / 1000)))
+			end
+			payload = util.encode(input)
+			return payload
 		end
-		local payload = util.encode(input)
+		prepareSubmission()
 		local submitted, attempts = false, 0
 		while clock.ms() < deadline do
 			if ended() then cancel(); pending[id] = nil; return nil, "aborted" end
@@ -197,6 +223,8 @@ return function(env)
 				response, problem = short("POST", "/api/inference", payload)
 			else response, problem = short("GET", "/api/inference/" .. id .. (previews and not frozen and ("?after=" .. cursor) or "")) end
 			if ended() then cancel(); pending[id] = nil; return nil, "aborted" end
+			if admissionProblem then pending[id] = nil; return nil, admissionProblem end
+			if not counted and tostring(problem or ""):find("capacity: request rate", 1, true) then pending[id] = nil; return nil, problem end
 			local access = not counted and config.accessProblem()
 			if access then pending[id] = nil; return nil, "vault_required: " .. access end
 			-- Unknown deadlines/capacity can recover behind the original native

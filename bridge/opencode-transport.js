@@ -14,15 +14,18 @@ const CIPHERS = [
   'AES128-GCM-SHA256', 'AES256-GCM-SHA384', 'AES128-SHA', 'AES256-SHA',
 ].join(':');
 
-function optionsFor(url) {
+function isZenInference(url) {
   try {
     const u = new URL(url);
-    if (u.protocol === 'https:' && u.hostname === 'opencode.ai' && !u.port && !u.username && !u.password &&
-      !u.search && !u.hash && /^\/(?:zen\/v1|inference\/v1|inference\/openai\/v1)\/(?:chat\/completions|responses)\/?$/.test(u.pathname)) {
-      return { ciphers: CIPHERS };
-    }
+    return u.protocol === 'https:' && u.hostname === 'opencode.ai' && !u.port && !u.username && !u.password &&
+      !/[?#]/.test(u.href) && /^\/(?:zen\/v1|inference\/v1|inference\/openai\/v1)\/(?:chat\/completions|responses)\/?$/.test(u.pathname);
   } catch { /* Other providers retain their ordinary transport. */ }
+  return false;
+}
+
+function optionsFor(url) {
+  if (isZenInference(url)) return { ciphers: CIPHERS };
   return {};
 }
 
-module.exports = { optionsFor };
+module.exports = { optionsFor, isZenInference };

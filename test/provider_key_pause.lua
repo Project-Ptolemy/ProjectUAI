@@ -1,6 +1,7 @@
 -- Pause policy and opaque key ownership through synthetic provider traffic.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("Provider key pause")
 local case, check = suite.case, suite.check
 
@@ -28,6 +29,7 @@ local function fixture(protocol)
 		return { StatusCode = 200, Body = f.h.json.encode(body) }
 	end
 	function f.complete(record)
+		if protocol == "responses" then Z.responses(f, record or f.record) end
 		return f.run(function() return f.env.require("provider/chat").complete(record or f.record, {
 			messages = { { role = "user", content = "hello" } }, stream = false, attempts = 1 }) end)
 	end
@@ -152,21 +154,7 @@ case("a pause edit revokes proxy recovery belonging to an older policy", functio
 	f.healthy(); f.close()
 end)
 
-case("paused included access cannot start anonymous background model probes", function()
-	local f = fixture("openai")
-	f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end -- Test pause during open hours.
-	local record = f.registry.blank("projectuai-free")
-	record.id, record.label, record.model = "included-pause", "Included pause", "auto"
-	assert(f.registry.save(record)); assert(f.keys.setPaused(record, 1, true))
-	local route = f.env.require("provider/free_route")
-	check("paused access is not advertised as available", not route.status(record).available)
-	check("paused included access is not eligible for background measurements", not route.eligible(record))
-	route.refresh(record); f.h.sched.advance(1)
-	check("background refresh dispatches neither discovery nor anonymous inference", f.h.http.requestCount == 0)
-	f.healthy(); f.close()
-end)
-
-case("invalid metadata is rejected without leaking keys and included access resets it", function()
+case("invalid pause and accounting metadata is rejected without leaking keys", function()
 	local f = fixture("openai")
 	for _, flags in ipairs({ true, { true }, { true, false, "false" }, { [1] = true, [3] = false } }) do
 		f.record.keyPaused = flags
@@ -176,11 +164,6 @@ case("invalid metadata is rejected without leaking keys and included access rese
 	f.record.keyPaused = nil; f.keys.ensureIds(f.record)
 	f.record.keyIds[2] = f.record.keyIds[1]
 	check("duplicate usage identities are invalid", not f.keys.validate(f.record))
-	f.record = f.registry.blank("projectuai-free")
-	f.record.apiKey = "key-one\nkey-two"; f.record.keyIds = nil
-	assert(f.keys.setPaused(f.record, 1, true))
-	assert(f.env.require("provider/community_key").apply(f.record))
-	check("included access clears prior pause and accounting metadata", f.record.keyPaused == nil and f.record.keyIds == nil and f.keys.validate(f.record))
 	f.healthy(); f.close()
 end)
 

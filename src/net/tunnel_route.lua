@@ -29,9 +29,10 @@ return function(env)
 
 	function M.hasCredentials(headers)
 		for name in pairs(type(headers) == "table" and headers or {}) do
-			if tostring(name):lower():find("authorization", 1, true)
-				or tostring(name):lower():find("api[-_]?key") or tostring(name):lower():find("token", 1, true)
-				or tostring(name):lower():find("cookie", 1, true) then return true end
+			local lower = tostring(name):lower()
+			if lower:find("auth", 1, true) or lower:find("api[-_]?key") or lower:find("token", 1, true)
+				or lower:find("secret", 1, true) or lower:find("cookie", 1, true) or lower:find("credential", 1, true)
+				or lower:find("organization", 1, true) or lower:find("%f[%a]org%f[%A]") or lower:find("[-_]org[-_]?id$") then return true end
 		end
 		return false
 	end

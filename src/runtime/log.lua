@@ -57,7 +57,7 @@ return function(env)
 		text = text:gsub("(sk%-[%w%-_]*)([%w%-_][%w%-_][%w%-_][%w%-_])", function(_, tail)
 			return "sk-..." .. tail
 		end)
-		for _, prefix in ipairs({ "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_", "xox[baprs]%-", "AKIA" }) do
+		for _, prefix in ipairs({ "oc_sk_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_", "xox[baprs]%-", "AKIA" }) do
 			text = text:gsub(prefix .. "[%w_%-]+", function(value) return masked(value) end)
 		end
 		text = text:gsub("eyJ[%w_%-]+%.eyJ[%w_%-]+%.[%w_%-]+", masked)

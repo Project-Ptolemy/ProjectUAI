@@ -433,9 +433,11 @@ return function(env)
 	end
 
 	-- Write on blur: typing a port should not restart the bridge per keystroke.
+	-- validate(transformedValue) may return false, message to keep the saved
+	-- setting and show inline feedback while retaining the entered text.
 	function R.field(parent, props)
 		local group = fieldGroup(parent, props)
-		local field
+		local field, problem
 		field = P.field(group, {
 			name = props.name,
 			text = tostring(props.value ~= nil and props.value or config.get(props.path, "")),
@@ -445,6 +447,14 @@ return function(env)
 			onBlur = function(text)
 				local clean = util.trim(text)
 				if props.transform then clean = props.transform(clean) end
+				if props.validate then
+					local accepted, why = props.validate(clean)
+					if accepted == false then
+						problem.Text, problem.Visible = tostring(why or "Review this value before saving."), true
+						return
+					end
+					problem.Visible = false
+				end
 				if props.path then
 					config.set(props.path, clean)
 					field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
@@ -456,7 +466,11 @@ return function(env)
 			field.instance:SetAttribute("UAIConfigPath", props.path)
 			field.instance:SetAttribute("UAIConfigValue", tostring(config.get(props.path, "")))
 		end
-		if props.hint then R.paragraph(group, props.hint, { layoutOrder = 3 }) end
+		if props.validate then
+			problem = R.paragraph(group, "", { name = props.name and (props.name .. "Problem"), color = theme.color.danger, layoutOrder = 3 })
+			problem.Visible = false
+		end
+		if props.hint then R.paragraph(group, props.hint, { layoutOrder = props.validate and 4 or 3 }) end
 		return field
 	end
 

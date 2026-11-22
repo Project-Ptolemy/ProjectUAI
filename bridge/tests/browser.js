@@ -55,12 +55,13 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const history = Array.from({ length: 320 }, (_, index) => ({ kind: index % 2 ? 'assistant:text' : 'user',
       text: 'Retained message ' + index + '\n\n' + 'A readable paragraph. '.repeat(20), transcriptId: 1000 + index, sessionId: 's1' }));
     await post('/api/agent/events', { batchId: 'long-browser', sessionId: 's1', snapshot: history, state });
-    await page.waitForFunction(() => document.querySelectorAll('#transcript .message').length === 320);
+    await page.waitForFunction(() => !snapshotReplay && document.querySelectorAll('#transcript .message').length === 320);
     await page.locator('#transcript').evaluate(node => { node.scrollTop = 0; });
     assert.ok(await page.locator('#transcript').evaluate(node => node.scrollHeight > node.clientHeight), 'long history is scrollable');
+    const previousReplay = await page.evaluate(() => snapshotGeneration);
     await post('/api/agent/events', { batchId: 'long-refresh-browser', sessionId: 's1', snapshot: history, state });
-    await page.waitForFunction(() => document.querySelector('#transcript').getAttribute('aria-busy') !== 'true' &&
-      document.querySelectorAll('#transcript .message').length === 320);
+    await page.waitForFunction(previous => snapshotGeneration > previous && !snapshotReplay &&
+      document.querySelectorAll('#transcript .message').length === 320, previousReplay);
     assert.ok(await page.locator('#transcript').evaluate(node => node.scrollTop < 5), 'snapshot refresh preserves reading at the start');
     assert.equal(await page.locator('#transcript .message').count(), 320, 'snapshot refresh preserves retained messages');
     await page.locator('#latest').click();

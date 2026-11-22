@@ -260,7 +260,7 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
       http.validateHeaderValue(name, String(value));
       headers[name] = String(value);
     }
-    if (clineRoute && Object.keys(headers).some(name => /authorization|api[-_]?key|token|cookie|organization/i.test(name))) {
+    if (clineRoute && Object.keys(headers).some(name => /auth|api[-_]?key|token|secret|cookie|credential|organization|(?:^|[-_])org(?:[-_]?id)?$/i.test(name))) {
       throw new Error('Cline uses its signed-in local profile. Set this provider authentication to None.');
     }
     headers['accept-encoding'] = 'identity';
@@ -293,7 +293,7 @@ function createInference({ publish = () => {}, maxBytes = 16 * 1024 * 1024,
       startedAt: Date.now(), seq: 0, frameCount: 0, ring: [], ringBytes: 0, ringDropped: false,
       firstFrameAt: null, sawText: false, model, requestBytes };
     jobs.set(job.id, job);
-    const native = clineRoute ? cline : opencode?.capability().available && opencode.accepts(url.href, providerBody) ? opencode : null;
+    const native = clineRoute ? cline : opencode?.capability().available && opencode.accepts(url.href, providerBody, headers) ? opencode : null;
     if (native) {
       const controller = new AbortController();
       job.request = { destroy: () => controller.abort() };

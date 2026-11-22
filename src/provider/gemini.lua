@@ -311,13 +311,14 @@ return function(env)
 		local scope, started = registry.compatibilityKey(record), clock.ms()
 		local timeout = request.timeout or config.get("agent.requestTimeout", 86400)
 		local relayUnlimited = transport.unlimited(request)
-		local deadline = env.require("net/deadline").at(timeout, request.deadlineMs, started, relayUnlimited)
+		local deadline = registry.inferenceDeadline(request, timeout, started, relayUnlimited)
 		local pool, key = registry.requestKeys(record), registry.nextKey(record)
 		local accounting = env.require("runtime/request_accounting").new(record, request)
 		local left = math.max(0, #pool - 1)
 		local function cancelled()
 			return not owned() or registry.compatibilityKey(record) ~= scope or request.aborted and request.aborted()
 		end
+		local inference = registry.inferenceContext(record, function() return not cancelled() end, deadline)
 		local function retry(note, status)
 			if request.onRetry then pcall(request.onRetry, { attempt = 1, attempts = 2, wait = 0, status = status, reason = note }) end
 		end
@@ -326,6 +327,7 @@ return function(env)
 			local outgoing = headers.merge(M.headers(record, key), registry.opencodeHeaders(record, request), record.headers,
 				{ Accept = wantStream and "text/event-stream" or "application/json" })
 			return http.send({ url = M.endpoint(record, wantStream), method = "POST", body = util.encode(body),
+				inference = inference,
 				requiresAccess = true,
 				onDispatch = function() accounting.dispatch(key, outgoing) end,
 				headers = outgoing,

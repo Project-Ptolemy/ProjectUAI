@@ -2,6 +2,7 @@
 
 const RELEASE = require('./release');
 const { INSTRUCTIONS, DESCRIPTION_PREFIX } = require('./environment');
+const { isZenInference } = require('./opencode-transport');
 
 // OpenCode owns the upstream connection. This adapter owns an isolated CLI
 // server and returns UAI tool calls to Roblox without executing host tools.
@@ -31,11 +32,17 @@ const pause = (ms, signal) => new Promise((resolve, reject) => {
 });
 
 function official(url) {
-  try {
-    const u = new URL(url);
-    return u.protocol === 'https:' && u.hostname === 'opencode.ai' && !u.port && !u.username && !u.password &&
-      /^\/(?:zen\/v1|inference\/v1|inference\/openai\/v1)\/(?:chat\/completions|responses)\/?$/.test(u.pathname);
-  } catch { return false; }
+  return isZenInference(url);
+}
+
+function nativeHeadersAllowed(headers) {
+  if (headers === undefined) return true;
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return false;
+  for (const [name, value] of Object.entries(headers)) {
+    if (/auth|api[-_]?key|token|secret|cookie|credential|organization|(?:^|[-_])org(?:[-_]?id)?$/i.test(name) &&
+        !(name.toLowerCase() === 'authorization' && value === 'Bearer public')) return false;
+  }
+  return true;
 }
 
 function findBinaries(env = process.env, platform = process.platform, arch = process.arch) {
@@ -154,11 +161,23 @@ function jsonRequest(base, password, route, method = 'GET', body, signal, timeou
 function toolDefinitions(body) {
   if (!Array.isArray(body.tools)) return [];
   const seen = new Set();
-  // These compatibility declarations belong only to the old direct wire
-  // workaround. The real CLI supplies its own native schemas.
-  const legacy = new Set(['bash', 'read', 'edit', 'glob', 'grep', 'list', 'shell']);
-  return body.tools.filter(tool => !legacy.has((tool.function || tool)?.name)).map(tool => {
-    const f = tool.type === 'function' ? tool.function || tool : null;
+  // Filter the actual direct-wire placeholders, not every UAI tool that shares
+  // a native name. The native CLI supplies its own guarded host schemas.
+  const legacy = { bash: ['Execute bash command', 'command', 'The command to run'], read: ['Read file', 'path', 'The path to the file'],
+    edit: ['Edit file', 'path', 'The path to the file'], glob: ['Find files', 'pattern', 'Glob pattern'],
+    grep: ['Search pattern', 'pattern', 'Regex pattern'], list: ['List files', 'path', 'Directory path'],
+    shell: ['Execute shell command', 'command', 'The command to run'] };
+  const placeholder = tool => {
+    const f = tool?.function || tool, expected = Object.hasOwn(legacy, f?.name) ? legacy[f.name] : null;
+    if (!expected || tool?.type !== 'function') return false;
+    const [description, field, fieldDescription] = expected;
+    const parameters = { type: 'object', properties: { [field]: { type: 'string', description: fieldDescription } },
+      ...(f.name === 'list' ? {} : { required: [field] }) };
+    return (f.description === description || f.description === 'OpenCode compatibility declaration only. This tool does not execute in Roblox; use the supplied Project UAI tools.')
+      && isDeepStrictEqual(f.parameters, parameters);
+  };
+  return body.tools.filter(tool => !placeholder(tool)).map(tool => {
+    const f = tool?.type === 'function' ? tool.function || tool : null;
     if (!f || typeof f.name !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(f.name) || seen.has(f.name) || f.name === HOST_ACTION) throw Error('OpenCode requires unique UAI function tools; opencode_host_action is reserved for blocked desktop actions');
     seen.add(f.name);
     return { name: f.name, description: String(f.description || ''), inputSchema: f.parameters || { type: 'object', properties: {} } };
@@ -567,8 +586,10 @@ function createOpenCode({ env = process.env, binary, binaryArgs = [], startupMs 
     if (directory && path.dirname(directory) === os.tmpdir() && path.basename(directory).startsWith('project-uai-opencode-'))
       try { fs.rmSync(directory, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 }); } catch { /* Locked native cache is safe to leave private. */ }
   }
-  function accepts(url, body) {
-    if (!official(url) || state !== 'ready') return false;
+  function accepts(url, body, headers) {
+    // The isolated free CLI cannot preserve a personal key or workspace auth.
+    // Those requests keep their original credential-bearing HTTPS dispatch.
+    if (!official(url) || state !== 'ready' || !nativeHeadersAllowed(headers)) return false;
     try {
       const model = JSON.parse(body).model?.replace(/^opencode\//, '');
       return modelsCache.some(item => item.id === model);
@@ -577,4 +598,4 @@ function createOpenCode({ env = process.env, binary, binaryArgs = [], startupMs 
   return { start, request, models, capability, close, accepts };
 }
 
-module.exports = { createOpenCode, findBinary, official, promptFor, promptInput, responseBody, toolDefinitions };
+module.exports = { createOpenCode, findBinary, official, nativeHeadersAllowed, promptFor, promptInput, responseBody, toolDefinitions };

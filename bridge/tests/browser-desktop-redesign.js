@@ -16,15 +16,15 @@ const { navigation } = require('./helpers/browser-ui');
     protocol: 2, runtime: 'web', sessionId: 'redesign', player: 'David', place: { name: 'Studio garden' },
     agent: { busy: false, status: 'Ready', model: 'deepseek-v4.1-flash-free', provider: 'OpenCode' },
     threads: [{ id: 'redesign', title: 'A little room to create', active: true }],
-    providers: [{ id: 'opencode', label: 'OpenCode', model: 'deepseek-v4.1-flash-free', enabled: true,
+    providers: [{ id: 'opencode', label: 'OpenCode', preset: 'zen', baseUrl: 'https://opencode.ai/zen/v1', model: 'deepseek-v4.1-flash-free', enabled: true, requestsPerMinute: 3,
       models: ['deepseek-v4.1-flash-free', 'big-pickle', 'paid-model'], freeModels: ['deepseek-v4.1-flash-free', 'big-pickle'],
       modelInfo: { 'deepseek-v4.1-flash-free': { contextWindow: 131072, maxOutputTokens: 16384, reasoning: true, efforts: ['off', 'low', 'high'], effectiveEffort: 'high', effortSource: 'documented', temperatureAllowed: false, temperatureSource: 'learned', temperatureOverride: 'auto' },
         'big-pickle': { contextWindow: 40960, maxOutputTokens: 4096, reasoning: false } } }],
     context: { sessionId: 'redesign', providerId: 'opencode', model: 'deepseek-v4.1-flash-free', usedTokens: 32768, windowTokens: 131072,
       systemTokens: 8192, messageTokens: 22528, summaryTokens: 2048, compactionTokens: 100000, estimated: true, partial: false, calibrated: true },
     activeProvider: 'opencode', permissions: { mode: 'ask' }, tools: [], todos: [], loops: [], logs: [], requests: [],
-    subagents: [], questions: [], pendingPermissions: [], settings: { ui: { density: 'comfortable', fontScale: 1, transcriptWidth: 'medium' },
-      agent: { effort: 'high', temperature: .4, autoFreeRouting: true, customInstructions: '', maxTurns: 24 }, logs: { enabled: true } },
+    subagents: [], questions: [], pendingPermissions: [], settings: { ui: { density: 'comfortable', fontScale: 1, transcriptWidth: 'medium', changelogAutoShownVersion: '4.1.1' },
+      agent: { effort: 'high', temperature: .4, autoFreeRouting: true, requestsPerMinute: 0, customInstructions: '', maxTurns: 24 }, logs: { enabled: true } },
   };
   const push = async extra => {
     const response = await fetch(bridge.base + '/api/agent/events', { method: 'POST', headers: auth,
@@ -38,9 +38,12 @@ const { navigation } = require('./helpers/browser-ui');
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, permissions: ['clipboard-read', 'clipboard-write'], reducedMotion: 'reduce' });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     const { navigate } = navigation(page);
-    const errors = [], commands = []; let followupReceipt; page.on('pageerror', error => errors.push(error.message));
+    const errors = [], commands = [], receiptHandlers = new Map(); let followupReceipt; page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/command', route => { const command = route.request().postDataJSON(); commands.push(command); return route.fulfill({ json: { id: command.commandId } }); });
-    await page.route('**/api/commands/*', async route => { const id = route.request().url().split('/').at(-1), sent = commands.find(command => command.commandId === id); if (sent?.type === 'subagent:followup' && followupReceipt) await followupReceipt; return route.fulfill({ json: { state: 'completed', result: { ok: true, ...(sent?.type === 'send' ? { data: { messageId: id, queued: true } } : {}) } } }); });
+    await page.route('**/api/commands/*', async route => { const id = route.request().url().split('/').at(-1), sent = commands.find(command => command.commandId === id); if (sent?.type === 'subagent:followup' && followupReceipt) await followupReceipt;
+      const handler = receiptHandlers.get(sent?.type), result = handler ? await handler(sent) : { ok: true, ...(sent?.type === 'send' ? { data: { messageId: id, queued: true } } : {}) };
+      return route.fulfill({ json: { state: 'completed', result } });
+    });
     const screenshot = async name => {
       if (!process.env.UAI_SCREENSHOTS) return;
       fs.mkdirSync(process.env.UAI_SCREENSHOTS, { recursive: true });
@@ -59,16 +62,32 @@ const { navigation } = require('./helpers/browser-ui');
     assert.equal(await page.locator('#chatPage').isVisible(), true, 'settings overlay keeps the active conversation mounted');
     assert.equal(await page.locator('body').getAttribute('data-page'), 'chat');
     await page.locator('#settings-tab-agent').click();
-    const routing = page.locator('[data-setting="agent.autoFreeRouting"]');
-    assert.equal(await routing.isChecked(), true);
-    assert.match(await routing.locator('..').textContent(), /^Automatic free routing.*Project UAI Free.*Providers library.*HCNSEC uses its own connection and key.*provider Auto/s);
-    assert.doesNotMatch(await routing.locator('..').textContent(), /included HCNSEC/);
-    for (const enabled of [false, true]) {
-      const routeSettingRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().path === 'agent.autoFreeRouting');
-      await routing.setChecked(enabled); assert.equal((await routeSettingRequest).postDataJSON().value, enabled);
-      state.settings.agent.autoFreeRouting = enabled; await push();
-      await page.waitForFunction(() => document.querySelector('[data-setting="agent.autoFreeRouting"]').closest('.setting').dataset.state === 'saved');
+    assert.equal(await page.locator('[data-setting="agent.autoFreeRouting"]').count(), 0, 'legacy settings cannot restore retired routing controls');
+    assert.equal(await page.locator('[data-setting="ui.changelogAutoShownVersion"]').count(), 0, 'the internal release marker is not an editable setting');
+    const rate = page.locator('[data-setting="agent.requestsPerMinute"]');
+    for (const value of [1, 2, 0]) {
+      const sent = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().path === 'agent.requestsPerMinute');
+      await rate.fill(String(value)); await rate.press('Tab'); assert.equal((await sent).postDataJSON().value, value, 'global request caps preserve exact low integers');
+      state.settings.agent.requestsPerMinute = value; await push();
+      await page.waitForFunction(() => document.querySelector('[data-setting="agent.requestsPerMinute"]').closest('.setting').dataset.state === 'saved');
     }
+    for (const value of ['1.5', '-1', '1000001']) {
+      const before = commands.length; await rate.fill(value); await rate.press('Tab');
+      await page.waitForFunction(() => document.querySelector('[data-setting="agent.requestsPerMinute"]').closest('.setting').dataset.state === 'error');
+      await push();
+      assert.equal(await rate.inputValue(), value, 'invalid caps retain their draft across metadata updates');
+      assert.equal(commands.length, before, 'invalid caps never reach the bridge');
+      assert.equal(state.settings.agent.requestsPerMinute, 0, 'invalid caps leave the saved setting untouched');
+      assert.ok(await rate.locator('..').locator('.save-status').textContent());
+    }
+    await screenshot('redesign-request-cap-invalid');
+    await rate.fill('0'); await rate.press('Tab');
+    await page.waitForFunction(() => document.querySelector('[data-setting="agent.requestsPerMinute"]').closest('.setting').dataset.state === 'saved');
+    const turns = page.locator('[data-setting="agent.maxTurns"]');
+    const turnsRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().path === 'agent.maxTurns');
+    await turns.fill('30'); await turns.press('Tab'); assert.equal((await turnsRequest).postDataJSON().value, 30);
+    state.settings.agent.maxTurns = 30; await push();
+    await page.waitForFunction(() => document.querySelector('[data-setting="agent.maxTurns"]').closest('.setting').dataset.state === 'saved');
     const instructions = page.locator('[data-setting="agent.customInstructions"]');
     await instructions.fill('Unfinished instructions'); await instructions.evaluate(node => node.setSelectionRange(2, 12));
     state.settings.agent.customInstructions = 'Remote value'; await push();
@@ -93,7 +112,7 @@ const { navigation } = require('./helpers/browser-ui');
           assert.ok(bounds.left >= 0 && bounds.right <= size.width && bounds.top >= 0 && bounds.bottom <= size.height, JSON.stringify(bounds));
           assert.ok(!bounds.overflow && bounds.contentScroll <= bounds.contentWidth + 1 && bounds.contentHeight >= 80, section + ': ' + JSON.stringify(bounds));
           assert.ok(bounds.closeTop >= 0 && bounds.footerBottom <= size.height, section + ' fixed actions');
-          if (section === 'general' || section === 'mcp') await screenshot('redesign-settings-' + section + '-' + theme + '-' + size.width);
+          if (['general', 'agent', 'mcp'].includes(section)) await screenshot('redesign-settings-' + section + '-' + theme + '-' + size.width);
         }
       }
     }
@@ -134,10 +153,8 @@ const { navigation } = require('./helpers/browser-ui');
     assert.equal(await page.locator('#input').inputValue(), 'Keep this draft exactly as it is.');
     await page.locator('#modelButton').click();
     state.providers[0].freeRoute = { supported: true, enabled: false, running: true, ready: true, model: 'old-candidate', ms: 2500 };
-    state.settings.agent.autoFreeRouting = false; await push();
-    await page.waitForFunction(() => document.querySelector('.free-route').textContent.includes('Automatic free routing is off'));
-    assert.match(await page.locator('.free-route').textContent(), /Settings → Agent → Automatic free routing/);
-    state.providers[0].freeRoute = null; state.settings.agent.autoFreeRouting = true; await push();
+    await push();
+    assert.equal(await page.locator('.free-route').count(), 0, 'legacy provider metadata cannot restore retired routing status');
     assert.equal(await page.locator('.model-list .is-free').count(), 2);
     assert.deepEqual(await page.locator('.effort-choice').allTextContents(), ['Provider default', 'Low', 'High']);
     assert.equal(await page.locator('[data-effort="high"]').getAttribute('aria-pressed'), 'true');
@@ -171,10 +188,20 @@ const { navigation } = require('./helpers/browser-ui');
       assert.ok(fit.scroll <= fit.width + 1 && fit.body >= 48, JSON.stringify(fit));
       await screenshot('redesign-models-' + size.width);
     }
-    // Provider metadata wins over names, including personal paid HCNSEC models.
-    state.providers[0].freeModels = []; state.providers[0].preset = 'hcnsec'; await push();
+    // Provider metadata wins over names for custom personal-key connections.
+    state.providers[0].freeModels = []; state.providers[0].preset = 'custom'; await push();
     await page.waitForFunction(() => document.querySelectorAll('.model-list .is-free').length === 0);
     assert.equal(await page.locator('#modelButton').evaluate(node => node.classList.contains('is-free')), false);
+    await page.getByLabel('Free only', { exact: true }).uncheck();
+    delete state.providers[0].freeModels; state.providers[0].preset = 'zen'; await push();
+    await page.waitForFunction(() => document.querySelectorAll('.model-list .is-free').length === 0);
+    assert.equal(await page.locator('.model-list [data-model="big-pickle"]').evaluate(node => node.classList.contains('is-free')), false, 'legacy Zen names and free suffixes do not prove access');
+    state.providers[0].modelInfo['paid-model'] = { free: true }; await push();
+    await page.waitForFunction(() => document.querySelectorAll('.model-list .is-free').length === 1);
+    assert.equal(await page.locator('.model-list .is-free').getAttribute('data-model'), 'paid-model', 'explicit backend free facts support an unsuffixed ID');
+    state.providers[0].freeModels = []; await push();
+    await page.waitForFunction(() => document.querySelectorAll('.model-list .is-free').length === 0);
+    delete state.providers[0].modelInfo['paid-model'];
     await close();
     await page.setViewportSize({ width: 1440, height: 960 });
     assert.equal(await page.locator('#contextPercent').textContent(), '25%');
@@ -191,8 +218,10 @@ const { navigation } = require('./helpers/browser-ui');
     assert.equal(await page.locator('#contextPercent').textContent(), '?', 'unknown limits never imply zero usage');
     await close();
     // Follow-ups are admitted while a response runs; Stop is an independent action.
-    state.agent.busy = true; state.queue = { items: [], count: 0, limit: 16, held: false }; await push();
+    state.agent.busy = true; state.agent.status = 'Waiting for request rate limit'; state.queue = { items: [], count: 0, limit: 16, held: false }; await push();
     await page.waitForFunction(() => !document.querySelector('#stop').hidden && !document.querySelector('#send').hidden);
+    assert.equal(await page.locator('#status').textContent(), 'Waiting for request rate limit');
+    assert.equal(await page.locator('#stop').isEnabled(), true, 'Stop stays usable during a rate wait');
     await page.locator('#input').fill('Check the lighting after this response.');
     const queuedRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().type === 'send');
     await page.locator('#send').click(); const queued = (await queuedRequest).postDataJSON();
@@ -203,7 +232,7 @@ const { navigation } = require('./helpers/browser-ui');
     await page.locator('#input').fill('Keep this next thought in the draft.');
     const stoppingRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().type === 'abort');
     await page.locator('#stop').click(); await stoppingRequest;
-    state.agent.busy = false; state.queue.held = true; state.queue.reason = 'Stopped by user'; await push();
+    state.agent.busy = false; state.agent.status = 'Ready'; state.queue.held = true; state.queue.reason = 'Stopped by user'; await push();
     await page.waitForFunction(() => document.querySelector('.queued-heading').textContent.includes('paused'));
     assert.equal(await page.locator('#input').inputValue(), 'Keep this next thought in the draft.');
     assert.ok(commands.some(command => command.type === 'abort'));
@@ -246,6 +275,24 @@ const { navigation } = require('./helpers/browser-ui');
       assert.equal(await page.locator('#workspaceModal').evaluate(node => node.open), true, 'nested actions preserve the parent workspace');
       await page.getByLabel('API', { exact: true }).selectOption('gemini');
       assert.equal(await page.getByLabel('Authentication', { exact: true }).inputValue(), 'x-goog-api-key', 'choosing native Gemini uses the Google API key header');
+      if (size.width === 1440) {
+        await page.getByLabel('API', { exact: true }).selectOption('openai');
+        const endpoint = page.getByLabel('Base URL', { exact: true }), disclosure = page.locator('.provider-disclosure');
+        await endpoint.fill('https://opencode.ai/zen/v1/chat/completions');
+        assert.match(await disclosure.textContent(), /verifies Chat support and zero prices across every tier.*Confirmed free Chat models need no personal key/s);
+        assert.match(await disclosure.textContent(), /unknown, priced and decision-only.*ten minutes.*restart/s);
+        assert.match(await disclosure.textContent(), /Direct free Chat API access.*depends on the host transport/s);
+        assert.match(await disclosure.textContent(), /Ordinary Node\.js and Windows Schannel.*Hy4 Flash Free.*other reviewed free Chat models/s);
+        assert.match(await disclosure.textContent(), /CLI through UAI Desktop is optional/);
+        await endpoint.fill('https://opencode.ai/inference/go/v1');
+        assert.match(await disclosure.textContent(), /Go subscription endpoint/);
+        assert.doesNotMatch(await disclosure.textContent(), /Confirmed free Chat models need no personal key/);
+        for (const custom of ['https://opencode.ai/private/v1', 'https://opencode.ai/zen/v1?token=custom']) {
+          await endpoint.fill(custom);
+          assert.match(await disclosure.textContent(), /authentication required by this OpenCode endpoint/);
+          assert.doesNotMatch(await disclosure.textContent(), /Hy4 Flash Free|Confirmed free Chat models need no personal key/);
+        }
+      }
       await close(); assert.equal(await add.evaluate(node => node === document.activeElement), true, 'nested dialog restores its workspace action');
       await page.locator('#workspaceTabs').getByRole('button', { name: 'Settings', exact: true }).click();
       await page.locator('#settings-tab-general').waitFor(); await close();
@@ -253,6 +300,95 @@ const { navigation } = require('./helpers/browser-ui');
       await page.keyboard.press('Escape'); await page.locator('#workspaceModal').waitFor({ state: 'hidden' });
       assert.equal(await page.locator('#input').inputValue(), 'Keep this next thought in the draft.');
     }
+    // Provider caps are reviewed drafts; Test owns independent waiting/cancellation.
+    await page.setViewportSize({ width: 1440, height: 960 }); await navigate('providers');
+    await page.locator('[data-focus-key="provider:opencode:edit"]').click();
+    const providerRate = page.getByLabel('Requests per minute', { exact: true });
+    assert.equal(await providerRate.inputValue(), '3');
+    for (const value of ['10.5', '-1', '1000001']) {
+      const before = commands.length; await providerRate.fill(value); await page.getByRole('button', { name: 'Save', exact: true }).click();
+      assert.equal(await providerRate.evaluate(node => node.checkValidity()), false);
+      assert.equal(await providerRate.inputValue(), value);
+      assert.equal(commands.length, before, 'invalid provider caps block Save');
+      assert.equal(state.providers[0].requestsPerMinute, 3, 'editing has no effect before Save');
+    }
+    const saveProvider = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().type === 'provider:save');
+    await providerRate.fill('10'); await screenshot('redesign-provider-request-cap'); await page.getByRole('button', { name: 'Save', exact: true }).click();
+    assert.equal((await saveProvider).postDataJSON().provider.requestsPerMinute, 10);
+    await page.locator('#modal').waitFor({ state: 'hidden' }); state.providers[0].requestsPerMinute = 10; await push();
+    const beginTest = async () => {
+      let release; const receipt = new Promise(resolve => { release = resolve; }); receiptHandlers.set('provider:test', () => receipt);
+      const request = page.waitForRequest(value => value.url().endsWith('/api/command') && value.postDataJSON().type === 'provider:test');
+      await page.locator('[data-focus-key="provider:opencode:test"]').click(); const sent = (await request).postDataJSON();
+      assert.match(sent.testId, /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i); assert.equal(sent.id, 'opencode');
+      return { sent, release, startedAt: Date.now() };
+    };
+    const finishAck = async (test, data) => {
+      test.release({ ok: true, data });
+      await page.waitForFunction(() => !providerTestStarts.has('opencode'));
+    };
+    const firstTest = await beginTest();
+    state.providers[0].connectionTest = { id: firstTest.sent.testId, state: 'waiting', text: 'Waiting for request rate limit', startedAt: firstTest.startedAt, elapsedMs: 20 }; await push();
+    await page.waitForFunction(() => document.querySelector('.provider-test-status').textContent === 'Waiting for request rate limit');
+    assert.equal(await page.locator('[data-focus-key="provider:opencode:test"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-focus-key="provider:opencode:cancel-test"]').isEnabled(), true);
+    assert.equal(await page.locator('#stop').isVisible(), false, 'provider Test does not borrow chat busy state');
+    assert.equal(await page.locator('#status').textContent(), 'Ready');
+    assert.equal(await page.locator('#input').inputValue(), 'Keep this next thought in the draft.');
+    for (const size of [{ width: 1440, height: 960 }, { width: 320, height: 480 }, { width: 844, height: 390 }]) {
+      await page.setViewportSize(size);
+      const geometry = await page.locator('.provider-card').evaluate(node => ({ width: node.clientWidth, scroll: node.scrollWidth, actionsWidth: node.querySelector('.provider-actions').clientWidth, actionsScroll: node.querySelector('.provider-actions').scrollWidth }));
+      assert.ok(geometry.scroll <= geometry.width + 1 && geometry.actionsScroll <= geometry.actionsWidth + 1, 'waiting provider Test controls fit: ' + JSON.stringify(geometry));
+      await screenshot('redesign-provider-test-wait-' + size.width);
+    }
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await finishAck(firstTest, { id: firstTest.sent.testId, state: 'running', text: 'Testing connection', startedAt: firstTest.startedAt, elapsedMs: 0 });
+    assert.equal(await page.locator('.provider-test-status').textContent(), 'Waiting for request rate limit', 'a delayed same-Test ack preserves newer live waiting state');
+    const cancelRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().type === 'provider:test:cancel');
+    receiptHandlers.set('provider:test:cancel', () => ({ ok: true, data: { cancelled: true } }));
+    await page.locator('[data-focus-key="provider:opencode:cancel-test"]').click(); const cancelled = (await cancelRequest).postDataJSON();
+    assert.equal(cancelled.testId, firstTest.sent.testId); assert.equal(cancelled.id, 'opencode');
+    state.providers[0].connectionTest = { ...state.providers[0].connectionTest, state: 'cancelled', text: 'Connection test cancelled' }; await push();
+    await page.waitForFunction(() => !document.querySelector('[data-focus-key="provider:opencode:test"]').disabled);
+    assert.equal(await page.locator('[data-focus-key="provider:opencode:cancel-test"]').count(), 0);
+    assert.equal(await page.locator('#stop').isVisible(), false);
+
+    const activeAck = await beginTest();
+    state.providers[0].connectionTest = { id: 'other-browser-active', state: 'waiting', text: 'Waiting for request rate limit', startedAt: activeAck.startedAt - 1, elapsedMs: 30 }; await push();
+    await page.waitForFunction(() => document.querySelector('.provider-test-status').textContent === 'Waiting for request rate limit');
+    await finishAck(activeAck, { id: activeAck.sent.testId, state: 'running', text: 'Stale connection test', startedAt: activeAck.startedAt, elapsedMs: 0 });
+    assert.equal(await page.locator('.provider-test-status').textContent(), 'Waiting for request rate limit', 'a conflicting active Test is authoritative even with an older timestamp');
+    state.providers[0].connectionTest = { ...state.providers[0].connectionTest, state: 'succeeded', text: 'Other browser connected', ms: 8 }; await push();
+    await page.waitForFunction(() => !document.querySelector('[data-focus-key="provider:opencode:test"]').disabled);
+
+    const terminalAck = await beginTest();
+    state.providers[0].connectionTest = { id: 'other-browser-finished', state: 'succeeded', text: 'Newer connection succeeded', startedAt: terminalAck.startedAt + 1, elapsedMs: 40, ms: 9 }; await push();
+    await finishAck(terminalAck, { id: terminalAck.sent.testId, state: 'running', text: 'Older connection test', startedAt: terminalAck.startedAt, elapsedMs: 0 });
+    assert.equal(await page.locator('.provider-test-status').textContent(), 'Newer connection succeeded · 9 ms', 'a newer terminal Test cannot be replaced by an older ack');
+    assert.equal(await page.locator('[data-focus-key="provider:opencode:test"]').isEnabled(), true);
+
+    // Reconnect clears pending UI actions; a prior instance's error stays with it.
+    state.providers[0].connectionTest = { id: 'old-instance-test', state: 'waiting', text: 'Waiting for request rate limit', startedAt: Date.now(), elapsedMs: 0 }; await push();
+    await page.locator('[data-focus-key="provider:opencode:cancel-test"]').waitFor();
+    let releaseOldCancel; const oldCancelReceipt = new Promise(resolve => { releaseOldCancel = resolve; });
+    receiptHandlers.set('provider:test:cancel', () => oldCancelReceipt);
+    const oldCancelRequest = page.waitForRequest(request => request.url().endsWith('/api/command') && request.postDataJSON().type === 'provider:test:cancel');
+    await page.locator('[data-focus-key="provider:opencode:cancel-test"]').click(); const oldCancel = (await oldCancelRequest).postDataJSON();
+    await page.waitForFunction(() => document.querySelector('[data-focus-key="provider:opencode:cancel-test"]').disabled);
+    const hello = await (await fetch(bridge.base + '/api/hello', { headers: auth })).json();
+    const changedHello = route => route.fulfill({ json: { ...hello, instance: 'provider-test-new-instance' } });
+    await page.route('**/api/hello', changedHello); await page.evaluate(() => enter()); await push();
+    await page.waitForFunction(() => !!document.querySelector('[data-focus-key="provider:opencode:cancel-test"]') && !document.querySelector('[data-focus-key="provider:opencode:cancel-test"]').disabled);
+    const oldCancelResponse = page.waitForResponse(response => response.url().endsWith('/api/commands/' + oldCancel.commandId));
+    releaseOldCancel({ ok: false, error: 'Previous instance cancellation failed' }); await (await oldCancelResponse).finished();
+    await page.waitForTimeout(100);
+    assert.doesNotMatch(await page.locator('#toast').textContent(), /Previous instance cancellation failed/, 'stale cancel errors do not affect the new bridge instance');
+    assert.equal(await page.locator('[data-focus-key="provider:opencode:cancel-test"]').isEnabled(), true);
+    await page.unroute('**/api/hello', changedHello); receiptHandlers.delete('provider:test'); receiptHandlers.delete('provider:test:cancel');
+    state.providers[0].connectionTest = { ...state.providers[0].connectionTest, state: 'cancelled', text: 'Connection test cancelled' }; await push();
+    await page.waitForFunction(() => !document.querySelector('[data-focus-key="provider:opencode:test"]').disabled);
+    await navigate('chat');
+
     // A nested subagent preview keeps drafts, selections and expanded calls stable.
     await page.setViewportSize({ width: 1440, height: 960 });
     const agent = { id: 'preview-agent', label: 'Inspect the garden', task: 'Inspect lighting and tree placement, then report the best improvements.',
@@ -326,14 +462,14 @@ const { navigation } = require('./helpers/browser-ui');
     await close(); assert.equal(await page.locator('#workspaceModal').evaluate(node => node.open), true);
     assert.equal(await page.locator('.agent-card').getByRole('button', { name: 'Preview', exact: true }).evaluate(node => node === document.activeElement), true);
     await navigate('chat');
-    const routeNotice = { kind: 'model:route', sessionId: 'redesign', model: 'verified-free-model', provider: 'HCNSEC', text: 'Automatic free routing selected verified-free-model. Turn it off in Settings → Agent → Automatic free routing.' };
+    const routeNotice = { kind: 'model:route', sessionId: 'redesign', model: 'saved-model', text: 'Selected model: saved-model.' };
     await push({ events: [routeNotice] });
-    await page.waitForFunction(() => [...document.querySelectorAll('#transcript .note')].some(node => node.textContent.includes('Automatic free routing selected verified-free-model')));
+    await page.waitForFunction(() => [...document.querySelectorAll('#transcript .note')].some(node => node.textContent.includes('Selected model: saved-model.')));
     await push({ sessionId: 'redesign', snapshot: [routeNotice] });
     await page.reload(); await page.locator('#app').waitFor({ state: 'visible' });
     await page.locator('#transcript .note').filter({ hasText: routeNotice.text }).waitFor();
-    assert.equal(await page.locator('#transcript .note').filter({ hasText: routeNotice.text }).count(), 1, 'route choice and disable path survive transcript replay');
+    assert.equal(await page.locator('#transcript .note').filter({ hasText: routeNotice.text }).count(), 1, 'historical model notices survive transcript replay');
     assert.deepEqual(errors, []);
-    console.log('Desktop redesign passed: modal workspaces, settings/focus, MCP setup/token privacy, reasoning/temperature/context metadata, free filtering, queued messages, and live subagent previews/follow-ups.');
+    console.log('Desktop redesign passed: modal workspaces, settings/focus, exact request caps, independent provider Test cancellation/ack ownership, MCP setup/token privacy, reasoning/temperature/context metadata, catalog-backed free filtering, queued messages, and live subagent previews/follow-ups.');
   } finally { clearInterval(heartbeat); await browser?.close(); await bridge.stop(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -118,9 +118,9 @@ available. Individual harnesses may impose their own tool deadlines.
 
 Model rows, the selected composer model, and provider summaries use a rounded
 green border and a textual Free label. The client's `freeModels` metadata is
-authoritative; a personal paid model is not labelled free just because it belongs
-to HCNSEC. Available auto-routing probe status appears in the model picker and
-provider page. Probe timing is not a promise about future response latency.
+authoritative; a personal paid model is not labelled free based on its provider
+name. Release 4.1.1 removes community schedules and automatic free-routing probe
+status from provider setup, model selection and Agent settings.
 
 Model selection pairs searchable cards with a current-model detail panel showing
 context/output limits and supported reasoning effort. Controls follow the native

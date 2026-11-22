@@ -5,14 +5,14 @@ workspace. The Roblox client discovers the running desktop bridge automatically.
 The desktop project uses the existing server in `--desktop` mode on
 **127.0.0.1:28791**.
 
-Download [UAI Bridge 4.0.5 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v4.0.5/UAI-Bridge-4.0.5-win-x64.exe).
-Checksums and release notes are on the [4.0.5 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v4.0.5).
+Download [UAI Bridge 4.1.1 for Windows x64](https://github.com/Project-Ptolemy/ProjectUAI/releases/download/v4.1.1/UAI-Bridge-4.1.1-win-x64.exe).
+Checksums and release notes are on the [4.1.1 release page](https://github.com/Project-Ptolemy/ProjectUAI/releases/tag/v4.1.1).
 Open the executable, then click
 **Start Cowork** on **Workspace**. It detects Node.js 18+ on your computer. If
 none is available, choose **Get Node.js** or **Manual setup** in the Workspace
 runtime card, then **Check again**.
 
-Desktop 4.0.5 uses native WPF with a responsive interface, its own
+Desktop 4.1.1 uses native WPF with a responsive interface, its own
 title bar with custom window controls, keyboard navigation, and accessible controls. The sidebar
 becomes horizontal navigation on smaller windows, and page content scrolls so
 actions remain reachable. Five pages organize the app:
@@ -74,8 +74,11 @@ For the verified free API-key route, use the current UAI client and desktop brid
 The bridge sends compatible direct HTTPS requests without requiring the OpenCode
 CLI or Bun; the **OpenCode tunnel** switch controls only the optional CLI path.
 See the [API-key investigation](../docs/OPENCODE_API_KEY_INVESTIGATION.md).
-Direct executor and Android TLS behavior remain unverified; on mobile, OpenCode
-requires the UAI Relay app from Discord.
+Direct executor and Android TLS behavior require separate device verification.
+Mobile relayed requests use the UAI Relay app from Discord. The
+[4.1.1 matrix](../docs/OPENCODE_4_1_1_VALIDATION.md) verifies standalone direct HTTPS
+per current free Chat model. Personal Zen keys retain direct API routing even
+when the optional CLI is available.
 UAI tools are returned to Roblox for execution. The bundled bridge includes the private
 execution guard and matching permission handling before returning
 blocked-action feedback. The CLI never receives permission to run local
@@ -83,12 +86,11 @@ desktop tools. Provider keys and existing OpenCode credentials are not
 copied into its isolated session. OpenCode's retired HTTPS proxy is not used.
 
 OpenCode Go subscriptions use `https://opencode.ai/inference/go/v1` and your Go API
-key directly. They do not use this native free-model route. That mobile relay
-requirement applies to OpenCode free models, not Go subscriptions.
+key directly. They do not use this native free-model route.
 
-Add optional **Project UAI Free** from the Roblox client's Providers library and
-save to use community access. A fresh client starts without a provider. Personal
-HCNSEC keys use the separate HCNSEC preset. See the
+Choose an available provider from the Roblox client's Providers library. A fresh
+client starts without a provider; release 4.1.1 removes retired community access
+and retains personal connections through [migration](../docs/providers/migration.md). See the
 [provider guides](../docs/providers/README.md).
 
 The window reports bridge startup separately from Roblox connection. Minimize
@@ -178,7 +180,7 @@ active work and retained receipts/pictures are idle. An automatic worker restart
 keeps the same pairing token. The browser reconnects to the updated bridge.
 Refresh an open browser page to load changed web assets. **Copy client script**
 on **Workspace** copies the client embedded in the desktop executable. Desktop
-4.0.5 includes the reviewed client and bridge, including native Master Vault,
+4.1.1 includes the reviewed client and bridge, including native Master Vault,
 micro-goals and local Obsidian support. Master Vault notes live in the executor
 workspace; connected Obsidian folders remain on the bridge computer. The Android
 companion remains on its separate existing release.

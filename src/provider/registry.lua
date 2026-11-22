@@ -11,7 +11,7 @@ return function(env)
 	local log = env.require("runtime/log")
 	local signal = env.require("runtime/signal")
 	local catalog = env.require("provider/catalog")
-	local communityKey = env.require("provider/community_key")
+	local retirement = env.require("runtime/provider_retirement")
 	local providerKeys = env.require("runtime/provider_keys")
 	local urls = env.require("net/url")
 
@@ -32,8 +32,32 @@ return function(env)
 	function M.requestSnapshot(record)
 		local snapshot = M.shareKeyRotation(record, util.deepCopy(record))
 		snapshot.health = record.health
-		requestSnapshots[snapshot] = true
+		requestSnapshots[snapshot] = requestSnapshots[record] or record
 		return snapshot
+	end
+
+	-- Caller budgets include catalog verification, rate admission and retries.
+	-- Unlimited local relays still honor an explicit timeout or absolute deadline.
+	function M.inferenceDeadline(request, timeout, started, unlimited)
+		request = request or {}
+		local stop = tonumber(request.deadlineMs)
+		if not stop or stop ~= stop then stop = math.huge end
+		if unlimited and request.timeout == nil then return stop end
+		return env.require("net/deadline").at(timeout, stop, started)
+	end
+	function M.inferenceContext(record, valid, deadlineMs)
+		local rate = env.require("runtime/inference_rate")
+		local source = requestSnapshots[record] or record
+		local id = source.id
+		return rate.context({ provider = rate.providerKey(source), valid = valid, deadlineMs = deadlineMs,
+			limit = function()
+				if type(id) == "string" and id ~= "" then
+					for _, saved in ipairs(config.get("providers.list", {})) do
+						if saved.id == id then return saved.requestsPerMinute end
+					end
+				end
+				return source.requestsPerMinute
+			end })
 	end
 
 	-- Key pool ------------------------------------------------------------
@@ -167,8 +191,9 @@ return function(env)
 		return urls.endpoint(M.normaliseBaseUrl(record.baseUrl or ""), suffix, record.query)
 	end
 
-	function M.authHeaders(record, explicitKey)
+	function M.authHeaders(record, explicitKey, body)
 		local key = util.trim(explicitKey or M.nextKey(record))
+		if key == "" then key = env.require("provider/opencode_public").defaultKey(record, body) or "" end
 		local style = record.authStyle or "bearer"
 		if key == "" or style == "none" then return {} end
 		if style == "x-api-key" then return { ["x-api-key"] = key } end
@@ -202,17 +227,16 @@ return function(env)
 			if record.credentialStorageError or config.get("identity.credentialStorageError") then
 				return "Saved credentials could not be decoded. The stored data has been preserved. Re-enter the affected credentials and save the connection before making requests."
 			end
-			if record.communityCredential == true and util.trim(record.apiKey) == "" then
-				return "Included credentials can only be restored for the official Project UAI Free endpoint. Edit this connection and enter your own credentials or select Project UAI Free."
-			end
-			local availability = communityKey.problem(record)
-			if availability then return availability end
 			if record.credentialsOmitted == true then
-				return "Provider credentials were not saved. Enter this session's API key or custom connection credentials, then save the provider. Settings > Privacy controls credential storage."
+				return "This provider requires a reviewed connection Save. Credentials were not saved or its previous key selection was removed. Review the API keys, selected key and custom connection fields, then save the provider. Settings > Privacy controls credential storage."
 			end
 		end
-		if record.preset == "projectuai-free" and not communityKey.isApplied(record) then
-			return "Project UAI Free uses community access at its official endpoint. Choose the separate HCNSEC provider for a personal key, or Custom endpoint for another server."
+		if retirement.retiredPreset(record.preset) or record.communityCredential == true or record.communityKeyState ~= nil or retirement.hasKey(record) then
+			return "This community provider has been removed. Choose another provider or review a custom connection."
+		end
+		local catalog = env.require("provider/opencode_public").info(record)
+		if not (opts and opts.discovery) and catalog and catalog.kind and catalog.kind ~= "chat" and catalog.kind ~= "language" then
+			return "The official catalog lists this model for a non-chat API. It cannot act as a Chat or Responses assistant. Fetch the model list and select a Chat model."
 		end
 		-- Pausing is a valid saved configuration, but must stop dispatch before a
 		-- missing effective key could become an anonymous HTTP request.
@@ -306,10 +330,10 @@ return function(env)
 
 	local function officialOpencodeRoute(record)
 		local parsed, path = providerRoute(record)
-		if not parsed or parsed.scheme ~= "https" or parsed.host ~= "opencode.ai" then return nil end
-		local port = parsed.authority:match(":(%d+)$")
-		if port and port ~= "443" then return nil end
-		return path:lower()
+		if not parsed or parsed.scheme ~= "https" then return nil end
+		local authority = parsed.authority:lower()
+		if authority ~= "opencode.ai" and authority ~= "opencode.ai:443" then return nil end
+		return path
 	end
 
 	function M.isOpencodeGo(record)
@@ -352,19 +376,12 @@ return function(env)
 		return (record.claudeUa ~= false) and "claude" or "none"
 	end
 
-	-- The native backend authenticates free models itself. Only waive personal
-	-- credentials after its authenticated discovery confirmed this exact model;
-	-- unrelated paths, paid models and direct desktop requests retain normal auth.
+	-- Empty reviewed Zen connections may verify public Chat access before dispatch.
+	-- Fresh official API/protocol/price metadata authorizes the request-only token.
 	function M.opencodeKeyOptional(record)
 		if (record.api or "openai") ~= "openai" then return false end
-		if not M.isOpencodeZen(record) then return false end
-		local model = tostring(record.model or "")
-		local name = model:lower()
-		if name ~= "big-pickle" and not name:find("%f[%a]free%f[%A]") then return false end
-		local bridge = env.require("net/bridge")
-		local status = bridge.opencodeStatus()
-		return status.available == true and status.state == "ready" and bridge.opencodeHasModel(model) == true
-			and env.require("net/transport").coworkWeb()
+		local public = env.require("provider/opencode_public")
+		return public.available(record) or public.pending(record)
 	end
 
 	local BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -541,11 +558,11 @@ return function(env)
 			enabled = true,
 			order = 0,
 			wsUrl = "",
+			requestsPerMinute = 0,
 			note = preset.note,
 			requires = preset.requires,
 			health = { ok = 0, fail = 0, streak = 0, lastError = "", cooldownUntil = 0, lastMs = 0 },
 		}
-		if preset.free then communityKey.apply(record) end
 		return record
 	end
 
@@ -598,6 +615,8 @@ return function(env)
 	-- out to reject it. The health counters are what report that.
 	function M.validate(record)
 		local problems = {}
+		local rateProblem = env.require("runtime/inference_rate_policy").problem(record.requestsPerMinute, true)
+		if rateProblem then problems[#problems + 1] = rateProblem end
 		if util.trim(record.label) == "" then problems[#problems + 1] = "give the provider a name" end
 		local base, urlError = M.normaliseBaseUrl(record.baseUrl)
 		if base == "" then
@@ -636,20 +655,32 @@ return function(env)
 
 	function M.save(record, opts)
 		if requestSnapshots[record] then return true end
+		local rateProblem = env.require("runtime/inference_rate_policy").problem(record.requestsPerMinute, true)
+		if rateProblem then return false, { rateProblem } end
 		local access = config.accessProblem()
 		if access then return false, { access } end
 		local vault = config.vaultStatus()
 		if vault.locked or vault.busy then return false, { "Unlock the credential vault and finish any vault operation before editing providers" } end
 		opts = opts or {}
+		if retirement.retiredPreset(record.preset) or retirement.hasKey(record)
+			or not opts.credentialsRestored and (record.communityCredential == true or record.communityKeyState ~= nil) then
+			return false, { "This community provider has been removed. Choose another provider or review a custom connection." }
+		end
 		record.baseUrl = M.normaliseBaseUrl(record.baseUrl)
 		if M.requiresClaude(record) then record.claudeUa = true end
-		local ok, problems = M.validate(record)
+		local reviewed = record
+		if opts.credentialsRestored then
+			reviewed = util.deepCopy(record)
+			reviewed.credentialsOmitted, reviewed.storedCredentials, reviewed.credentialStorageError = nil, nil, nil
+			reviewed.communityCredential, reviewed.communityKeyState = nil, nil
+		end
+		local ok, problems = M.validate(reviewed)
 		if not ok and not opts.force then return false, problems end
 		providerKeys.ensureIds(record)
 		if opts.credentialsRestored then
 			record.credentialsOmitted = nil
 			record.storedCredentials, record.credentialStorageError = nil, nil
-			if not communityKey.isApplied(record) then record.communityCredential, record.communityKeyState = nil, nil end
+			record.communityCredential, record.communityKeyState = nil, nil
 		end
 
 		local list = config.get("providers.list", {})
@@ -689,19 +720,13 @@ return function(env)
 	function M.migrate()
 		local vault = config.vaultStatus()
 		if config.accessProblem() or vault.locked or vault.busy then return 0 end
+		local changed = retirement.apply(config.data)
 		local preset = catalog.get("openrouter")
 		local replacement = preset and preset.headers and preset.headers["HTTP-Referer"]
 		local stored = config.get("providers.list", {})
 		if type(stored) ~= "table" then return 0 end
 		local retired = string.gsub(RETIRED_REFERER, "/+$", "")
-		local changed = 0
 		for _, record in ipairs(stored) do
-			if type(record) == "table" then
-				local migrated = communityKey.migrate(record)
-				local restored = communityKey.restore(record)
-				local separated = communityKey.separate(record)
-				if migrated or restored or separated then changed = changed + 1 end
-			end
 			if type(record) == "table" and retiredOpencode(record.baseUrl) then
 				record.baseUrl = "https://opencode.ai/zen/v1"
 				record.wsUrl = ""

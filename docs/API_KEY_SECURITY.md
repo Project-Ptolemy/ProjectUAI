@@ -17,7 +17,8 @@ UAI from a hostile executor or another script in the same process.
 
 1. Load the updated client with your existing `UAI/config.json`. Both the older
    plaintext format and the recently introduced byte-encoded format still load.
-   Your existing keys are retained while you choose how to store them.
+   Your existing personal keys are retained while you choose how to store them;
+   recognized retired community access is removed during migration.
 2. Enter and confirm a new master password in that prompt, then choose **Set
    password**. Use at least 12 characters, preferably
    several unrelated words. Setup prominently warns **NO PASSWORD RECOVERY**:
@@ -152,7 +153,7 @@ storage choice and vault password, if any. An encrypted import asks for its sour
 password before review. The destination must complete setup/unlock or deliberately
 choose unprotected storage before using imports or exports.
 Older encoded copies remain importable after that choice. Copies without credentials
-require re-entry, except included community access, which restores from a reference.
+require re-entry. Retired community references are removed instead of restored.
 
 Diagnostics use the same connection sanitization. These are not universal secret
 detectors: a key manually pasted into a provider label, memory, custom instructions,
@@ -175,31 +176,21 @@ inside UAI also does not revoke it at the provider. Daily replacement reduces th
 lifetime of a stolen credential; it cannot prevent immediate abuse, or theft of the
 replacement by a script that remains active.
 
-## Included community access
+## Retired community access
 
-Community access is an explicit **Project UAI Free** choice in the Providers
-library. It is not installed on an empty startup, import or reset. **HCNSEC** is
-the separate personal-key provider. Switching a Free setup draft to another
-preset removes community keys even if its endpoint was edited first; personal
-keys retain their labels, pauses and accounting identities.
+Release **4.1.1** removes Project UAI Free and the HCNSEC preset. The client no
+longer contains or reconstructs their distributed credentials. One-way
+fingerprints recognize historical keys so migration can remove them from live
+pools and new saves or exports without retaining a reversible key copy.
 
-**Project UAI Free opens daily from 8 PM to 12 PM noon, GMT+8 / Beijing / Singapore.**
-That is 20:00 inclusive through 12:00 exclusive the following midday, using a fixed
-UTC+8 offset. New requests, discovery and background probes observe this window.
-Replies already accepted can finish. Personal HCNSEC keys and other providers do
-not inherit the schedule. Shared capacity and upstream limits still apply.
+Community-only connections and saved community references are removed. Personal
+HCNSEC accounts become custom endpoints; surviving personal keys retain their
+names, pause states, selection and accounting identities. Mixed pools lose only
+recognized community credentials; removal of a pinned community key requires a
+reviewed connection Save before personal keys can be used. Encrypted payloads are verified and unlocked
+before protected keys are filtered. The storage choice and password gate remain
+effective throughout migration.
 
-The included credential is distributed to every client. Its encoded bundle
-representation deters simple literal searches; the client must reconstruct it to
-authenticate, so the encoding is **reversible obfuscation, not encryption or strong
-secrecy**. Configurations and exports keep a community reference instead of its raw
-value. Exact retired included credentials migrate on the official endpoint;
-unrelated personal keys are preserved. Local references retain the included key's
-pause state, name and selection; its accounting ID changes when the credential is
-replaced. References at other endpoints cannot silently send without a key.
-Updating the client does not revoke credentials at the provider.
-
-Enforcement of community hours and quotas belongs at the provider. Modified clients
-can bypass local schedule checks. The client cannot establish whether the upstream
-service enforces the announcement, and rotating a distributed shared key does not
-make its new value private.
+Old exports, backups and earlier client bundles are not rewritten or erased.
+Updating UAI does not revoke a credential at its upstream provider. See
+[provider migration](providers/migration.md) for upgrade and import behavior.

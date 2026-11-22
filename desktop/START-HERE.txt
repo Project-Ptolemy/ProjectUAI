@@ -1,6 +1,6 @@
-UAI BRIDGE 4.0.5 - WINDOWS 10/11 (64-BIT)
+UAI BRIDGE 4.1.1 - WINDOWS 10/11 (64-BIT)
 
-1. Open UAI-Bridge-4.0.5-win-x64.exe directly. Official published downloads:
+1. Open UAI-Bridge-4.1.1-win-x64.exe directly. Official published downloads:
    https://github.com/Project-Ptolemy/ProjectUAI/releases/latest
 2. On Workspace, if Node.js is missing, choose Get Node.js or Manual setup,
    then Check again. Click Start Cowork.
@@ -20,8 +20,8 @@ Ctrl+1 through Ctrl+5 switch desktop pages from Workspace through Tunnels.
 Use Tab and Shift+Tab to move between controls, then Space to activate one.
 
 The client starts without a provider. Add a provider from its Providers library
-and save it. Project UAI Free is optional community access; HCNSEC is the separate
-personal-key choice. Provider setup does not require changing desktop settings.
+and save it. Release 4.1.1 removes retired community access and migrates personal
+connections to custom endpoints. Provider setup does not require changing desktop settings.
 
 Chat opens in the existing Cowork browser workspace. There is no embedded chat
 in the desktop window. The browser opens automatically unless you turn off
@@ -54,8 +54,7 @@ Kilo quota recovery is enabled on Tunnels. It starts only after an explicit
 anonymous free-model quota response. The first recovery downloads a verified
 helper. Shared outbound connections may also reach their provider allowance.
 
-Project UAI Free is the default when you have not configured a provider. Thank
-you for your continued support. More free providers may become available.
+Choose an available hosted, free or local provider before your first message.
 Discord help, availability and updates: https://discord.gg/9xYyyYuKap
 
 The bridge downloads updates automatically and applies them when work is idle.

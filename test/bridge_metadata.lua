@@ -68,7 +68,7 @@ end)
 case("live routed model uses its own limits and calibration without changing saved selection", function()
 	local f = F.new(); local metadata = f.env.require("net/bridge_metadata")
 	local ctx = f.env.require("agent/context").new()
-	local record = { id = "free", baseUrl = "https://api.hcnsec.cn/v1", model = "auto" }
+	local record = { id = "custom", baseUrl = "https://gateway.fixture/v1", model = "auto" }
 	local routed = { id = record.id, baseUrl = record.baseUrl, model = "DeepSeek-V4-Flash" }
 	ctx.pushUser("Hello")
 	local request = ctx.observeRequest({ { role = "user", content = "Hello" } }, {}, routed); ctx.calibrate(100, request)

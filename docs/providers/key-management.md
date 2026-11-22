@@ -15,6 +15,13 @@ keys; removing a pinned key returns the connection to rotation.
 requests and model discovery to the selected entry. A quota refusal does not
 switch another key into a pinned request. Provider fallback is a separate setting.
 
+The connection editor's **Requests per minute** cap applies to the whole provider,
+including every key in its pool. Rotation does not give each key a separate
+allowance. `0` adds no provider cap; for example, `10` permits ten inference
+attempts per rolling minute. Retries and key/protocol switches count. The shared
+[global request cap](../CONFIGURATION.md#limit-requests-per-minute) applies too,
+and Stop cancels while waiting for capacity.
+
 Pause temporarily excludes a key without deleting it. A paused selected key, or
 an entirely paused pool, prevents new requests and explains how to resume.
 Pausing does not cancel a request already accepted. Removing the selected entry
@@ -28,8 +35,14 @@ Names, pause flags and accounting IDs remain aligned after replacements and
 removal. Replacing a credential creates a new accounting identity. Renaming it
 retains both usage history and the current discovery cache.
 
-Use [HCNSEC](hcnsec.md) for personal keys. [Project UAI Free](projectuai-free.md)
-uses its own community credential; the two access types never share a new setup
-pool. Reselecting the same Free preset preserves an existing pause.
+OpenCode Zen can supply public authentication for an empty-key standard Chat
+connection after fresh official metadata verifies zero prices in every tier.
+UAI does not save that token as a personal key. Personal keys take precedence;
+paused or pinned pools and imported credential guards cannot fall back to public
+access. See [model discovery](model-discovery.md) for pending verification.
+
+Release 4.1.1 removes retired community credentials during
+[provider migration](migration.md). Surviving personal keys retain their labels,
+pause states and accounting identities.
 
 [Credential storage and exports](../API_KEY_SECURITY.md) · [All provider guides](README.md)

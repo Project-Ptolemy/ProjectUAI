@@ -9,8 +9,6 @@ return function(env)
 	local providers = env.require("provider/registry")
 	local models = env.require("provider/models")
 	local traits = env.require("provider/traits")
-	local freeRoute = env.require("provider/free_route")
-	local community = env.require("provider/community_key")
 	local sampling = env.require("provider/sampling")
 	local preferences = env.require("provider/model_preferences")
 	local overrides = env.require("provider/model_overrides")
@@ -36,13 +34,6 @@ return function(env)
 		local favoritesOnly, toolsOnly = false, false
 		local rows, render, filterRows, renderEffort, fit = {}, nil, nil, nil, nil
 		local signature, effortSignature, fitting = nil, nil, false
-		local autoRow, autoClosed = nil, false
-		-- The closed-hours row carries the wait until opening, so it is the one label
-		-- that has to change while the modal stays open.
-		local function freeHoursMeta(record)
-			local countdown = community.countdown(record)
-			return "Free | " .. (countdown and countdown.text:lower() or community.shortHours)
-		end
 		local effortLevels, effortSending, effortHeight, effortLabel = nil, nil, 0, nil
 		local function notify() if not modal.closed and onChange then onChange() end end
 		local providerHeight = math.max(control, theme.text.label.height + theme.text.caption.height + theme.space.md * 2 + theme.space.hair)
@@ -285,26 +276,6 @@ return function(env)
 				entry.meta.Text = entry.free and ("Free" .. (badge and " | " .. badge or "")) or (badge or "")
 				entry.meta.TextColor3 = entry.free and theme.color.success or theme.color.textTertiary
 				entry.meta.Visible = entry.meta.Text ~= ""
-				if entry.id == "auto" then
-					local route = freeRoute.status(record)
-					if route.supported and route.scheduleOpen == false then
-						entry.label.Text, entry.meta.Text = "Auto (outside free hours)", freeHoursMeta(record)
-						autoRow, autoClosed = entry, true
-					elseif route.supported and route.available == false then
-						entry.label.Text, entry.meta.Text = "Auto (unavailable)", "Free | " .. tostring(route.availability or "Check provider setup")
-						autoRow, autoClosed = entry, false
-					elseif route.supported and route.enabled == false then
-						entry.label.Text, entry.meta.Text = "Auto (provider routing)", "Free | Automatic routing off"
-						autoRow, autoClosed = entry, false
-					elseif freeRoute.eligible(record) then
-						entry.label.Text = "Auto (fastest verified)"
-						entry.meta.Text = route.ms and string.format("Free | %.1fs probe", route.ms / 1000)
-							or (route.running and "Free | Measuring" or "Free")
-						autoRow, autoClosed = entry, false
-					else
-						autoRow, autoClosed = nil, false
-					end
-				end
 				if preferences.favorite(record, entry.id) then
 					entry.meta.Text = "Favorite" .. (entry.meta.Text ~= "" and " | " .. entry.meta.Text or "")
 					entry.meta.Visible = true
@@ -416,18 +387,13 @@ return function(env)
 				local info = providerPicker.describe(providers.active())
 				providerStatus.Text, providerStatus.TextColor3 = info.detail, info.tone
 			end
-			if kind ~= "health" then
-				render()
-				local record = providers.active()
-				if record then freeRoute.refresh(record) end
-			end
+			if kind ~= "health" then render() end
 		end)
-		local unsubscribeRoute = freeRoute.changed:connect(render)
 		local unsubscribeModels = models.changed:connect(render)
 		local unsubscribeBridge = env.require("net/bridge").changed:connect(render)
 		local unsubscribeConfig = config.changed:connect(function(path)
 			if path == nil or path == "agent" or path == "agent.effort" or path == "agent.forceReasoning"
-				or path == "agent.forceContext" or path == "agent.forceSampling" or path == "agent.temperature" or path == "agent.autoFreeRouting"
+				or path == "agent.forceContext" or path == "agent.forceSampling" or path == "agent.temperature"
 				or path == "ui.modelFavorites" or path == "ui.recentModels" then render() end
 		end)
 		local unsubscribeResponsive = responsive.changed:connect(function()
@@ -444,23 +410,8 @@ return function(env)
 			for _, entry in ipairs(rows) do entry.button.instance.Size = UDim2.new(1, 0, 0, modelHeight) end
 			render()
 		end)
-		local tickFreeHours = env.require("runtime/clock").interval(1, function()
-			if modal.closed or not autoRow or autoRow.meta.Parent == nil then return end
-			local record = providers.active()
-			local countdown = record and community.countdown(record)
-			local closed = countdown ~= nil and countdown.open == false
-			-- Opening or closing rewrites the row's whole label, so the list is
-			-- re-rendered once at that boundary; between them only the time moves.
-			if closed ~= autoClosed then render(); return end
-			if not closed then return end
-			local text = freeHoursMeta(record)
-			if preferences.favorite(record, autoRow.id) then text = "Favorite | " .. text end
-			if autoRow.meta.Text ~= text then autoRow.meta.Text = text end
-		end)
-		modal.scrim.Destroying:Connect(function() unsubscribe(); unsubscribeRoute(); unsubscribeModels(); unsubscribeBridge(); unsubscribeConfig(); unsubscribeResponsive(); tickFreeHours() end)
+		modal.scrim.Destroying:Connect(function() unsubscribe(); unsubscribeModels(); unsubscribeBridge(); unsubscribeConfig(); unsubscribeResponsive() end)
 		render()
-		local record = providers.active()
-		if record then freeRoute.refresh(record) end
 		modal.render = render
 		return modal
 	end

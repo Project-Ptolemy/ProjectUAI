@@ -37,20 +37,19 @@ local function open(f)
 	f.h.settle(0.3)
 end
 
-case("the recommended tier leads with included access, AgentRouter and the hybrids", function()
+case("the recommended tier leads with AgentRouter and the hybrids", function()
 	local f = F.ui(1000, 850)
 	open(f)
 	local order = cards(f)
-	check("Project UAI Free is the first card", order[1] == "projectuai-free")
-	check("AgentRouter follows", order[2] == "agentrouter")
-	check("OpenCode Zen is recommended, not paid-only", order[3] == "zen")
-	check("OpenRouter follows", order[4] == "openrouter")
-	check("OpenCode Go follows", order[5] == "opencode-go")
+	check("AgentRouter is the first card", order[1] == "agentrouter")
+	check("OpenCode Zen is recommended, not paid-only", order[2] == "zen")
+	check("OpenRouter follows", order[3] == "openrouter")
+	check("OpenCode Go follows", order[4] == "opencode-go")
+	check("retired cards cannot be selected", f.h.byName("Choice_projectuai-free") == nil and f.h.byName("Choice_hcnsec") == nil)
 	check("LLM7 is gone", f.h.byName("Choice_llm7") == nil)
 	check("the custom endpoint is the last card", order[#order] == "custom")
 	check("the free tier is selected", f.h.byName("Segment_free").Parent == f.h.byName("ProviderTier"))
-	check("the count names the tier", f.h.byName("ProviderCount").Text == "18 free routes")
-	check("included access is labelled", f.h.byName("ChoiceBadge", f.h.byName("Choice_projectuai-free")).Text == "Included")
+	check("the count names the tier", f.h.byName("ProviderCount").Text == "17 free routes")
 	check("a hybrid says what is free", f.h.byName("ChoiceBadge", f.h.byName("Choice_zen")).Text == "Free models")
 	check("the Go route names its free half", f.h.byName("ChoiceBadge", f.h.byName("Choice_opencode-go")).Text == "Free CLI")
 	check("no-key routes say so", f.h.byName("ChoiceBadge", f.h.byName("Choice_kilo")).Text == "No key")
@@ -69,8 +68,10 @@ case("the recommended tier leads with included access, AgentRouter and the hybri
 	local agentDescription = f.h.byName("ChoiceDescription", f.h.byName("Choice_agentrouter"))
 	check("signup eligibility stays highlighted on the compact card", agentDescription.RichText
 		and agentDescription.Text:find("a GitHub account at least 1 year old", 1, true) ~= nil)
-	check("the mobile relay requirement stays visible before setup", f.h.byName("ChoiceDescription", f.h.byName("Choice_zen")).Text
-		:find("Mobile OpenCode requires the UAI Relay app from Discord", 1, true) ~= nil)
+	local zenDescription = f.h.byName("ChoiceDescription", f.h.byName("Choice_zen")).Text
+	check("Zen separates direct free API access from its optional desktop CLI", zenDescription:find("Direct free Chat API", 1, true) ~= nil
+		and zenDescription:find("optional desktop CLI route", 1, true) ~= nil
+		and catalog.get("zen").noteHighlight == "Supported free Chat models need no personal key.")
 	for _, id in ipairs({ "zen", "openrouter", "opencode-go", "cline" }) do
 		check(id .. " keeps its complete access limits", f.h.byName("ChoiceCost", f.h.byName("Choice_" .. id)).Text == catalog.get(id).cost)
 	end
@@ -121,7 +122,7 @@ case("search spans every tier and clears back to the selected one", function()
 	click(f, "ClearProviderSearchEmpty")
 	f.h.settle(0.2)
 	check("clearing restores the tier", f.h.byName("Choice_agentrouter") ~= nil
-		and f.h.byName("ProviderCount").Text == "18 free routes")
+		and f.h.byName("ProviderCount").Text == "17 free routes")
 	search(f, "openai")
 	check("a name search puts the vendor first", cards(f)[1] == "openai")
 	click(f, "ClearProviderSearch")
@@ -163,7 +164,7 @@ case("custom setup remains reachable from an empty search", function()
 	local f = F.ui(390, 700)
 	open(f)
 	search(f, "   ")
-	check("whitespace keeps the current tier", f.h.byName("Choice_projectuai-free") ~= nil and f.h.byName("ProviderCount").Text == "18 free routes")
+	check("whitespace keeps the current tier", f.h.byName("Choice_agentrouter") ~= nil and f.h.byName("ProviderCount").Text == "17 free routes")
 	search(f, "zzzz-nothing")
 	click(f, "CustomProviderShortcut")
 	check("the custom shortcut opens a blank editable connection", f.h.byName("BaseUrl"):FindFirstChildOfClass("TextBox").Text == ""
@@ -249,9 +250,8 @@ case("every preset has what the gallery promises to show", function()
 		check("docs for " .. preset.id, preset.id == "custom"
 			or (type(preset.docs) == "string" and preset.docs:sub(1, 4) == "http"))
 	end
-	check("the free tier leads with included access", catalog.byTier("free")[1].id == "projectuai-free")
-	check("AgentRouter follows it", catalog.byTier("free")[2].id == "agentrouter")
-	check("the hybrids are recommended", catalog.byTier("free")[3].id == "zen")
+	check("the free tier leads with AgentRouter", catalog.byTier("free")[1].id == "agentrouter")
+	check("the hybrids are recommended", catalog.byTier("free")[2].id == "zen")
 	check("search is empty without a query", catalog.search("") == nil)
 	check("search finds by company", catalog.search("moonshot")[1].id == "moonshot")
 	check("search is case insensitive", catalog.search("AGENTROUTER")[1].id == "agentrouter")
@@ -259,11 +259,7 @@ case("every preset has what the gallery promises to show", function()
 	check("search misses cleanly", #catalog.search("no-such-provider") == 0)
 	check("quick picks keep their order", catalog.featured()[1].id == "agentrouter"
 		and catalog.featured()[2].id == "zen" and catalog.featured()[3].id == "openrouter")
-	for _, preset in ipairs(catalog.featured()) do
-		check("community access is discovered in the library", preset.id ~= "projectuai-free")
-	end
-	check("HCNSEC has its own personal-key card", catalog.get("hcnsec").label == "HCNSEC"
-		and catalog.get("hcnsec").free == nil and catalog.get("hcnsec").defaultModel == nil)
+	check("retired routes are absent from the catalog", catalog.get("projectuai-free") == nil and catalog.get("hcnsec") == nil)
 	f.healthy(); f.close()
 end)
 

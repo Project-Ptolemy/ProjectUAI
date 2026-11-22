@@ -36,6 +36,21 @@ limits pagination to ten pages. The result explains truncation, invalid IDs and
 explicitly incompatible catalog kinds; additional valid IDs can still be entered
 manually. Untyped catalog entries do not prove tool, vision or reasoning support.
 
+OpenCode Zen discovery reads the official API catalog independently of an
+installed CLI. Public authentication requires a current row that explicitly
+supports Chat on an official Zen route and has zero input, output and applicable
+cache prices across every listed tier. Model names and `free` suffixes do not
+establish access. Priced, unknown and incomplete rows retain their requirements.
+
+An empty-key standard Zen setup can be saved while catalog verification is
+pending. UAI verifies it before inference after restart or the ten-minute cache
+expires. Confirmed free Chat access does not guarantee tools or host transport
+compatibility. Decision-only Systemone models are omitted from the fetched Chat
+list; manually entered IDs remain saved but cannot gain public Chat access.
+The optional installed CLI retains its separate authenticated catalog.
+See [Zen compatibility](../PROVIDER_COMPATIBILITY.md#opencode-direct-api-desktop-and-mobile)
+and the [4.1.1 transport evidence](../OPENCODE_4_1_1_VALIDATION.md).
+
 | Result | Next action |
 | --- | --- |
 | No `/models` route | Enter the documented exact model or deployment ID |

@@ -416,42 +416,13 @@ return function(env)
 			fitStarters()
 		end
 
-		local freeRecord = env.require("provider/registry").active()
-		if env.require("provider/community_key").isApplied(freeRecord) then
-			local intro = P.column(holder, { name = "FreeIntroduction", size = UDim2.new(1, 0, 0, 0),
-				maxSize = Vector2.new(theme.size.statCard, math.huge), auto = "Y", gap = theme.space.xs,
-				padding = theme.space.md, bg = theme.color.surface, radius = theme.radius.lg, layoutOrder = 3 })
-			P.stroke(intro, theme.color.borderSubtle)
-			P.text(intro, { name = "FreeIntroductionTitle", text = "Project UAI Free hours", role = "label",
-				size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 1 })
-			P.text(intro, { name = "FreeIntroductionText",
-				text = "You selected Project UAI Free from the Providers library. Shared access opens daily 20:00-12:00 UTC+8 (Beijing/Singapore), through the following midday. Speed and availability vary. For a personal HCNSEC account, add the separate HCNSEC provider with your own key.",
-				role = "caption", color = theme.color.textSecondary, size = UDim2.new(1, 0, 0, 0),
-				auto = "Y", wrap = true, layoutOrder = 2 })
-			-- The countdown is the one line that has to move: a person deciding whether
-			-- to wait wants the remaining time, not a schedule to work out themselves.
-			local timer = P.text(intro, { name = "FreeHoursTimer", text = "", role = "caption",
-				color = theme.color.text, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 3 })
-			local community = env.require("provider/community_key")
-			local stopTimer
-			stopTimer = env.require("runtime/clock").interval(1, function()
-				if not timer.Parent then stopTimer(); return end
-				local countdown = community.countdown(freeRecord)
-				timer.Text = countdown and (countdown.text .. "  ·  daily " .. community.shortHours) or ""
-			end)
-			local countdown = community.countdown(freeRecord)
-			timer.Text = countdown and (countdown.text .. "  ·  daily " .. community.shortHours) or ""
-			P.text(intro, { name = "FreeCommunityInvite", text = "Updates and help: https://discord.gg/9xYyyYuKap",
-				role = "caption", color = theme.color.accent, size = UDim2.new(1, 0, 0, 0), auto = "Y", wrap = true, layoutOrder = 4 })
-			P.button(intro, { name = "FreeCommunity", text = "Join our Discord", variant = "ghost", size = "sm", layoutOrder = 5,
-				onClick = function() env.require("ui/community").open() end })
-		elseif not freeRecord then
+		if not env.require("provider/registry").active() then
 			local setup = P.column(holder, { name = "ProviderIntroduction", size = UDim2.new(1, 0, 0, 0),
 				maxSize = Vector2.new(theme.size.statCard, math.huge), auto = "Y", gap = theme.space.sm,
 				padding = theme.space.md, bg = theme.color.surface, radius = theme.radius.lg, layoutOrder = 3 })
 			P.text(setup, { text = "Choose a provider to start", role = "label", auto = "Y", wrap = true,
 				size = UDim2.new(1, 0, 0, 0), layoutOrder = 1 })
-			P.text(setup, { text = "Browse free routes, paid services and local servers. Project UAI Free is optional; HCNSEC is a separate personal-key provider.",
+			P.text(setup, { text = "Browse free routes, paid services and local servers. Choose a connection and follow its setup guide before sending.",
 				role = "caption", color = theme.color.textSecondary, auto = "Y", wrap = true,
 				size = UDim2.new(1, 0, 0, 0), layoutOrder = 2 })
 			P.button(setup, { name = "ChooseProvider", text = "Open Providers", variant = "primary", size = "sm", layoutOrder = 3,

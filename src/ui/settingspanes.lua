@@ -1299,10 +1299,18 @@ return function(env)
 			"agent.resultCap", RESULT_STOPS)
 
 		local requests = build.section("Model requests", "Routing, wait time and recovery when contacting your provider.")
-		R.toggle(requests, {
-			name = "AutomaticFreeRouting", label = "Automatic free routing",
-			hint = "Choose a recently verified free model for included HCNSEC access when its model is Auto. Off keeps provider Auto and stops new local routing probes; an active request continues.",
-			path = "agent.autoFreeRouting", value = config.get("agent.autoFreeRouting", true) ~= false,
+		R.field(requests, {
+			name = "GlobalRequestsPerMinute",
+			label = "Requests per minute",
+			hint = "0 is unlimited. All conversations and subagents share this cap. Inference attempts, including retries, count; provider caps apply too. Stop cancels while waiting.",
+			path = "agent.requestsPerMinute",
+			value = config.get("agent.requestsPerMinute", 0),
+			placeholder = "0",
+			transform = function(text) return text == "" and 0 or tonumber(text) end,
+			validate = function(value)
+				return type(value) == "number" and value >= 0 and value <= 1000000 and value % 1 == 0,
+					"Enter a whole number from 0 to 1000000."
+			end,
 		})
 		R.number(requests, "Request timeout",
 			"Wait for a direct or companion model call. Direct native requests cap at 300 seconds; hosts and providers may stop sooner. Cowork bridge requests always wait until completion, failure or Stop.",

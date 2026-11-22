@@ -64,7 +64,7 @@ run('Bundle freshness and deterministic manifest', process.execPath, ['tools/bui
 run('Generated catalog freshness', process.execPath, ['tools/build_site.js', '--check']);
 run('Native static checker', luajit, ['test/check.lua', '--native']);
 run('Main native suite', luajit, ['test/run.lua', '--native']);
-const helpers = new Set(['run.lua', 'check.lua', 'luau.lua', 'coding_fixture.lua', 'workspace_fixture.lua', 'automatic_bridge_fixture.lua', 'agentrouter_fixture.lua', 'password_fixture.lua', 'ui_library_support.lua', 'mobile_snapshots.lua', 'native_performance.lua', 'credential_crypto_oracle.lua', 'credential_crypto_benchmark.lua']);
+const helpers = new Set(['run.lua', 'check.lua', 'luau.lua', 'coding_fixture.lua', 'workspace_fixture.lua', 'automatic_bridge_fixture.lua', 'agentrouter_fixture.lua', 'opencode_catalog_fixture.lua', 'password_fixture.lua', 'ui_library_support.lua', 'mobile_snapshots.lua', 'native_performance.lua', 'credential_crypto_oracle.lua', 'credential_crypto_benchmark.lua']);
 const outOfScope = new Set(['web_runtime.lua']);
 if (skipImages) { outOfScope.add('image_input.lua'); process.stdout.write('SKIP image_input.lua (--skip-images)\n'); }
 const focused = fs.readdirSync(path.join(root, 'test')).filter(file => file.endsWith('.lua') && !helpers.has(file) && !outOfScope.has(file)).sort();

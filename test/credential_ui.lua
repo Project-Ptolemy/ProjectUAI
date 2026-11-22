@@ -165,10 +165,10 @@ local function bootStored(publicOnly, failMigration)
 	local data = f.util.deepCopy(f.config.data)
 	data.security = nil
 	data.ui.tutorial.seen, data.ui.communityInvite.disabled = true, true
-	data.agent.autoFreeRouting = false
 	if publicOnly then
-		local record = f.env.require("provider/registry").blank("projectuai-free")
-		record.id = "community-fixture"
+		local record = { id = "community-fixture", preset = "projectuai-free", label = "Retired community fixture",
+			baseUrl = "https://api.hcnsec.cn/v1", api = "openai", authStyle = "bearer", apiKey = "",
+			model = "auto", models = { "auto" }, communityCredential = true, enabled = true }
 		data.providers = { active = record.id, list = { record } }
 		data.security = { rememberCredentials = true }
 	end
@@ -182,7 +182,7 @@ local function bootStored(publicOnly, failMigration)
 	return h, handle
 end
 
-case("existing and community-only configurations both require password setup", function()
+case("existing and retired community-only configurations both require password setup", function()
 	for _, publicOnly in ipairs({ false, true }) do
 		local h, handle = bootStored(publicOnly)
 		local function find(name) return h.byName(name, h.coreGui) end

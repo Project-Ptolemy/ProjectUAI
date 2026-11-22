@@ -30,7 +30,7 @@ return function(env)
 			body = "Ask questions, explore this place, or build a script. UAI connects "
 				.. "a model to tools inside Roblox.",
 			items = {
-				"Choose a provider in the Providers library before your first message. Project UAI Free is an optional preset; HCNSEC uses your own API key.",
+				"Choose a provider in the Providers library before your first message. Free routes, services with your own API key and local servers are available.",
 				"Try: Explain what is in this place before making any changes.",
 				"Your messages and relevant tool results are sent to your selected provider.",
 			},
@@ -51,7 +51,7 @@ return function(env)
 			title = "Connect a model",
 			body = "Open the Providers library and choose a service, local server or custom endpoint.",
 			items = {
-				"Project UAI Free offers scheduled shared access. The separate HCNSEC preset always requires your personal key.",
+				"Follow the service's setup guide. Some routes need your own API key or a signed-in desktop CLI; local servers use your endpoint.",
 				"Fetch the model list from that provider, or enter its exact model ID, then Save.",
 				"Choose the provider and model above your message before sending.",
 			},
@@ -80,8 +80,7 @@ return function(env)
 		{
 			icon = "spark",
 			title = "Support the project",
-			body = "UAI is free to use. Optional donations help keep the project and "
-				.. "shared free access running. Thank you for using it.",
+			body = "UAI is free to use. Optional donations help keep the project running. Thank you for using it.",
 			items = {
 				"Ko-fi copies a browser link; Robux goes to the donation place.",
 			},

@@ -10,7 +10,6 @@ return function(env)
 	local models = env.require("provider/models")
 	local urls = env.require("net/url")
 	local bridge = env.require("net/bridge")
-	local community = env.require("provider/community_key")
 	local M = {}
 	local opened
 
@@ -35,23 +34,17 @@ return function(env)
 		for _, id in ipairs(known) do if models.isFree(record, id) then free = free + 1 end end
 		local detail = util.pluralise(#known, "model") .. (free > 0 and (" / " .. free .. " free") or "")
 		local route, tone = urls.display(record.baseUrl), theme.color.textTertiary
-		if community.isApplied(record) then
-			local availability = community.availability(record)
-			local countdown = community.countdown(record)
-			detail = "Community access / " .. (countdown and countdown.text or community.shortHours)
-			route, tone = community.shortHours, availability.open and theme.color.success or theme.color.warn
-		elseif record.preset == "hcnsec" then
-			detail = "Personal HCNSEC / " .. detail
-			if providers.keyPoolSize(record) == 0 then detail, tone = "API key required / " .. detail, theme.color.warn end
-		elseif providers.isCline(record) then
+		if providers.isCline(record) then
 			local state = bridge.clineStatus()
 			local labels = { ready = "Desktop connected", ["auth-required"] = "Sign in on desktop", disabled = "Enable in Tunnels",
 				missing = "Install Cline on desktop", starting = "Connecting on desktop", failed = "Check desktop connection",
 				disconnected = "Connect the desktop bridge", unavailable = "Update the desktop bridge" }
 			detail = (labels[state.state] or "Check desktop connection") .. (free > 0 and (" / " .. free .. " free") or "")
 			route, tone = "Cline / Text models / Desktop only", state.available and theme.color.success or theme.color.textSecondary
-		elseif providers.isOpencodeZen(record) and bridge.opencodeStatus().available then
-			detail = "Desktop CLI connected" .. (free > 0 and (" / " .. free .. " free") or "")
+		elseif env.require("provider/opencode_public").available(record) then
+			detail = "Public free Chat API / " .. detail
+		elseif env.require("provider/opencode_public").pending(record) then
+			detail = "Catalog verification pending / " .. detail
 		elseif record.authStyle == "none" then
 			detail = "No API key / " .. detail
 		elseif providers.keyPoolSize(record) == 0 then

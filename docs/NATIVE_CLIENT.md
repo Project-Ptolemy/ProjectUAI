@@ -1,7 +1,7 @@
 # Native client features and limits
 
-Current native feature reference for **3.7.2**, including the October 31 working-tree
-polish. For a shorter introduction, start with [Getting started](GETTING_STARTED.md).
+Current native feature reference for **4.1.1**.
+For a shorter introduction, start with [Getting started](GETTING_STARTED.md).
 Internal APIs are described in
 [SPEC.md](../SPEC.md); verification and native-device scenarios are in
 [CODE_WORKSPACE_TESTING.md](CODE_WORKSPACE_TESTING.md).
@@ -24,9 +24,10 @@ and tool context. **Export conversation** freezes a Markdown snapshot, previews 
 and offers clipboard or verified file output. See [Conversations](CONVERSATIONS.md)
 for retention limits and what an export includes.
 
-New, reset and empty imported configurations start without a provider. Add
-Project UAI Free explicitly through the Providers library if desired; personal-key
-HCNSEC is a separate preset. [Provider guides](providers/README.md) cover both.
+New, reset and empty imported configurations start without a provider. Choose
+a hosted, free or local service from the Providers library. Release 4.1.1 removes
+retired community access and converts personal HCNSEC records to custom endpoints;
+see [provider migration](providers/migration.md).
 Chat and Quick Chat disable sending until an enabled provider can be used. The
 setup notice explains the steps and opens Providers directly. Blocked submissions
 keep the draft without adding failed messages to the conversation; queued input
@@ -92,13 +93,6 @@ ends active work and holds messages that have not been consumed. Use Resume afte
 reviewing them to continue. Ordinary saved conversations restore pending text and
 compact attachment references in a held state; unavailable attachments must be
 reattached. Ephemeral conversations do not persist this queue.
-
-**Settings → Agent → Automatic free routing** is enabled by default. Included
-HCNSEC access with model `auto` may choose a compatible model from recent measured
-probes. A conversation notice names the chosen model and points back to this
-setting. Disable it to keep future requests on the saved provider/model; an
-already dispatched request continues. Choosing an explicit model also prevents
-automatic selection. The provider's own `auto` routing remains its responsibility.
 
 The profile menu's ProjectUAI entry and support modal use the client's frame-drawn
 brand mark, which needs no image download. What's New remains a separate entry.

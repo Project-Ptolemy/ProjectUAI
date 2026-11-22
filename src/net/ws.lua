@@ -7,10 +7,11 @@ return function(env)
 	local clock = env.require("runtime/clock")
 	local sse = env.require("net/sse")
 	local urls = env.require("net/url")
+	local rate = env.require("runtime/inference_rate")
 	local limits = sse.limits
 	local M = { available = caps.ws }
 	local workers, connections, alive, active = 0, 0, true, {}
-	function M.stream(spec)
+	local function streamAttempt(spec)
 		if not alive then return nil, "aborted" end
 		local access = config.accessProblem()
 		if access then return nil, "vault_required: " .. access end
@@ -19,11 +20,10 @@ return function(env)
 		if not parsedUrl or (parsedUrl.scheme ~= "ws" and parsedUrl.scheme ~= "wss") then
 			return nil, "socket URL must use ws:// or wss://; nothing was dispatched"
 		end
-		if workers >= 4 or connections >= 4 then return nil, "native socket worker limit reached before dispatch" end
 		local socket, messageConn, closeConn, mode
 		local frames, bytes, messages = {}, 0, 0
-		local accepting, finished, failure, sawFinish, released, dispatched = true, false, nil, false, false, false
-		local deadline = env.require("net/deadline").at(spec.timeout, spec.deadlineMs)
+		local accepting, finished, failure, failureKind, sawFinish, released, dispatched = true, false, nil, nil, false, false, false
+		local deadline = rate.deadline(spec.inference, env.require("net/deadline").at(spec.timeout, spec.deadlineMs))
 		if clock.ms() >= deadline then return nil, "deadline: socket request budget expired before dispatch" end
 		local function aborted()
 			if not alive then return true end
@@ -80,17 +80,35 @@ return function(env)
 			local ok, why = decoder.push(message)
 			if not ok then fail(why) end
 		end
+		local permit
 		local function close()
 			if not released then released = true; connections = math.max(0, connections - 1) end
 			accepting = false
+			if permit then permit.release() end
 			if messageConn then pcall(function() messageConn:Disconnect() end); messageConn = nil end
 			if closeConn then pcall(function() closeConn:Disconnect() end); closeConn = nil end
 			if socket then local old = socket; socket = nil; pcall(function() old:Close() end) end
 		end
 		if aborted() then return nil, "aborted" end
+		if spec.inference then
+			local problem
+			permit, problem = rate.acquire(spec.inference, { deadlineMs = deadline,
+				aborted = function() return aborted() or config.accessProblem() ~= nil end,
+				ready = function() return workers < 4 and connections < 4 end, onRetry = spec.onRetry })
+			if not permit then return nil, problem end
+			spec.ratePermit = permit
+		end
+		if workers >= 4 or connections >= 4 then return nil, "native socket worker limit reached before dispatch" end
 		active[close] = true; workers, connections = workers + 1, connections + 1
-		clock.spawn(function()
+		local workerStarted, workerReleased = false, false
+		local function releaseWorker()
+			if workerReleased then return end
+			workerReleased = true; workers = math.max(0, workers - 1)
+		end
+		local spawned = pcall(clock.spawn, function()
+			workerStarted = true
 			local ok = pcall(function()
+				if not accepting or aborted() or clock.ms() >= deadline then return end
 				local access = config.accessProblem()
 				if access then fail("vault_required: " .. access); return end
 				local envelope = util.encode({ path = spec.path or "/v1/chat/completions", headers = spec.headers or {}, body = spec.body })
@@ -118,6 +136,10 @@ return function(env)
 					finished = true
 				end)
 				if accepting and not finished and not aborted() then
+					if permit then
+						local committed, problem, kind = permit.commit()
+						if not committed then failureKind = kind; fail(problem); return end
+					end
 					-- Once Send is entered, even an exception may follow delivery. No
 					-- automatic HTTP fallback is safe from this point onward.
 					dispatched = true
@@ -125,12 +147,16 @@ return function(env)
 					socket:Send(envelope)
 				end
 			end)
-			workers = math.max(0, workers - 1)
+			releaseWorker()
 			if not ok and accepting then
 				fail(dispatched and "deadline: native socket send failed; outcome unknown; automatic retry is disabled"
 					or "native socket setup failed before dispatch")
 			end
 		end)
+		if not spawned then
+			if not workerStarted then releaseWorker() end
+			fail("malformed: native socket worker could not start before dispatch")
+		end
 		while not finished and not aborted() and clock.ms() < deadline do clock.wait(0.05) end
 		if aborted() then failure = "aborted"
 		elseif not finished then
@@ -138,9 +164,19 @@ return function(env)
 				or "socket connection did not complete before dispatch"
 		end
 		close(); active[close] = nil
-		if failure then return nil, failure end
+		if failure then return nil, failure, failureKind end
 		if #frames == 0 then return nil, "malformed_stream: socket closed without data" end
 		return table.concat(frames, "\n\n") .. "\n\ndata: [DONE]\n\n"
+	end
+	function M.stream(spec)
+		local copy = util.copy(spec)
+		copy.deadlineMs = rate.deadline(copy.inference, env.require("net/deadline").at(copy.timeout, copy.deadlineMs))
+		while true do
+			local called, body, problem, kind = pcall(streamAttempt, copy)
+			if copy.ratePermit then copy.ratePermit.release(); copy.ratePermit = nil end
+			if not called then return nil, "malformed: socket request preparation failed before dispatch" end
+			if kind ~= "rate" then return body, problem end
+		end
 	end
 	function M.state() return { workers = workers, connections = connections, alive = alive, limit = 4 } end
 	env.require("runtime/dispose").add(function() alive = false; for close in pairs(active) do close() end; active = {} end, "native sockets")

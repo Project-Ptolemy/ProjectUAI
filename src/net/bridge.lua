@@ -437,8 +437,9 @@ return function(env)
 				modelInfo = modelInfo,
 				freeModels = freeModels,
 				free = models.isFree(record, record.model),
-				freeRoute = env.require("provider/free_route").status(record),
 				enabled = record.enabled ~= false,
+				requestsPerMinute = record.requestsPerMinute or 0,
+				connectionTest = env.require("provider/connection_test").state(record.id),
 				health = {
 					ok = health.ok or 0,
 					fail = health.fail or 0,

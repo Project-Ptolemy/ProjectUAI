@@ -1,6 +1,7 @@
 -- Observed inference sends are distinct from messages, discovery and relay polls.
 package.path = "test/?.lua;test/mock/?.lua;" .. package.path
 local F = require("workspace_fixture")
+local Z = require("opencode_catalog_fixture")
 local suite = F.suite("Per-key and conversation request accounting")
 local case, check = suite.case, suite.check
 
@@ -32,6 +33,7 @@ local function fixture(protocol)
 	end
 	f.h.http.handler = function() return f.reply() end
 	function f.complete(options, seconds)
+		if protocol == "responses" then Z.responses(f, f.record) end
 		return f.run(function()
 			local request = { messages = { { role = "user", content = "hello" } }, session = f.session, stream = false, attempts = 1 }
 			for name, value in pairs(options or {}) do request[name] = value end
@@ -199,27 +201,6 @@ case("relay hello, submission receipt recovery and result polls count one infere
 	check("two submissions and one poll are one logical relay inference", submissions == 2 and polls == 1
 		and f.stats.conversationUsage(f.session).requests == 1 and f.stats.keyUsage(f.record, 1).requests == 1
 		and f.stats.keyUsage(f.record, 1).tokensIn == 11)
-	f.healthy(); f.close()
-end)
-
-case("synthetic Free probes count against their key without any conversation", function()
-	local f = fixture("openai")
-	f.env.require("runtime/clock").ms = function() return 1767268800000 + f.h.sched.now * 1000 end -- 20:00 UTC+8.
-	local record = f.registry.blank("projectuai-free"); assert(f.registry.save(record))
-	local posts = 0
-	f.h.http.handler = function(entry)
-		if entry.url:find("/models", 1, true) then return { StatusCode = 200, Body = '{"data":[{"id":"auto"}]}' } end
-		posts = posts + 1
-		local body = f.h.json.decode(entry.body)
-		local replay = body.messages[#body.messages].role == "tool"
-		local message = { role = "assistant", content = replay and "PONG" or "" }
-		if not replay then message.tool_calls = { { id = "probe", type = "function", ["function"] = { name = "uai_ping", arguments = '{"nonce":"ok"}' } } } end
-		return { StatusCode = 200, Body = f.h.json.encode({ choices = { { message = message, finish_reason = replay and "stop" or "tool_calls" } },
-			usage = { prompt_tokens = 3, completion_tokens = 2 } }) }
-	end
-	f.env.require("provider/free_route").refresh(record); f.h.sched.advance(2)
-	check("probe and tool replay count as two inference sends", posts == 2 and f.stats.keyUsage(record, 1).requests == 2 and f.stats.keyUsage(record, 1).tokensIn == 6)
-	check("synthetic checks never enter conversation counters", next(f.stats.data.conversationUsage) == nil)
 	f.healthy(); f.close()
 end)
 

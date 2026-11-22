@@ -7,8 +7,7 @@ issue text and shared request examples.
 | Symptom | Check |
 | --- | --- |
 | No provider selected | Add a provider from the library and save it |
-| Project UAI Free is closed | Wait for 20:00 UTC+8 or choose another provider; its daily close is noon |
-| HCNSEC asks for a key | This is the personal provider; community access is the separate Project UAI Free card |
+| An old community connection disappeared after upgrading | Retired community access is removed in 4.1.1; choose another service. See [migration](migration.md) |
 | All keys paused | Resume an entry in Manage API keys |
 | Selected key is paused | Resume it, select another active entry or enable rotation |
 | API key rejected | Verify the account, key and auth header, including overriding custom headers |

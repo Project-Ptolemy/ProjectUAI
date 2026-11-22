@@ -1,8 +1,7 @@
 -- The OpenAI Responses adapter, for documented model and tool routes.
 --
--- Zen serves some models (muse-spark contributor builds) exclusively on the
--- Responses protocol: /chat/completions answers ModelProtocolUnsupported for
--- them, while the Responses endpoint streams full reasoning and text.
+-- Zen's official catalog can advertise the Responses protocol. Personal-key
+-- connections also retain bounded recovery from an explicit protocol refusal.
 -- This adapter speaks that lane and returns the same normalised result the
 -- chat adapter does, so everything above it is unchanged.
 --
@@ -89,20 +88,24 @@ return function(env)
 	function M.key() return RESPONSES_KEY end
 
 	function M.eligible(record)
-		return directOpenai(record) or registry.isOpencode(record) or agentrouter.matches(record)
+		local public = env.require("provider/opencode_public")
+		-- Public Chat authentication cannot authorize another protocol. A fresh
+		-- catalog's API facts also override old learned lane preferences.
+		if public.credentials(record) then return false end
+		local catalog = public.info(record)
+		if catalog and not catalog.responses then return false end
+		return directOpenai(record) or registry.isOpencodeZen(record) or registry.isOpencodeGo(record) or agentrouter.matches(record)
 	end
 
-	-- Models verified to speak only the Responses lane (live 200 on
-	-- /inference/openai/v1/responses with chat refused). Proactive so the
-	-- first turn never burns a chat refusal: on the direct route the free-tier
-	-- gate answers 403 before protocol validation runs, so a reactive switch
-	-- would never fire there.
+	-- Advertised native protocols select the lane without guessing model names.
 	function M.wantsResponses(record)
 		if not M.eligible(record) then return false end
+		local catalog = env.require("provider/opencode_public").info(record)
+		if catalog then return catalog.responses and (catalog.protocol == "responses" or not catalog.chat) end
 		if directOpenai(record) then return true end
 		if agentrouter.matches(record) then return agentrouter.protocol(record) == "responses" end
 		if registry.isOpencodeGo(record) then return registry.opencodeGoProtocol(record) == "responses" end
-		return tostring(record and record.model or ""):find("muse-spark", 1, true) ~= nil
+		return false
 	end
 
 	function M.isProtocolRefusal(res)
@@ -169,7 +172,7 @@ return function(env)
 	-- retain their supported saved routes and query parameters.
 	function M.endpointFor(record)
 		if directOpenai(record) or registry.isOpencodeGo(record) or agentrouter.matches(record) then return registry.endpoint(record, "/responses") end
-		if not registry.isOpencode(record) then return nil end
+		if not registry.isOpencodeZen(record) then return nil end
 		local parsed = urls.parse(record.baseUrl or "")
 		local query = parsed and parsed.query
 		local base = "https://opencode.ai/inference/v1" .. (query and query ~= "" and ("?" .. query) or "")
@@ -261,7 +264,7 @@ return function(env)
 						type = "function",
 						name = tostring(fn.name or ""),
 						description = tostring(fn.description or ""),
-						parameters = type(fn.parameters) == "table" and fn.parameters or { type = "object", properties = {} },
+						parameters = type(fn.parameters) == "table" and util.deepCopy(fn.parameters) or { type = "object", properties = {} },
 					}
 					if type(fn.strict) == "boolean" then translated.strict = fn.strict end
 					out[#out + 1] = translated
@@ -320,7 +323,7 @@ return function(env)
 		local tools = M.toolsFor(request.tools) or {}
 		local names = {}
 		for _, tool in ipairs(tools) do names[tool.name] = true end
-		for _, tool in ipairs(registry.isOpencode(record) and M.toolsFor(env.require("provider/openai").opencodeTools) or {}) do
+		for _, tool in ipairs(registry.isOpencodeZen(record) and M.toolsFor(env.require("provider/openai").opencodeTools) or {}) do
 			if not names[tool.name] then
 				tools[#tools + 1] = tool
 				names[tool.name] = true
@@ -345,7 +348,7 @@ return function(env)
 		if direct and body.model ~= record.model then error("Direct Responses model override must match the selected model", 0) end
 		local toolCeiling = openai.toolCeiling(record)
 		if type(body.tools) == "table" and #body.tools > toolCeiling then
-			openai.limitTools(body, toolCeiling, registry.isOpencode(record))
+			openai.limitTools(body, toolCeiling, registry.isOpencodeZen(record))
 		end
 		toolDefaults(record, body)
 		local sampling = env.require("provider/sampling")
@@ -619,14 +622,15 @@ return function(env)
 		local rotationsLeft = math.min(handoff.rotationsLeft or math.max(#pool - 1, 0), math.max(#pool - 1, 0))
 		local function headersFor()
 			local defaults = directOpenai(record) and { Accept = body.stream and "text/event-stream" or "application/json" } or {}
-			return headerMap.merge(defaults, registry.authHeaders(record, currentKey or ""), registry.opencodeHeaders(record, request), record.headers)
+			return headerMap.merge(defaults, registry.authHeaders(record, currentKey or "", body), registry.opencodeHeaders(record, request), record.headers)
 		end
 		local started = clock.ms()
 		local relayUnlimited = handoff.relayUnlimited
 		if relayUnlimited == nil then relayUnlimited = env.require("net/transport").unlimited(request) end
 		if handoff.deadlineMs and handoff.deadlineMs < math.huge then relayUnlimited = false end
-		local deadline = handoff.deadlineMs or env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
+		local deadline = handoff.deadlineMs or registry.inferenceDeadline(request, requestTimeout(request), started, relayUnlimited)
 		local scope = registry.compatibilityKey(record)
+		local inference = registry.inferenceContext(record, function() return owns() and registry.compatibilityKey(record) == scope end, deadline)
 		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local attemptsAllowed = request.attempts or config.get("agent.retries", 3)
 		local function fire()
@@ -635,6 +639,7 @@ return function(env)
 			local imageRequest = env.require("runtime/images").hasReferences(request.messages)
 			local headers = headersFor()
 			local res, err = http.send({
+				inference = inference,
 				requiresAccess = true,
 				onDispatch = function() accounting.dispatch(currentKey, headers) end,
 				relay = env.require("net/transport").shouldRelay(imageRequest), sessionId = request.sessionId,
@@ -671,7 +676,7 @@ return function(env)
 			and env.require("provider/openai").toolCeilingFromMessage(env.require("provider/openai").errorText(res, err))
 		if toolLimit and body.tools and #body.tools > toolLimit and owns() and registry.compatibilityKey(record) == scope then
 			local openai = env.require("provider/openai")
-			openai.limitTools(body, toolLimit, registry.isOpencode(record))
+			openai.limitTools(body, toolLimit, registry.isOpencodeZen(record))
 			toolDefaults(record, body)
 			openai.rememberToolCeiling(record, toolLimit)
 			if request.onRetry then request.onRetry({ attempt = 1, attempts = 2, wait = 0, reason = "limited tool declarations with catalogue preserved", status = res.status }) end

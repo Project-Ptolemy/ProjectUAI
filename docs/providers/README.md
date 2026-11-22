@@ -7,10 +7,9 @@ not install one or send inference. A preset does not buy credits or confirm acce
 
 | Task | Guide |
 | --- | --- |
-| Add optional community access | [Project UAI Free](projectuai-free.md) |
-| Use a personal HCNSEC key | [HCNSEC](hcnsec.md) |
 | Find a model or use an exact ID | [Model discovery](model-discovery.md) |
 | Rotate, name or pause keys | [Key management](key-management.md) |
+| Set shared or provider request caps | [Requests per minute](../CONFIGURATION.md#limit-requests-per-minute) |
 | Run your own models | [Local servers](local-servers.md) |
 | Connect another compatible API | [Custom endpoints](custom-endpoints.md) |
 | Fix a setup or request error | [Troubleshooting](troubleshooting.md) |
@@ -27,8 +26,13 @@ not install one or send inference. A preset does not buy credits or confirm acce
 | [AI/ML API](aimlapi.md) | Paid API access; documented free tier is paused |
 
 For other connections, see [AgentRouter](../AGENTROUTER.md),
+[OpenCode Zen direct API](../PROVIDER_COMPATIBILITY.md#opencode-direct-api-desktop-and-mobile),
 [Kilo quota recovery](../KILO_TUNNEL.md), [Cline desktop setup](../CLINE_TUNNEL.md)
 and the [provider compatibility contract](../PROVIDER_COMPATIBILITY.md).
+
+Release 4.1.1 removes Project UAI Free and the HCNSEC preset. Existing community
+connections are removed; personal accounts become custom endpoints. See
+[provider migration](migration.md) for saved configurations and old exports.
 
 The external documentation and unauthenticated model catalogs for the seven
 vendor guides above were checked on October 25, 2026. Paid inference was not exercised.
@@ -40,3 +44,8 @@ available when a search has no matches. UAI hides explicitly incompatible catalo
 kinds on these providers' documented routes; manually entered IDs remain available.
 Choose a model that supports tool calling for agent work. A chat-compatible entry
 can still lack tools, image input or a particular reasoning setting.
+
+OpenCode Zen public access follows fresh official Chat and zero-price catalog
+metadata. A setup can retain **Catalog verification pending** while its exact
+model awaits verification. Names alone do not establish free access; decision-only
+and priced models cannot become public Chat routes. See [model discovery](model-discovery.md).

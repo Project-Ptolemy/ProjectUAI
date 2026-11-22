@@ -7,7 +7,12 @@ return function(env)
 	function M.run(command)
 		local kind = command.type
 		local access = config.accessProblem()
-		if access and kind ~= "loops:stop" then error(access, 0) end
+		if access and kind ~= "loops:stop" and kind ~= "provider:test:cancel" then error(access, 0) end
+		if kind == "provider:test:cancel" then
+			local ok, cancelled = env.require("provider/connection_test").cancel(command.id, command.testId)
+			if not ok then error(cancelled, 0) end
+			return { cancelled = cancelled }
+		end
 		local session = command.sessionId and sessions.threads[command.sessionId] or sessions.current()
 		if not session then error("Conversation no longer exists", 0) end
 		if kind == "attachment:upload" then
@@ -61,7 +66,8 @@ return function(env)
 				["agent.maxTokens"] = { 1, 1000000 } }
 			local range = ranges[path]
 			if range and (command.value < range[1] or command.value > range[2]) then error("Setting is outside its supported range", 0) end
-			config.set(path, command.value)
+			local changed, problem = config.set(path, command.value)
+			if changed == nil then error(problem or "Invalid setting value", 0) end
 		elseif kind == "tool:rule" then
 			local rule = command.rule
 			if not ({ allow = true, deny = true, ask = true, default = true })[rule] then error("Invalid rule", 0) end
@@ -116,10 +122,11 @@ return function(env)
 			if fields.apiKey ~= nil then
 				local ok, why = env.require("runtime/provider_keys").setPool(record, fields.apiKey)
 				if not ok then error(why, 0) end
-				if record.preset == "projectuai-free" and not env.require("provider/community_key").isApplied(record) and util.trim(record.apiKey) ~= "" then
-					ok, why = env.require("provider/preset").apply(record, "hcnsec")
-					if not ok then error(why, 0) end
-				end
+			end
+			if fields.requestsPerMinute ~= nil then
+				local problem = env.require("runtime/inference_rate_policy").problem(fields.requestsPerMinute)
+				if problem then error(problem, 0) end
+				record.requestsPerMinute = fields.requestsPerMinute
 			end
 			if fields.enabled ~= nil then record.enabled = fields.enabled == true end
 			local ok, errors = providers.save(record)
@@ -130,11 +137,12 @@ return function(env)
 		elseif kind == "provider:test" then
 			local record = env.require("provider/registry").get(command.id)
 			if not record then error("Unknown provider", 0) end
-			local result, err = env.require("provider/chat").complete(record, {
-				messages = { { role = "user", content = "Reply with OK." } }, maxTokens = 12, attempts = 1,
-			})
-			if not result then error(err, 0) end
-			return { text = "Connected: " .. tostring(result.content), ms = result.ms }
+			local tests = env.require("provider/connection_test")
+			local result, problem
+			if command.testId ~= nil then result, problem = tests.start(record, command.testId)
+			else result, problem = tests.run(record) end
+			if not result then error(problem, 0) end
+			return result
 		elseif kind == "loops:stop" then return { stopped = env.require("runtime/chatloops").stop(command.id or "all") }
 		elseif kind == "thread:isolate" then session.setEphemeral(command.value == true)
 		elseif kind == "ask:answer" then

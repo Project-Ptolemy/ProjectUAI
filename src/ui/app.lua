@@ -110,7 +110,7 @@ return function(env)
 		if not M.syncCredentialAccess() then return end
 		local modal = overlay.modal({
 			title = "Support Project Ptolemy",
-			description = "Optional donations help keep the project and shared free access running.",
+			description = "Optional donations help keep the project running.",
 			width = theme.size.modal,
 		})
 		if not modal then return end
@@ -391,6 +391,14 @@ return function(env)
 
 		log.info("app", "interface mounted in " .. tostring(container.Name) .. " as " .. responsive.mode)
 		return M
+	end
+
+	-- Called only after bootstrap completes. Authentication and visibility are
+	-- checked by the notice watcher, so UI-hidden embeddings keep it pending.
+	function M.finishStartup()
+		if M.startupReady or M.disposed then return end
+		M.startupReady = true
+		dispose.add(env.require("ui/changelog").oncePerRelease(M), "release notice")
 	end
 
 	-- Launcher ---------------------------------------------------------------

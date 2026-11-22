@@ -66,16 +66,16 @@ return function(env)
 	end
 
 	function M.opencodeFreeUsage()
-		return "OpenCode refused this direct free-model request. The installed CLI can still have access. "
-			.. "Changing keys may not restore it. Update the UAI client and Project UAI Desktop Bridge for API-key access, "
-			.. "or use the installed OpenCode tunnel through the bridge."
+		return "OpenCode refused this direct free-model request. Use the current UAI client and a supported free Chat model. "
+			.. "Direct free Chat API access depends on the host transport; Project UAI Desktop Bridge supplies compatible API-key transport. "
+			.. "The installed CLI can still have access through the optional installed OpenCode tunnel. Changing keys may not restore it."
 	end
 
 	function M.opencode()
-		return "If direct desktop access is refused, update the UAI client and Project UAI Desktop Bridge for API-key access, "
-			.. "or use the installed OpenCode CLI through the bridge. "
-			.. "Mobile OpenCode requires the UAI Relay app from Discord; install and start the app, then connect it in UAI. "
-			.. "The OpenCode proxy is retired. Project UAI Free remains an alternative."
+		return "Direct free Chat API access depends on the model and host transport. Update UAI and use a supported Chat model. "
+			.. "Project UAI Desktop Bridge supplies compatible API-key transport; its optional installed OpenCode CLI has a separate model catalog. "
+			.. "For mobile requests that need a relay, install and start the UAI Relay app from Discord, then connect it in UAI. "
+			.. "The OpenCode proxy is retired."
 	end
 
 	return M

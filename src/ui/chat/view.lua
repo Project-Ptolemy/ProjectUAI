@@ -647,8 +647,7 @@ return function(env)
 				follow()
 			elseif event.kind == "model:route" then
 				local into, order = target()
-				message.notice(into, { tone = "info", text = event.text or ("Automatic free routing selected "
-					.. tostring(event.model) .. ". Turn it off in Settings → Agent → Automatic free routing.") }, order)
+				message.notice(into, { tone = "info", text = event.text or ("Selected model: " .. tostring(event.model) .. ".") }, order)
 				follow()
 			elseif event.kind == "compact" then
 				local into, order = target()
@@ -722,6 +721,9 @@ return function(env)
 					if session.liveRequest then render(session.liveRequest) end
 				end
 				if session.transcript then for _, event in ipairs(session.transcript.live()) do render(event) end end
+				-- The retained request starts before rate admission. Its replay must
+				-- not overwrite the current waiting status with provider activity.
+				if session.status == "Waiting for request rate limit" then ensureWorking().set(session.status) end
 			else
 				clearPreview(); clearWorking(); closeRun()
 				for id, handle in pairs(view.tools) do

@@ -22,16 +22,6 @@ return function(env)
 
 	local M = {}
 
-	local function routeNotice(session, record)
-		if session.headless then return end
-		if not env.require("provider/free_route").isRouted(record) then session.freeRouteNotice = nil; return end
-		local key = providers.compatibilityKey(record)
-		if session.freeRouteNotice == key then return end
-		session.freeRouteNotice = key
-		session.emit("model:route", { model = record.model, provider = record.label,
-			text = "Automatic free routing selected " .. record.model .. ". Turn it off in Settings \226\134\146 Agent \226\134\146 Automatic free routing." })
-	end
-
 	local function stopped(session)
 		session.emit("abort", {})
 		session.emit("status", { text = "Ready" })
@@ -129,8 +119,6 @@ return function(env)
 				if aborted() then return nil, "aborted" end
 				local function prepare()
 					local request = requestFor(record)
-					local routed = env.require("provider/free_route").select(record, request)
-					if routed ~= record then record = routed; request = requestFor(record) end
 					-- Hooks may edit nested messages and schemas. Keep those changes out
 					-- of saved history, registered tools and later provider attempts.
 					if hooks.count("preRequest") > 0 then request = util.deepCopy(request) end
@@ -169,9 +157,7 @@ return function(env)
 					outputCeiling = math.max(1, available - margin)
 					maxTokens = math.min(maxTokens, outputCeiling)
 				end
-				local function requestAborted() return aborted() or not env.require("provider/free_route").current(record) end
-				if requestAborted() then return nil, "aborted" end
-				routeNotice(session, record)
+				local function requestAborted() return aborted() end
 				if requestAborted() then return nil, "aborted" end
 				local preview = stream.new(session, record.model, requestAborted)
 
@@ -199,6 +185,11 @@ return function(env)
 					aborted = requestAborted,
 					onRetry = function(info)
 						if aborted() then return end
+						if info.rateLimit then
+							if info.phase == "waiting" then session.emit("status", { text = "Waiting for request rate limit" })
+							elseif info.phase == "admitted" then session.emit("status", { text = "Waiting for response" }) end
+							return
+						end
 						session.emit("request:retry", {
 							provider = record.label,
 							attempt = info.attempt,
@@ -217,7 +208,6 @@ return function(env)
 				local requestMs = clock.since(started)
 				local outputTokens = responseRate.outputTokens(result and result.usage)
 				preview.close()
-				env.require("provider/free_route").observe(record, result, requestMs)
 
 				if aborted() then return nil, "aborted" end
 				if result then
@@ -277,29 +267,29 @@ return function(env)
 				}
 			end
 			local messages = draft(maxTokens)
-			record = env.require("provider/free_route").select(record, { messages = messages, maxTokens = maxTokens })
 			local window = env.require("provider/traits").contextWindow(record.model, record)
 			if window then
 				local available = math.floor(window - usage.estimateMessages(messages) - 64)
 				if available < 16 then return nil end
 				if available < maxTokens then maxTokens = available; messages = draft(maxTokens) end
 			end
-			if session.toolEpoch ~= epoch or session.aborted() or not env.require("provider/free_route").current(record) then return nil end
-			routeNotice(session, record)
 			if session.toolEpoch ~= epoch or session.aborted() then return nil end
 			session.emit("status", { text = "Compacting context" })
-			local started = clock.ms()
 			local result = chat.complete(record, { session = session,
 				messages = messages,
 				temperature = 0,
 				maxTokens = maxTokens,
 				outputCeiling = maxTokens,
 				attempts = 1,
+				onRetry = function(info)
+					if not info.rateLimit or session.toolEpoch ~= epoch or session.aborted() then return end
+					if info.phase == "waiting" then session.emit("status", { text = "Waiting for request rate limit" })
+					elseif info.phase == "admitted" then session.emit("status", { text = "Compacting context" }) end
+				end,
 				aborted = function()
-					return session.toolEpoch ~= epoch or session.aborted() or not env.require("provider/free_route").current(record)
+					return session.toolEpoch ~= epoch or session.aborted()
 				end,
 			})
-			env.require("provider/free_route").observe(record, result, clock.since(started))
 			if session.toolEpoch ~= epoch or session.aborted() then return nil end
 			if result then
 				usage.record(result.usage, result.model or record.model, {
@@ -319,7 +309,6 @@ return function(env)
 
 	-- Runs one user prompt to completion. Returns the assistant's final text.
 	function M.run(session, text, images)
-		session.freeRouteNotice = nil
 		local ctx = session.ctx
 		local maxTurns = session.maxTurns or config.get("agent.maxTurns", 24)
 		local repeatLimit = config.get("agent.repeatLimit", 3)
@@ -401,7 +390,7 @@ return function(env)
 				local model, provider = candidate and candidate.model, candidate and candidate.label
 				if systemText == nil or candidate ~= promptRecord or model ~= promptModel or provider ~= promptProvider then
 					local options = { tools = definitions, model = model, provider = provider, session = session, profile = profile }
-					options.opencodeCompatibility = candidate and candidate.api ~= "anthropic" and providers.isOpencode(candidate) or false
+					options.opencodeCompatibility = candidate and candidate.api ~= "anthropic" and providers.isOpencodeZen(candidate) or false
 					if type(session.systemPrompt) == "function" then
 						systemText = session.systemPrompt(options)
 					elseif type(session.systemPrompt) == "string" and util.trim(session.systemPrompt) ~= "" then

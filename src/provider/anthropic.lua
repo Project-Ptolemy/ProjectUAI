@@ -566,7 +566,8 @@ return function(env)
 
 		local started = clock.ms()
 		local relayUnlimited = env.require("net/transport").unlimited(request)
-		local deadline = env.require("net/deadline").at(requestTimeout(request), request.deadlineMs, started, relayUnlimited)
+		local deadline = registry.inferenceDeadline(request, requestTimeout(request), started, relayUnlimited)
+		local inference = registry.inferenceContext(record, function() return owns() and registry.compatibilityKey(record) == requestScope end, deadline)
 		local recovery = proxy.new(record, { aborted = request.aborted, onRetry = request.onRetry, deadlineMs = deadline })
 		local lastRequestMs = 0
 		local rotationsLeft = math.max(#pool - 1, 0)
@@ -579,6 +580,7 @@ return function(env)
 			if clock.ms() >= deadline then return nil, "deadline: request budget expired" end
 			local requestStarted = clock.ms()
 			local res, err = http.send({
+				inference = inference,
 				requiresAccess = true,
 				onDispatch = function() accounting.dispatch(currentKey, headers) end,
 				relay = env.require("net/transport").shouldRelay(env.require("runtime/images").hasReferences(request.messages)),
